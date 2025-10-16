@@ -84,10 +84,30 @@ class Conversation:
         self.turns: List[Dict[str, Any]] = []
         self.messages: List[Dict[str, str]] = []  # For chat API
         self.models_used: set = set()
+        self.files: List[Dict[str, Any]] = []  # Store uploaded files for conversation context
         self.conv_dir = CONVERSATIONS_DIR / conv_id
         self.conv_dir.mkdir(parents=True, exist_ok=True)
     
-    def add_turn(self, model: str, prompt: str, response: str, 
+    def add_file(self, filename: str, content: str):
+        """Add a file to the conversation context"""
+        file_entry = {
+            "filename": filename,
+            "content": content,
+            "uploaded_at": datetime.now().isoformat()
+        }
+        self.files.append(file_entry)
+
+    def get_files_context(self) -> str:
+        """Get formatted string of all files in conversation"""
+        if not self.files:
+            return ""
+
+        context_parts = []
+        for f in self.files:
+            context_parts.append(f"\n--- File: {f['filename']} ---\n{f['content']}\n--- End of file ---\n")
+        return "\n".join(context_parts)
+
+    def add_turn(self, model: str, prompt: str, response: str,
                  response_time: float, paths: Dict[str, str]):
         turn_num = len(self.turns) + 1
         turn = {
@@ -101,11 +121,11 @@ class Conversation:
         }
         self.turns.append(turn)
         self.models_used.add(model)
-        
+
         # Add to messages for chat continuity
         self.messages.append({"role": "user", "content": prompt})
         self.messages.append({"role": "assistant", "content": response})
-        
+
         # Log turn to CSV
         self._log_turn(turn)
         
@@ -352,7 +372,9 @@ function App() {{
   const [snack, setSnack] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [conversationInfo, setConversationInfo] = useState(null);
-  const [uploadedFiles, setUploadedFiles] = useState([]);
+  const [conversationFiles, setConversationFiles] = useState([]);
+  const [showFileDialog, setShowFileDialog] = useState(false);
+  const [selectedFileContent, setSelectedFileContent] = useState(null);
   const chatEndRef = useRef(null);
   const fileInputRef = useRef(null);
 
@@ -387,6 +409,7 @@ function App() {{
       const data = await r.json();
       setConversationId(data.conversation_id);
       setChatHistory([]);
+      setConversationFiles([]);
       setStatus('New conversation started');
       setSnack('New conversation started');
     }} catch (err) {{
@@ -467,25 +490,79 @@ function App() {{
   const handleFileUpload = async (ev) => {{
     const file = ev.target.files[0];
     if (!file) return;
-    
+
+    if (!conversationId) {{
+      setSnack('Please start a conversation first');
+      return;
+    }}
+
     const formData = new FormData();
     formData.append('file', file);
-    
+    formData.append('conversation_id', conversationId);
+
     try {{
       const r = await fetch('/upload', {{method: 'POST', body: formData}});
       const data = await r.json();
       if (!r.ok) throw new Error(data.error || 'Upload failed');
-      
-      // Add file content to prompt with clear formatting
-      const fileContent = `\\n\\n--- File: ${{file.name}} ---\\n${{data.content}}\\n--- End of file ---\\n\\n`;
-      setPrompt(prev => prev + fileContent);
-      setUploadedFiles(prev => [...prev, {{name: file.name, size: data.size}}]);
+
+      // Add file to conversation files list (NOT to prompt)
+      setConversationFiles(prev => [...prev, {{name: file.name, size: data.size}}]);
       setSnack(`Uploaded: ${{file.name}}`);
     }} catch (err) {{
       setSnack('Upload error: ' + err);
     }}
     // Reset input
     ev.target.value = '';
+  }};
+
+  const viewFile = (fileName) => {{
+    // For now, just show a message that files are attached to conversation
+    setSnack(`File "${{fileName}}" is attached to this conversation`);
+  }};
+
+  const removeFile = (fileName) => {{
+    setConversationFiles(prev => prev.filter(f => f.name !== fileName));
+    setSnack(`Removed: ${{fileName}}`);
+  }};
+
+  const resendWithDifferentModel = async (originalPrompt, targetModel) => {{
+    if (!conversationId) return;
+
+    setIsLoading(true);
+    setStatus(`Resending to ${{targetModel}}...`);
+
+    try {{
+      const r = await fetch('/conversation/send', {{
+        method: 'POST',
+        headers: {{'Content-Type': 'application/json'}},
+        body: JSON.stringify({{
+          conversation_id: conversationId,
+          model: targetModel,
+          prompt: originalPrompt
+        }})
+      }});
+
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || 'HTTP ' + r.status);
+
+      // Add assistant response
+      setChatHistory(prev => [...prev, {{
+        role: 'assistant',
+        content: data.response,
+        model: data.model,
+        turn: data.turn_number,
+        response_time: data.response_time
+      }}]);
+
+      setStatus(`Turn ${{data.turn_number}} • ${{data.response_time.toFixed(2)}}s`);
+      setConversationInfo(data.conversation_info);
+      setSnack(`Response from ${{targetModel}} received`);
+    }} catch (err) {{
+      setSnack('Error: ' + err);
+      setStatus('Error');
+    }} finally {{
+      setIsLoading(false);
+    }}
   }};
 
   return e('div', {{className: 'container'}}, [
@@ -538,7 +615,7 @@ function App() {{
     
     conversationId && e(Paper, {{elevation: 1, sx: {{p: 2, mb: 2, maxHeight: '60vh', overflowY: 'auto', borderRadius: 4}}}}, [
       chatHistory.length === 0 && e(Typography, {{color: 'text.secondary', align: 'center'}}, 'Start chatting...'),
-      ...chatHistory.map((msg, idx) => 
+      ...chatHistory.map((msg, idx) =>
         e('div', {{
           key: idx,
           className: msg.role === 'user' ? 'chat-message user-message' : 'chat-message assistant-message'
@@ -548,13 +625,45 @@ function App() {{
             msg.role === 'assistant' && msg.turn && `Turn ${{msg.turn}} • `,
             msg.model && `${{msg.model}}`,
             msg.response_time && ` • ${{msg.response_time.toFixed(2)}}s`
-          ])
+          ]),
+          msg.role === 'user' && e(Box, {{sx: {{mt: 1}}}},
+            e(Select, {{
+              size: 'small',
+              displayEmpty: true,
+              value: '',
+              disabled: isLoading,
+              onChange: (ev) => {{
+                if (ev.target.value) {{
+                  resendWithDifferentModel(msg.content, ev.target.value);
+                  ev.target.value = '';
+                }}
+              }},
+              sx: {{fontSize: '0.75rem', height: '24px'}}
+            }}, [
+              e(MenuItem, {{value: '', disabled: true}}, 'Resend to different model...'),
+              ...availableModels.map(m => e(MenuItem, {{key: m, value: m}}, m))
+            ])
+          )
         ])
       ),
       e('div', {{ref: chatEndRef}})
     ]),
     
     conversationId && e(Paper, {{elevation: 1, sx: {{p: 2, borderRadius: 4}}}}, [
+      conversationFiles.length > 0 && e(Box, {{sx: {{mb: 2, p: 1, bgcolor: '#f5f5f5', borderRadius: 2}}}}, [
+        e(Typography, {{variant: 'caption', sx: {{display: 'block', mb: 1, color: '#666'}}}}, 'Attached files (available to all messages in this conversation):'),
+        e(Box, {{sx: {{display: 'flex', flexWrap: 'wrap', gap: 1}}}},
+          conversationFiles.map((f, i) => e(Chip, {{
+            key: i,
+            label: `${{f.name}} (${{(f.size/1024).toFixed(1)}}KB)`,
+            size: 'small',
+            onClick: () => viewFile(f.name),
+            onDelete: () => removeFile(f.name),
+            color: 'primary',
+            variant: 'outlined'
+          }}))
+        )
+      ]),
       e(Box, {{sx: {{position: 'relative'}}}}, [
         e(TextField, {{
           label: 'Your message',
@@ -582,14 +691,6 @@ function App() {{
           title: 'Upload file'
         }}, '+')
       ]),
-      uploadedFiles.length > 0 && e(Box, {{sx: {{mt: 1, display: 'flex', flexWrap: 'wrap', gap: 1}}}}, 
-        uploadedFiles.map((f, i) => e(Chip, {{
-          key: i,
-          label: `${{f.name}} (${{(f.size/1024).toFixed(1)}}KB)`,
-          size: 'small',
-          onDelete: () => setUploadedFiles(prev => prev.filter((_, idx) => idx !== i))
-        }}))
-      ),
       e(Stack, {{direction: 'row', spacing: 2, sx: {{mt: 2}}}}, [
         e(Button, {{
           variant: 'contained',
@@ -598,7 +699,7 @@ function App() {{
         }}, isLoading ? 'Generating...' : 'Send'),
         e(Button, {{
           variant: 'outlined',
-          onClick: () => {{ setPrompt(''); setUploadedFiles([]); }},
+          onClick: () => {{ setPrompt(''); }},
           disabled: isLoading
         }}, 'Clear')
       ])
@@ -652,35 +753,41 @@ def send_message():
     conv_id = data.get("conversation_id")
     model = data.get("model", DEFAULT_MODEL)
     prompt = data.get("prompt", "")
-    
+
     if not prompt:
         return jsonify({"error": "missing prompt"}), 400
-    
+
     # Find conversation
     conv = None
     for sid, c in ACTIVE_CONVERSATIONS.items():
         if c.id == conv_id:
             conv = c
             break
-    
+
     if not conv:
         return jsonify({"error": "conversation not found"}), 404
-    
+
+    # Build full prompt with file context
+    files_context = conv.get_files_context()
+    full_prompt = prompt
+    if files_context:
+        full_prompt = files_context + "\n" + prompt
+
     # Call LLM
     start_time = time.time()
     try:
-        result = call_chat(model, conv.messages + [{"role": "user", "content": prompt}])
+        result = call_chat(model, conv.messages + [{"role": "user", "content": full_prompt}])
         response_time = time.time() - start_time
     except Exception as e:
         return jsonify({"error": f"ollama chat failed: {e}"}), 500
-    
-    # Save artifacts
+
+    # Save artifacts (use original prompt without file context for display)
     turn_num = len(conv.turns) + 1
     paths = save_turn_artifacts(conv, turn_num, model, prompt, result)
-    
-    # Add turn to conversation
+
+    # Add turn to conversation (store original prompt)
     conv.add_turn(model, prompt, result, response_time, paths)
-    
+
     return jsonify({
         "conversation_id": conv.id,
         "turn_number": turn_num,
@@ -813,14 +920,29 @@ def list_models():
 
 @app.post("/upload")
 def upload_file():
-    """Handle file upload and return content"""
+    """Handle file upload and add to conversation context"""
     if 'file' not in request.files:
         return jsonify({"error": "no file provided"}), 400
-    
+
     file = request.files['file']
     if file.filename == '':
         return jsonify({"error": "no file selected"}), 400
-    
+
+    # Get conversation_id from form data
+    conv_id = request.form.get('conversation_id')
+    if not conv_id:
+        return jsonify({"error": "conversation_id required"}), 400
+
+    # Find conversation
+    conv = None
+    for sid, c in ACTIVE_CONVERSATIONS.items():
+        if c.id == conv_id:
+            conv = c
+            break
+
+    if not conv:
+        return jsonify({"error": "conversation not found"}), 404
+
     try:
         filename = file.filename.lower()
         content = file.read()
@@ -911,11 +1033,14 @@ def upload_file():
                     text_content = content.decode('latin-1')
                 except:
                     return jsonify({"error": "unable to read file as text"}), 400
-        
+
+        # Add file to conversation context
+        conv.add_file(file.filename, text_content)
+
         return jsonify({
             "filename": file.filename,
-            "content": text_content,
-            "size": len(content)
+            "size": len(content),
+            "success": True
         })
     except Exception as e:
         return jsonify({"error": f"failed to read file: {e}"}), 500
