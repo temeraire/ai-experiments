@@ -63,6 +63,10 @@ DEFAULT_MODEL = os.environ.get("OLLAMA_MODEL", "qwen2.5:32b-instruct")
 # Claude API Configuration
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 
+# Context Window Configuration
+# How many recent turns to keep in context (0 = unlimited)
+CONTEXT_WINDOW_SIZE = int(os.environ.get("CONTEXT_WINDOW_SIZE", 10))
+
 # Server Configuration
 APP_PORT = int(os.environ.get("PORT", 5005))
 
@@ -155,6 +159,28 @@ class Conversation:
             "total_tokens": self.total_input_tokens + self.total_output_tokens,
             "rate_limit_reset_time": self.rate_limit_reset_time.isoformat() if self.rate_limit_reset_time else None
         }
+
+    def get_windowed_messages(self, window_size: int = 0) -> List[Dict[str, str]]:
+        """Get messages with sliding window (keep only recent N turns)"""
+        if window_size <= 0:
+            # Return all messages (unlimited context)
+            return self.messages
+
+        # Each turn = 2 messages (user + assistant)
+        # So window_size turns = window_size * 2 messages
+        max_messages = window_size * 2
+
+        if len(self.messages) <= max_messages:
+            return self.messages
+
+        # Return only the most recent messages
+        return self.messages[-max_messages:]
+
+    def clear_context(self):
+        """Clear conversation context (but keep all turns logged)"""
+        # Clear messages array (context for LLM)
+        # But keep turns array (logged history)
+        self.messages = []
 
     def add_turn(self, model: str, prompt: str, response: str,
                  response_time: float, paths: Dict[str, str],
@@ -408,11 +434,14 @@ def get_claude_models() -> List[str]:
     if not HAS_CLAUDE or not ANTHROPIC_API_KEY:
         return []
 
-    # Return commonly used Claude models
+    # Return latest Claude models (2025)
     return [
-        "claude-opus-4-20250514",
-        "claude-3-5-sonnet-20241022",
-        "claude-3-5-haiku-20241022",
+        "claude-sonnet-4-5-20250929",      # Latest: Best for coding & agents
+        "claude-opus-4-1-20250805",        # Most capable: Complex reasoning
+        "claude-sonnet-4-20250522",        # Balanced: Good performance
+        "claude-haiku-4-5-20251015",       # Fastest: Cost-effective
+        "claude-3-5-sonnet-20241022",      # Legacy: Still available
+        "claude-3-5-haiku-20241022",       # Legacy: Still available
     ]
 
 
@@ -616,6 +645,22 @@ function App() {{
     }}
   }};
 
+  const clearContext = async () => {{
+    if (!conversationId) return;
+    try {{
+      const response = await fetch('/conversation/clear-context', {{
+        method: 'POST',
+        headers: {{'Content-Type': 'application/json'}},
+        body: JSON.stringify({{ conversation_id: conversationId }})
+      }});
+      const data = await response.json();
+      setSnack('Context cleared - history preserved, token usage reduced');
+      setTokenStats(data.token_stats);
+    }} catch (err) {{
+      setSnack('Error clearing context: ' + err);
+    }}
+  }};
+
   const handleKeyPress = (ev) => {{
     if (ev.key === 'Enter' && !ev.shiftKey) {{
       ev.preventDefault();
@@ -722,6 +767,13 @@ function App() {{
             color: 'info',
             size: 'small',
             variant: 'outlined'
+          }}),
+          conversationId && e(Chip, {{
+            label: `Context: ${{Math.min(chatHistory.length, 20)}}/${{chatHistory.length}} msgs`,
+            color: chatHistory.length > 20 ? 'warning' : 'success',
+            size: 'small',
+            variant: 'outlined',
+            title: 'Context window: last 10 turns (20 messages) sent to model'
           }})
         ])
       ]),
@@ -742,6 +794,13 @@ function App() {{
           onClick: startNewConversation,
           disabled: isLoading
         }}, 'New Conversation'),
+        conversationId && e(Button, {{
+          variant: 'outlined',
+          color: 'warning',
+          onClick: clearContext,
+          disabled: isLoading,
+          title: 'Clear context to reduce tokens (history preserved)'
+        }}, 'Clear Context'),
         conversationId && e(Button, {{
           variant: 'outlined',
           color: 'error',
@@ -932,9 +991,11 @@ def send_message():
         full_prompt = files_context + "\n" + prompt
 
     # Call LLM (routes to Ollama or Claude automatically)
+    # Use windowed messages to reduce context size
+    windowed_messages = conv.get_windowed_messages(CONTEXT_WINDOW_SIZE)
     start_time = time.time()
     try:
-        result = call_llm(model, conv.messages + [{"role": "user", "content": full_prompt}])
+        result = call_llm(model, windowed_messages + [{"role": "user", "content": full_prompt}])
         response_time = time.time() - start_time
     except Exception as e:
         return jsonify({"error": f"LLM call failed: {e}"}), 500
@@ -958,6 +1019,32 @@ def send_message():
             "duration": (datetime.now() - conv.start_time).total_seconds(),
             "models_used": list(conv.models_used)
         },
+        "token_stats": conv.get_token_stats()
+    })
+
+
+@app.post("/conversation/clear-context")
+def clear_context():
+    """Clear conversation context (keeps history logged, reduces token usage)"""
+    data = request.get_json(force=True)
+    conv_id = data.get("conversation_id")
+
+    # Find conversation
+    conv = None
+    for c in ACTIVE_CONVERSATIONS.values():
+        if c.id == conv_id:
+            conv = c
+            break
+
+    if not conv:
+        return jsonify({"error": "conversation not found"}), 404
+
+    conv.clear_context()
+
+    return jsonify({
+        "conversation_id": conv.id,
+        "message": "Context cleared successfully",
+        "total_turns_logged": len(conv.turns),
         "token_stats": conv.get_token_stats()
     })
 
