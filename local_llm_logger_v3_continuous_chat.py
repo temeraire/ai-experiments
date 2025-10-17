@@ -341,6 +341,7 @@ def index() -> Response:
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>Local LLM Logger v3</title>
+<link rel="icon" type="image/png" href="/favicon"/>
 <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
 <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
 <script crossorigin src="https://unpkg.com/@mui/material@5.15.14/umd/material-ui.development.js"></script>
@@ -352,6 +353,30 @@ body{{margin:0;background:#fafafa}}
 .user-message{{background:#e3f2fd;text-align:right}}
 .assistant-message{{background:#f5f5f5}}
 .message-meta{{font-size:0.85em;color:#666;margin-top:4px}}
+@keyframes jump{{
+  0%, 80%, 100% {{transform:translateY(0)}}
+  40% {{transform:translateY(-10px)}}
+}}
+.throbber{{
+  display:inline-flex;
+  align-items:center;
+  gap:4px;
+  margin-right:8px;
+}}
+.throbber span{{
+  display:inline-block;
+  width:8px;
+  height:8px;
+  border-radius:50%;
+  background:#2196f3;
+  animation:jump 1s ease-in-out infinite;
+}}
+.throbber span:nth-child(2){{
+  animation-delay:0.15s;
+}}
+.throbber span:nth-child(3){{
+  animation-delay:0.3s;
+}}
 </style>
 </head>
 <body>
@@ -664,6 +689,14 @@ function App() {{
           }}))
         )
       ]),
+      isLoading && e(Box, {{sx: {{display: 'flex', alignItems: 'center', mb: 1, p: 1, bgcolor: '#e3f2fd', borderRadius: 2}}}}, [
+        e('span', {{className: 'throbber'}}, [
+          e('span'),
+          e('span'),
+          e('span')
+        ]),
+        e(Typography, {{variant: 'body2', color: 'primary'}}, status || 'Generating...')
+      ]),
       e(Box, {{sx: {{position: 'relative'}}}}, [
         e(TextField, {{
           label: 'Your message',
@@ -725,6 +758,13 @@ ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(
 </body>
 </html>"""
     return Response(html, mimetype="text/html")
+
+@app.get("/favicon")
+def favicon():
+    """Serve the favicon"""
+    from flask import send_file
+    favicon_path = Path(__file__).parent / "images" / "favicon.png"
+    return send_file(favicon_path, mimetype="image/png")
 
 # --------------------------
 # Conversation Endpoints
