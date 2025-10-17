@@ -44,3 +44,6 @@ logs/
 # Local data
 sessions/
 conversations/
+
+# Environment variables (contains API keys)
+.env

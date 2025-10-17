@@ -14,18 +14,24 @@ pip install -r requirements.txt
 
 Get your Claude API key from: https://console.anthropic.com/settings/keys
 
-Set the environment variable:
+**Recommended Method (using .env file):**
 
 ```bash
-export ANTHROPIC_API_KEY="your_api_key_here"
-```
-
-Or create a `.env` file (copy from `.env.example`):
-
-```bash
+# Copy the example file
 cp .env.example .env
-# Edit .env and add your API key
+
+# Edit .env and replace 'your_api_key_here' with your actual key
+# The file should look like:
+# ANTHROPIC_API_KEY=sk-ant-api03-xxxxxxxxxxxxx
 ```
+
+**Alternative (environment variable):**
+
+```bash
+export ANTHROPIC_API_KEY="sk-ant-api03-xxxxxxxxxxxxx"
+```
+
+⚠️ **Important**: Never commit your `.env` file with real API keys! The `.env` file is already in `.gitignore` to prevent this.
 
 ### 3. Run the Application
 

@@ -45,6 +45,14 @@ try:
 except Exception:
     HAS_CLAUDE = False
 
+# Load environment variables from .env file if it exists
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    # python-dotenv not installed, environment variables must be set manually
+    pass
+
 # --------------------------
 # Configuration
 # --------------------------

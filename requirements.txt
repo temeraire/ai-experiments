@@ -20,3 +20,6 @@ anthropic>=0.40.0
 
 # Token counting for Claude
 tiktoken>=0.8.0
+
+# Environment variable management
+python-dotenv>=1.0.0
