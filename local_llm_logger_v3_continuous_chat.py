@@ -1232,7 +1232,11 @@ def load_conversation(conv_id: str):
         # Load all turns from JSONL files
         turns = []
         for turn_data in summary.get("turns", []):
-            turn_num = turn_data.get("turn_number")
+            # Handle both "turn" and "turn_number" field names
+            turn_num = turn_data.get("turn") or turn_data.get("turn_number")
+            if not turn_num:
+                continue
+
             turn_dir_pattern = f"turn_{turn_num:03d}_*"
 
             # Find the turn directory
@@ -1245,7 +1249,7 @@ def load_conversation(conv_id: str):
                     with jsonl_file.open() as f:
                         turn_info = json.loads(f.readline())
                         turns.append({
-                            "turn_number": turn_info.get("turn_number"),
+                            "turn_number": turn_num,
                             "timestamp": turn_info.get("timestamp"),
                             "model": turn_info.get("model"),
                             "prompt": turn_info.get("prompt"),
@@ -1296,7 +1300,11 @@ def restore_conversation():
 
         # Restore message history
         for turn_data in summary.get("turns", []):
-            turn_num = turn_data.get("turn_number")
+            # Handle both "turn" and "turn_number" field names
+            turn_num = turn_data.get("turn") or turn_data.get("turn_number")
+            if not turn_num:
+                continue
+
             turn_dir_pattern = f"turn_{turn_num:03d}_*"
             turn_dirs = list(conv_dir.glob(turn_dir_pattern))
 
