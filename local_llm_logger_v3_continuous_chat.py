@@ -541,6 +541,7 @@ function App() {{
   const [selectedFileContent, setSelectedFileContent] = useState(null);
   const [savedConversations, setSavedConversations] = useState([]);
   const [showLoadDialog, setShowLoadDialog] = useState(false);
+  const [showSaveConfirmDialog, setShowSaveConfirmDialog] = useState(false);
   const chatEndRef = useRef(null);
   const fileInputRef = useRef(null);
 
@@ -565,7 +566,17 @@ function App() {{
     chatEndRef.current?.scrollIntoView({{ behavior: 'smooth' }});
   }}, [chatHistory]);
 
+  const handleNewConversation = () => {{
+    // If there's an active conversation, ask to save it first
+    if (conversationId && chatHistory.length > 0) {{
+      setShowSaveConfirmDialog(true);
+    }} else {{
+      startNewConversation();
+    }}
+  }};
+
   const startNewConversation = async () => {{
+    setShowSaveConfirmDialog(false);
     try {{
       const r = await fetch('/conversation/new', {{
         method: 'POST',
@@ -581,6 +592,11 @@ function App() {{
     }} catch (err) {{
       setSnack('Error starting conversation: ' + err);
     }}
+  }};
+
+  const saveAndStartNew = async () => {{
+    await endConversation();
+    await startNewConversation();
   }};
 
   const sendMessage = async () => {{
@@ -854,7 +870,7 @@ function App() {{
         ]),
         e(Button, {{
           variant: conversationId ? 'outlined' : 'contained',
-          onClick: startNewConversation,
+          onClick: handleNewConversation,
           disabled: isLoading
         }}, 'New Conversation'),
         e(Button, {{
@@ -1012,6 +1028,30 @@ function App() {{
       ]),
       e(DialogActions, {{}}, [
         e(Button, {{onClick: () => setShowLoadDialog(false)}}, 'Cancel')
+      ])
+    ]),
+
+    // Save Confirmation Dialog
+    showSaveConfirmDialog && e(Dialog, {{
+      open: showSaveConfirmDialog,
+      onClose: () => setShowSaveConfirmDialog(false)
+    }}, [
+      e(DialogTitle, {{}}, 'Save Current Conversation?'),
+      e(DialogContent, {{}}, [
+        e(Typography, {{}}, 'Would you like to save the current conversation before starting a new one?')
+      ]),
+      e(DialogActions, {{}}, [
+        e(Button, {{
+          onClick: () => {{
+            setShowSaveConfirmDialog(false);
+            startNewConversation();
+          }}
+        }}, 'No'),
+        e(Button, {{
+          onClick: saveAndStartNew,
+          variant: 'contained',
+          color: 'primary'
+        }}, 'Yes')
       ])
     ]),
 
