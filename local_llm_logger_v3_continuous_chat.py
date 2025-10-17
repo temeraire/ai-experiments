@@ -522,7 +522,7 @@ body{{margin:0;background:#fafafa}}
 <script>
 const e = React.createElement;
 const {{useState, useEffect, useRef}} = React;
-const {{Container, TextField, Button, Paper, Typography, Stack, Divider, Alert, Snackbar, Box, Chip, Card, CardContent, Select, MenuItem, FormControl, InputLabel, IconButton}} = MaterialUI;
+const {{Container, TextField, Button, Paper, Typography, Stack, Divider, Alert, Snackbar, Box, Chip, Card, CardContent, Select, MenuItem, FormControl, InputLabel, IconButton, Dialog, DialogTitle, DialogContent, DialogActions, List, ListItem, ListItemText}} = MaterialUI;
 
 function App() {{
   const [sessionId, setSessionId] = useState(localStorage.getItem('session_id') || '');
@@ -539,6 +539,8 @@ function App() {{
   const [conversationFiles, setConversationFiles] = useState([]);
   const [showFileDialog, setShowFileDialog] = useState(false);
   const [selectedFileContent, setSelectedFileContent] = useState(null);
+  const [savedConversations, setSavedConversations] = useState([]);
+  const [showLoadDialog, setShowLoadDialog] = useState(false);
   const chatEndRef = useRef(null);
   const fileInputRef = useRef(null);
 
@@ -658,6 +660,67 @@ function App() {{
       setTokenStats(data.token_stats);
     }} catch (err) {{
       setSnack('Error clearing context: ' + err);
+    }}
+  }};
+
+  const fetchSavedConversations = async () => {{
+    try {{
+      const r = await fetch('/conversations/list');
+      const data = await r.json();
+      setSavedConversations(data.conversations || []);
+      setShowLoadDialog(true);
+    }} catch (err) {{
+      setSnack('Error loading conversations: ' + err);
+    }}
+  }};
+
+  const loadSavedConversation = async (convId) => {{
+    try {{
+      const r = await fetch(`/conversations/load/${{convId}}`);
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || 'Failed to load');
+
+      // Restore conversation as active (allows continuing)
+      const restoreR = await fetch('/conversation/restore', {{
+        method: 'POST',
+        headers: {{'Content-Type': 'application/json'}},
+        body: JSON.stringify({{
+          conversation_id: data.conversation_id,
+          session_id: sessionId
+        }})
+      }});
+      const restoreData = await restoreR.json();
+
+      if (!restoreR.ok) {{
+        // If restore fails, still load as read-only
+        console.warn('Failed to restore conversation, loading read-only');
+      }}
+
+      setConversationId(data.conversation_id);
+
+      // Build chat history from loaded turns
+      const history = [];
+      data.turns.forEach(turn => {{
+        history.push({{
+          role: 'user',
+          content: turn.prompt,
+          turn: turn.turn_number
+        }});
+        history.push({{
+          role: 'assistant',
+          content: turn.response,
+          model: turn.model,
+          turn: turn.turn_number,
+          response_time: turn.response_time
+        }});
+      }});
+
+      setChatHistory(history);
+      setStatus(`Loaded: ${{data.total_turns}} turns`);
+      setShowLoadDialog(false);
+      setSnack(`Conversation loaded - you can continue it`);
+    }} catch (err) {{
+      setSnack('Error loading conversation: ' + err);
     }}
   }};
 
@@ -794,6 +857,11 @@ function App() {{
           onClick: startNewConversation,
           disabled: isLoading
         }}, 'New Conversation'),
+        e(Button, {{
+          variant: 'outlined',
+          onClick: fetchSavedConversations,
+          disabled: isLoading
+        }}, 'Load Conversation'),
         conversationId && e(Button, {{
           variant: 'outlined',
           color: 'warning',
@@ -917,10 +985,36 @@ function App() {{
     
     !conversationId && e(Box, {{sx: {{textAlign: 'center', mt: 4}}}}, [
       e(Typography, {{variant: 'h6', color: 'text.secondary'}}, 'Click "New Conversation" to start'),
-      e(Typography, {{variant: 'body2', color: 'text.secondary', mt: 1}}, 
+      e(Typography, {{variant: 'body2', color: 'text.secondary', mt: 1}},
         'All conversations are automatically logged with full tracking')
     ]),
-    
+
+    // Load Conversation Dialog
+    showLoadDialog && e(Dialog, {{
+      open: showLoadDialog,
+      onClose: () => setShowLoadDialog(false),
+      maxWidth: 'md',
+      fullWidth: true
+    }}, [
+      e(DialogTitle, {{}}, 'Load Saved Conversation'),
+      e(DialogContent, {{}}, [
+        savedConversations.length === 0 && e(Typography, {{color: 'text.secondary'}}, 'No saved conversations found'),
+        savedConversations.length > 0 && e(List, {{}}, savedConversations.map(conv => e(ListItem, {{
+          key: conv.id,
+          button: true,
+          onClick: () => loadSavedConversation(conv.id)
+        }}, [
+          e(ListItemText, {{
+            primary: conv.first_prompt || 'No prompt',
+            secondary: `${{conv.total_turns}} turns • Models: ${{conv.models_used.join(', ')}} • ${{new Date(conv.start_time).toLocaleString()}}`
+          }})
+        ])))
+      ]),
+      e(DialogActions, {{}}, [
+        e(Button, {{onClick: () => setShowLoadDialog(false)}}, 'Cancel')
+      ])
+    ]),
+
     snack && e(Snackbar, {{
       open: true,
       autoHideDuration: 3000,
@@ -1080,6 +1174,173 @@ def end_conversation():
     })
 
 
+@app.get("/conversations/list")
+def list_conversations():
+    """List all saved conversations with metadata"""
+    conversations = []
+
+    # Scan conversations directory
+    if not CONVERSATIONS_DIR.exists():
+        return jsonify({"conversations": []})
+
+    for conv_dir in sorted(CONVERSATIONS_DIR.iterdir(), reverse=True):
+        if not conv_dir.is_dir() or conv_dir.name.startswith('.'):
+            continue
+
+        # Try to load conversation metadata
+        summary_file = conv_dir / "conversation.json"
+        if summary_file.exists():
+            try:
+                with summary_file.open() as f:
+                    summary = json.load(f)
+
+                # Extract first prompt as preview
+                first_prompt = ""
+                if summary.get("turns") and len(summary["turns"]) > 0:
+                    first_prompt = summary["turns"][0].get("prompt", "")[:100]
+
+                conversations.append({
+                    "id": conv_dir.name,
+                    "start_time": summary.get("start_time"),
+                    "end_time": summary.get("end_time"),
+                    "total_turns": len(summary.get("turns", [])),
+                    "models_used": summary.get("models_used", []),
+                    "first_prompt": first_prompt
+                })
+            except Exception as e:
+                # Skip conversations with corrupted metadata
+                continue
+
+    return jsonify({"conversations": conversations})
+
+
+@app.get("/conversations/load/<conv_id>")
+def load_conversation(conv_id: str):
+    """Load a saved conversation with all turns"""
+    conv_dir = CONVERSATIONS_DIR / conv_id
+    if not conv_dir.exists():
+        return jsonify({"error": "conversation not found"}), 404
+
+    summary_file = conv_dir / "conversation.json"
+    if not summary_file.exists():
+        return jsonify({"error": "conversation metadata not found"}), 404
+
+    try:
+        with summary_file.open() as f:
+            summary = json.load(f)
+
+        # Load all turns from JSONL files
+        turns = []
+        for turn_data in summary.get("turns", []):
+            turn_num = turn_data.get("turn_number")
+            turn_dir_pattern = f"turn_{turn_num:03d}_*"
+
+            # Find the turn directory
+            turn_dirs = list(conv_dir.glob(turn_dir_pattern))
+            if turn_dirs:
+                turn_dir = turn_dirs[0]
+                jsonl_file = turn_dir / "turn.jsonl"
+
+                if jsonl_file.exists():
+                    with jsonl_file.open() as f:
+                        turn_info = json.loads(f.readline())
+                        turns.append({
+                            "turn_number": turn_info.get("turn_number"),
+                            "timestamp": turn_info.get("timestamp"),
+                            "model": turn_info.get("model"),
+                            "prompt": turn_info.get("prompt"),
+                            "response": turn_info.get("result_markdown"),
+                            "response_time": turn_data.get("response_time")
+                        })
+
+        return jsonify({
+            "conversation_id": conv_id,
+            "start_time": summary.get("start_time"),
+            "end_time": summary.get("end_time"),
+            "total_turns": len(turns),
+            "models_used": summary.get("models_used", []),
+            "turns": turns
+        })
+
+    except Exception as e:
+        return jsonify({"error": f"Failed to load conversation: {e}"}), 500
+
+
+@app.post("/conversation/restore")
+def restore_conversation():
+    """Restore a saved conversation to active state (allows continuing)"""
+    data = request.get_json(force=True)
+    conv_id = data.get("conversation_id")
+    session_id = data.get("session_id")
+
+    if not conv_id or not session_id:
+        return jsonify({"error": "conversation_id and session_id required"}), 400
+
+    # Load conversation data
+    conv_dir = CONVERSATIONS_DIR / conv_id
+    if not conv_dir.exists():
+        return jsonify({"error": "conversation not found"}), 404
+
+    summary_file = conv_dir / "conversation.json"
+    if not summary_file.exists():
+        return jsonify({"error": "conversation metadata not found"}), 404
+
+    try:
+        with summary_file.open() as f:
+            summary = json.load(f)
+
+        # Create a new Conversation object with the loaded data
+        conv = Conversation(conv_id, summary.get("start_time"))
+        conv.conv_dir = conv_dir
+        conv.models_used = set(summary.get("models_used", []))
+
+        # Restore message history
+        for turn_data in summary.get("turns", []):
+            turn_num = turn_data.get("turn_number")
+            turn_dir_pattern = f"turn_{turn_num:03d}_*"
+            turn_dirs = list(conv_dir.glob(turn_dir_pattern))
+
+            if turn_dirs:
+                turn_dir = turn_dirs[0]
+                jsonl_file = turn_dir / "turn.jsonl"
+
+                if jsonl_file.exists():
+                    with jsonl_file.open() as f:
+                        turn_info = json.loads(f.readline())
+
+                        # Add messages to conversation context
+                        conv.messages.append({
+                            "role": "user",
+                            "content": turn_info.get("prompt")
+                        })
+                        conv.messages.append({
+                            "role": "assistant",
+                            "content": turn_info.get("result_markdown")
+                        })
+
+                        # Restore turns list
+                        conv.turns.append({
+                            "turn_number": turn_num,
+                            "model": turn_info.get("model"),
+                            "prompt": turn_info.get("prompt"),
+                            "response": turn_info.get("result_markdown"),
+                            "response_time": turn_data.get("response_time"),
+                            "timestamp": turn_info.get("timestamp")
+                        })
+
+        # Add to active conversations
+        ACTIVE_CONVERSATIONS[session_id] = conv
+
+        return jsonify({
+            "conversation_id": conv_id,
+            "message": "Conversation restored successfully",
+            "total_turns": len(conv.turns)
+        })
+
+    except Exception as e:
+        return jsonify({"error": f"Failed to restore conversation: {e}"}), 500
+
+
 @app.get("/conversation/export/<conv_id>")
 def export_conversation(conv_id: str):
     """Export a specific conversation"""
@@ -1134,27 +1395,6 @@ def export_conversation(conv_id: str):
             return jsonify({"error": f"pandoc conversion failed: {e}"}), 500
     
     return jsonify({"error": "unsupported format; use json, md, or docx"}), 400
-
-
-@app.get("/conversations/list")
-def list_conversations():
-    """List all conversations"""
-    conversations = []
-    
-    if CONVERSATIONS_CSV.exists():
-        with CONVERSATIONS_CSV.open() as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                conversations.append({
-                    "conversation_id": row["conversation_id"],
-                    "start_time": row["start_time"],
-                    "end_time": row["end_time"],
-                    "duration_seconds": row["duration_seconds"],
-                    "total_turns": row["total_turns"],
-                    "models_used": row["models_used"]
-                })
-    
-    return jsonify({"conversations": conversations})
 
 
 @app.get("/models/list")
