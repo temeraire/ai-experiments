@@ -38,11 +38,36 @@ try:
 except Exception:
     HAS_PYPANDOC = False
 
+try:
+    import anthropic
+    import tiktoken
+    HAS_CLAUDE = True
+except Exception:
+    HAS_CLAUDE = False
+
+# Load environment variables from .env file if it exists
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    # python-dotenv not installed, environment variables must be set manually
+    pass
+
 # --------------------------
 # Configuration
 # --------------------------
+# Ollama Configuration
 OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434")
 DEFAULT_MODEL = os.environ.get("OLLAMA_MODEL", "qwen2.5:32b-instruct")
+
+# Claude API Configuration
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+
+# Context Window Configuration
+# How many recent turns to keep in context (0 = unlimited)
+CONTEXT_WINDOW_SIZE = int(os.environ.get("CONTEXT_WINDOW_SIZE", 10))
+
+# Server Configuration
 APP_PORT = int(os.environ.get("PORT", 5005))
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -87,6 +112,11 @@ class Conversation:
         self.files: List[Dict[str, Any]] = []  # Store uploaded files for conversation context
         self.conv_dir = CONVERSATIONS_DIR / conv_id
         self.conv_dir.mkdir(parents=True, exist_ok=True)
+
+        # Token tracking for Claude models
+        self.total_input_tokens = 0
+        self.total_output_tokens = 0
+        self.rate_limit_reset_time: Optional[datetime] = None
     
     def add_file(self, filename: str, content: str):
         """Add a file to the conversation context"""
@@ -107,9 +137,65 @@ class Conversation:
             context_parts.append(f"\n--- File: {f['filename']} ---\n{f['content']}\n--- End of file ---\n")
         return "\n".join(context_parts)
 
+    def estimate_tokens(self, text: str) -> int:
+        """Estimate token count for a given text"""
+        if not HAS_CLAUDE:
+            # Rough estimation: ~4 characters per token
+            return len(text) // 4
+
+        try:
+            # Use tiktoken for Claude models (cl100k_base encoding)
+            encoding = tiktoken.get_encoding("cl100k_base")
+            return len(encoding.encode(text))
+        except Exception:
+            # Fallback to rough estimation
+            return len(text) // 4
+
+    def get_token_stats(self) -> Dict[str, Any]:
+        """Get current token usage statistics"""
+        return {
+            "total_input_tokens": self.total_input_tokens,
+            "total_output_tokens": self.total_output_tokens,
+            "total_tokens": self.total_input_tokens + self.total_output_tokens,
+            "rate_limit_reset_time": self.rate_limit_reset_time.isoformat() if self.rate_limit_reset_time else None
+        }
+
+    def get_windowed_messages(self, window_size: int = 0) -> List[Dict[str, str]]:
+        """Get messages with sliding window (keep only recent N turns)"""
+        if window_size <= 0:
+            # Return all messages (unlimited context)
+            return self.messages
+
+        # Each turn = 2 messages (user + assistant)
+        # So window_size turns = window_size * 2 messages
+        max_messages = window_size * 2
+
+        if len(self.messages) <= max_messages:
+            return self.messages
+
+        # Return only the most recent messages
+        return self.messages[-max_messages:]
+
+    def clear_context(self):
+        """Clear conversation context (but keep all turns logged)"""
+        # Clear messages array (context for LLM)
+        # But keep turns array (logged history)
+        self.messages = []
+
     def add_turn(self, model: str, prompt: str, response: str,
-                 response_time: float, paths: Dict[str, str]):
+                 response_time: float, paths: Dict[str, str],
+                 input_tokens: int = 0, output_tokens: int = 0):
         turn_num = len(self.turns) + 1
+
+        # Track tokens (estimate if not provided)
+        if input_tokens == 0:
+            input_tokens = self.estimate_tokens(prompt)
+        if output_tokens == 0:
+            output_tokens = self.estimate_tokens(response)
+
+        self.total_input_tokens += input_tokens
+        self.total_output_tokens += output_tokens
+
         turn = {
             "turn_number": turn_num,
             "timestamp": datetime.now(),
@@ -117,7 +203,9 @@ class Conversation:
             "prompt": prompt,
             "response": response,
             "response_time": response_time,
-            "paths": paths
+            "paths": paths,
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens
         }
         self.turns.append(turn)
         self.models_used.add(model)
@@ -307,6 +395,56 @@ def call_chat(model: str, messages: List[Dict[str, str]]) -> str:
     return r.json().get("message", {}).get("content", "")
 
 
+def call_claude(model: str, messages: List[Dict[str, str]]) -> str:
+    """Call Claude API"""
+    if not HAS_CLAUDE:
+        raise RuntimeError("Claude support not available. Install: pip install anthropic tiktoken")
+
+    if not ANTHROPIC_API_KEY:
+        raise RuntimeError("ANTHROPIC_API_KEY environment variable not set")
+
+    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+
+    # Claude model names: claude-3-5-sonnet-20241022, claude-opus-4-20250514, etc.
+    response = client.messages.create(
+        model=model,
+        max_tokens=8192,
+        messages=messages
+    )
+
+    # Extract text content from response
+    return response.content[0].text
+
+
+def is_claude_model(model: str) -> bool:
+    """Check if a model name is a Claude model"""
+    return model.startswith("claude-")
+
+
+def call_llm(model: str, messages: List[Dict[str, str]]) -> str:
+    """Universal LLM caller - routes to appropriate API"""
+    if is_claude_model(model):
+        return call_claude(model, messages)
+    else:
+        return call_chat(model, messages)
+
+
+def get_claude_models() -> List[str]:
+    """Get list of available Claude models"""
+    if not HAS_CLAUDE or not ANTHROPIC_API_KEY:
+        return []
+
+    # Return latest Claude models (2025)
+    return [
+        "claude-sonnet-4-5-20250929",      # Latest: Best for coding & agents
+        "claude-opus-4-1-20250805",        # Most capable: Complex reasoning
+        "claude-sonnet-4-20250522",        # Balanced: Good performance
+        "claude-haiku-4-5-20251015",       # Fastest: Cost-effective
+        "claude-3-5-sonnet-20241022",      # Legacy: Still available
+        "claude-3-5-haiku-20241022",       # Legacy: Still available
+    ]
+
+
 def get_ollama_models() -> List[str]:
     """Get list of available Ollama models"""
     try:
@@ -384,7 +522,7 @@ body{{margin:0;background:#fafafa}}
 <script>
 const e = React.createElement;
 const {{useState, useEffect, useRef}} = React;
-const {{Container, TextField, Button, Paper, Typography, Stack, Divider, Alert, Snackbar, Box, Chip, Card, CardContent, Select, MenuItem, FormControl, InputLabel, IconButton}} = MaterialUI;
+const {{Container, TextField, Button, Paper, Typography, Stack, Divider, Alert, Snackbar, Box, Chip, Card, CardContent, Select, MenuItem, FormControl, InputLabel, IconButton, Dialog, DialogTitle, DialogContent, DialogActions, List, ListItem, ListItemText}} = MaterialUI;
 
 function App() {{
   const [sessionId, setSessionId] = useState(localStorage.getItem('session_id') || '');
@@ -397,9 +535,13 @@ function App() {{
   const [snack, setSnack] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [conversationInfo, setConversationInfo] = useState(null);
+  const [tokenStats, setTokenStats] = useState(null);
   const [conversationFiles, setConversationFiles] = useState([]);
   const [showFileDialog, setShowFileDialog] = useState(false);
   const [selectedFileContent, setSelectedFileContent] = useState(null);
+  const [savedConversations, setSavedConversations] = useState([]);
+  const [showLoadDialog, setShowLoadDialog] = useState(false);
+  const [showSaveConfirmDialog, setShowSaveConfirmDialog] = useState(false);
   const chatEndRef = useRef(null);
   const fileInputRef = useRef(null);
 
@@ -424,7 +566,17 @@ function App() {{
     chatEndRef.current?.scrollIntoView({{ behavior: 'smooth' }});
   }}, [chatHistory]);
 
+  const handleNewConversation = () => {{
+    // If there's an active conversation, ask to save it first
+    if (conversationId && chatHistory.length > 0) {{
+      setShowSaveConfirmDialog(true);
+    }} else {{
+      startNewConversation();
+    }}
+  }};
+
   const startNewConversation = async () => {{
+    setShowSaveConfirmDialog(false);
     try {{
       const r = await fetch('/conversation/new', {{
         method: 'POST',
@@ -440,6 +592,11 @@ function App() {{
     }} catch (err) {{
       setSnack('Error starting conversation: ' + err);
     }}
+  }};
+
+  const saveAndStartNew = async () => {{
+    await endConversation();
+    await startNewConversation();
   }};
 
   const sendMessage = async () => {{
@@ -480,6 +637,7 @@ function App() {{
       
       setStatus(`Turn ${{data.turn_number}} • ${{data.response_time.toFixed(2)}}s`);
       setConversationInfo(data.conversation_info);
+      setTokenStats(data.token_stats);
     }} catch (err) {{
       setSnack('Error: ' + err);
       setStatus('Error');
@@ -502,6 +660,83 @@ function App() {{
       setStatus('');
     }} catch (err) {{
       setSnack('Error ending conversation: ' + err);
+    }}
+  }};
+
+  const clearContext = async () => {{
+    if (!conversationId) return;
+    try {{
+      const response = await fetch('/conversation/clear-context', {{
+        method: 'POST',
+        headers: {{'Content-Type': 'application/json'}},
+        body: JSON.stringify({{ conversation_id: conversationId }})
+      }});
+      const data = await response.json();
+      setSnack('Context cleared - history preserved, token usage reduced');
+      setTokenStats(data.token_stats);
+    }} catch (err) {{
+      setSnack('Error clearing context: ' + err);
+    }}
+  }};
+
+  const fetchSavedConversations = async () => {{
+    try {{
+      const r = await fetch('/conversations/list');
+      const data = await r.json();
+      setSavedConversations(data.conversations || []);
+      setShowLoadDialog(true);
+    }} catch (err) {{
+      setSnack('Error loading conversations: ' + err);
+    }}
+  }};
+
+  const loadSavedConversation = async (convId) => {{
+    try {{
+      const r = await fetch(`/conversations/load/${{convId}}`);
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || 'Failed to load');
+
+      // Restore conversation as active (allows continuing)
+      const restoreR = await fetch('/conversation/restore', {{
+        method: 'POST',
+        headers: {{'Content-Type': 'application/json'}},
+        body: JSON.stringify({{
+          conversation_id: data.conversation_id,
+          session_id: sessionId
+        }})
+      }});
+      const restoreData = await restoreR.json();
+
+      if (!restoreR.ok) {{
+        // If restore fails, still load as read-only
+        console.warn('Failed to restore conversation, loading read-only');
+      }}
+
+      setConversationId(data.conversation_id);
+
+      // Build chat history from loaded turns
+      const history = [];
+      data.turns.forEach(turn => {{
+        history.push({{
+          role: 'user',
+          content: turn.prompt,
+          turn: turn.turn_number
+        }});
+        history.push({{
+          role: 'assistant',
+          content: turn.response,
+          model: turn.model,
+          turn: turn.turn_number,
+          response_time: turn.response_time
+        }});
+      }});
+
+      setChatHistory(history);
+      setStatus(`Loaded: ${{data.total_turns}} turns`);
+      setShowLoadDialog(false);
+      setSnack(`Conversation loaded - you can continue it`);
+    }} catch (err) {{
+      setSnack('Error loading conversation: ' + err);
     }}
   }};
 
@@ -581,6 +816,7 @@ function App() {{
 
       setStatus(`Turn ${{data.turn_number}} • ${{data.response_time.toFixed(2)}}s`);
       setConversationInfo(data.conversation_info);
+      setTokenStats(data.token_stats);
       setSnack(`Response from ${{targetModel}} received`);
     }} catch (err) {{
       setSnack('Error: ' + err);
@@ -604,6 +840,19 @@ function App() {{
             label: model,
             color: 'secondary',
             size: 'small'
+          }}),
+          tokenStats && tokenStats.total_tokens > 0 && e(Chip, {{
+            label: `Tokens: ${{(tokenStats.total_tokens / 1000).toFixed(1)}}k`,
+            color: 'info',
+            size: 'small',
+            variant: 'outlined'
+          }}),
+          conversationId && e(Chip, {{
+            label: `Context: ${{Math.min(chatHistory.length, 20)}}/${{chatHistory.length}} msgs`,
+            color: chatHistory.length > 20 ? 'warning' : 'success',
+            size: 'small',
+            variant: 'outlined',
+            title: 'Context window: last 10 turns (20 messages) sent to model'
           }})
         ])
       ]),
@@ -621,9 +870,21 @@ function App() {{
         ]),
         e(Button, {{
           variant: conversationId ? 'outlined' : 'contained',
-          onClick: startNewConversation,
+          onClick: handleNewConversation,
           disabled: isLoading
         }}, 'New Conversation'),
+        e(Button, {{
+          variant: 'outlined',
+          onClick: fetchSavedConversations,
+          disabled: isLoading
+        }}, 'Load Conversation'),
+        conversationId && e(Button, {{
+          variant: 'outlined',
+          color: 'warning',
+          onClick: clearContext,
+          disabled: isLoading,
+          title: 'Clear context to reduce tokens (history preserved)'
+        }}, 'Clear Context'),
         conversationId && e(Button, {{
           variant: 'outlined',
           color: 'error',
@@ -740,10 +1001,60 @@ function App() {{
     
     !conversationId && e(Box, {{sx: {{textAlign: 'center', mt: 4}}}}, [
       e(Typography, {{variant: 'h6', color: 'text.secondary'}}, 'Click "New Conversation" to start'),
-      e(Typography, {{variant: 'body2', color: 'text.secondary', mt: 1}}, 
+      e(Typography, {{variant: 'body2', color: 'text.secondary', mt: 1}},
         'All conversations are automatically logged with full tracking')
     ]),
-    
+
+    // Load Conversation Dialog
+    showLoadDialog && e(Dialog, {{
+      open: showLoadDialog,
+      onClose: () => setShowLoadDialog(false),
+      maxWidth: 'md',
+      fullWidth: true
+    }}, [
+      e(DialogTitle, {{}}, 'Load Saved Conversation'),
+      e(DialogContent, {{}}, [
+        savedConversations.length === 0 && e(Typography, {{color: 'text.secondary'}}, 'No saved conversations found'),
+        savedConversations.length > 0 && e(List, {{}}, savedConversations.map(conv => e(ListItem, {{
+          key: conv.id,
+          button: true,
+          onClick: () => loadSavedConversation(conv.id)
+        }}, [
+          e(ListItemText, {{
+            primary: conv.first_prompt || 'No prompt',
+            secondary: `${{conv.total_turns}} turns • Models: ${{conv.models_used.join(', ')}} • ${{new Date(conv.start_time).toLocaleString()}}`
+          }})
+        ])))
+      ]),
+      e(DialogActions, {{}}, [
+        e(Button, {{onClick: () => setShowLoadDialog(false)}}, 'Cancel')
+      ])
+    ]),
+
+    // Save Confirmation Dialog
+    showSaveConfirmDialog && e(Dialog, {{
+      open: showSaveConfirmDialog,
+      onClose: () => setShowSaveConfirmDialog(false)
+    }}, [
+      e(DialogTitle, {{}}, 'Save Current Conversation?'),
+      e(DialogContent, {{}}, [
+        e(Typography, {{}}, 'Would you like to save the current conversation before starting a new one?')
+      ]),
+      e(DialogActions, {{}}, [
+        e(Button, {{
+          onClick: () => {{
+            setShowSaveConfirmDialog(false);
+            startNewConversation();
+          }}
+        }}, 'No'),
+        e(Button, {{
+          onClick: saveAndStartNew,
+          variant: 'contained',
+          color: 'primary'
+        }}, 'Yes')
+      ])
+    ]),
+
     snack && e(Snackbar, {{
       open: true,
       autoHideDuration: 3000,
@@ -813,13 +1124,15 @@ def send_message():
     if files_context:
         full_prompt = files_context + "\n" + prompt
 
-    # Call LLM
+    # Call LLM (routes to Ollama or Claude automatically)
+    # Use windowed messages to reduce context size
+    windowed_messages = conv.get_windowed_messages(CONTEXT_WINDOW_SIZE)
     start_time = time.time()
     try:
-        result = call_chat(model, conv.messages + [{"role": "user", "content": full_prompt}])
+        result = call_llm(model, windowed_messages + [{"role": "user", "content": full_prompt}])
         response_time = time.time() - start_time
     except Exception as e:
-        return jsonify({"error": f"ollama chat failed: {e}"}), 500
+        return jsonify({"error": f"LLM call failed: {e}"}), 500
 
     # Save artifacts (use original prompt without file context for display)
     turn_num = len(conv.turns) + 1
@@ -839,7 +1152,34 @@ def send_message():
             "total_turns": len(conv.turns),
             "duration": (datetime.now() - conv.start_time).total_seconds(),
             "models_used": list(conv.models_used)
-        }
+        },
+        "token_stats": conv.get_token_stats()
+    })
+
+
+@app.post("/conversation/clear-context")
+def clear_context():
+    """Clear conversation context (keeps history logged, reduces token usage)"""
+    data = request.get_json(force=True)
+    conv_id = data.get("conversation_id")
+
+    # Find conversation
+    conv = None
+    for c in ACTIVE_CONVERSATIONS.values():
+        if c.id == conv_id:
+            conv = c
+            break
+
+    if not conv:
+        return jsonify({"error": "conversation not found"}), 404
+
+    conv.clear_context()
+
+    return jsonify({
+        "conversation_id": conv.id,
+        "message": "Context cleared successfully",
+        "total_turns_logged": len(conv.turns),
+        "token_stats": conv.get_token_stats()
     })
 
 
@@ -872,6 +1212,181 @@ def end_conversation():
         "duration_seconds": (conv.end_time - conv.start_time).total_seconds(),
         "conversation_dir": str(conv.conv_dir)
     })
+
+
+@app.get("/conversations/list")
+def list_conversations():
+    """List all saved conversations with metadata"""
+    conversations = []
+
+    # Scan conversations directory
+    if not CONVERSATIONS_DIR.exists():
+        return jsonify({"conversations": []})
+
+    for conv_dir in sorted(CONVERSATIONS_DIR.iterdir(), reverse=True):
+        if not conv_dir.is_dir() or conv_dir.name.startswith('.'):
+            continue
+
+        # Try to load conversation metadata
+        summary_file = conv_dir / "conversation.json"
+        if summary_file.exists():
+            try:
+                with summary_file.open() as f:
+                    summary = json.load(f)
+
+                # Extract first prompt as preview
+                first_prompt = ""
+                if summary.get("turns") and len(summary["turns"]) > 0:
+                    first_prompt = summary["turns"][0].get("prompt", "")[:100]
+
+                conversations.append({
+                    "id": conv_dir.name,
+                    "start_time": summary.get("start_time"),
+                    "end_time": summary.get("end_time"),
+                    "total_turns": len(summary.get("turns", [])),
+                    "models_used": summary.get("models_used", []),
+                    "first_prompt": first_prompt
+                })
+            except Exception as e:
+                # Skip conversations with corrupted metadata
+                continue
+
+    return jsonify({"conversations": conversations})
+
+
+@app.get("/conversations/load/<conv_id>")
+def load_conversation(conv_id: str):
+    """Load a saved conversation with all turns"""
+    conv_dir = CONVERSATIONS_DIR / conv_id
+    if not conv_dir.exists():
+        return jsonify({"error": "conversation not found"}), 404
+
+    summary_file = conv_dir / "conversation.json"
+    if not summary_file.exists():
+        return jsonify({"error": "conversation metadata not found"}), 404
+
+    try:
+        with summary_file.open() as f:
+            summary = json.load(f)
+
+        # Load all turns from JSONL files
+        turns = []
+        for turn_data in summary.get("turns", []):
+            # Handle both "turn" and "turn_number" field names
+            turn_num = turn_data.get("turn") or turn_data.get("turn_number")
+            if not turn_num:
+                continue
+
+            turn_dir_pattern = f"turn_{turn_num:03d}_*"
+
+            # Find the turn directory
+            turn_dirs = list(conv_dir.glob(turn_dir_pattern))
+            if turn_dirs:
+                turn_dir = turn_dirs[0]
+                jsonl_file = turn_dir / "turn.jsonl"
+
+                if jsonl_file.exists():
+                    with jsonl_file.open() as f:
+                        turn_info = json.loads(f.readline())
+                        turns.append({
+                            "turn_number": turn_num,
+                            "timestamp": turn_info.get("timestamp"),
+                            "model": turn_info.get("model"),
+                            "prompt": turn_info.get("prompt"),
+                            "response": turn_info.get("result_markdown"),
+                            "response_time": turn_data.get("response_time")
+                        })
+
+        return jsonify({
+            "conversation_id": conv_id,
+            "start_time": summary.get("start_time"),
+            "end_time": summary.get("end_time"),
+            "total_turns": len(turns),
+            "models_used": summary.get("models_used", []),
+            "turns": turns
+        })
+
+    except Exception as e:
+        return jsonify({"error": f"Failed to load conversation: {e}"}), 500
+
+
+@app.post("/conversation/restore")
+def restore_conversation():
+    """Restore a saved conversation to active state (allows continuing)"""
+    data = request.get_json(force=True)
+    conv_id = data.get("conversation_id")
+    session_id = data.get("session_id")
+
+    if not conv_id or not session_id:
+        return jsonify({"error": "conversation_id and session_id required"}), 400
+
+    # Load conversation data
+    conv_dir = CONVERSATIONS_DIR / conv_id
+    if not conv_dir.exists():
+        return jsonify({"error": "conversation not found"}), 404
+
+    summary_file = conv_dir / "conversation.json"
+    if not summary_file.exists():
+        return jsonify({"error": "conversation metadata not found"}), 404
+
+    try:
+        with summary_file.open() as f:
+            summary = json.load(f)
+
+        # Create a new Conversation object with the loaded data
+        conv = Conversation(conv_id, summary.get("start_time"))
+        conv.conv_dir = conv_dir
+        conv.models_used = set(summary.get("models_used", []))
+
+        # Restore message history
+        for turn_data in summary.get("turns", []):
+            # Handle both "turn" and "turn_number" field names
+            turn_num = turn_data.get("turn") or turn_data.get("turn_number")
+            if not turn_num:
+                continue
+
+            turn_dir_pattern = f"turn_{turn_num:03d}_*"
+            turn_dirs = list(conv_dir.glob(turn_dir_pattern))
+
+            if turn_dirs:
+                turn_dir = turn_dirs[0]
+                jsonl_file = turn_dir / "turn.jsonl"
+
+                if jsonl_file.exists():
+                    with jsonl_file.open() as f:
+                        turn_info = json.loads(f.readline())
+
+                        # Add messages to conversation context
+                        conv.messages.append({
+                            "role": "user",
+                            "content": turn_info.get("prompt")
+                        })
+                        conv.messages.append({
+                            "role": "assistant",
+                            "content": turn_info.get("result_markdown")
+                        })
+
+                        # Restore turns list
+                        conv.turns.append({
+                            "turn_number": turn_num,
+                            "model": turn_info.get("model"),
+                            "prompt": turn_info.get("prompt"),
+                            "response": turn_info.get("result_markdown"),
+                            "response_time": turn_data.get("response_time"),
+                            "timestamp": turn_info.get("timestamp")
+                        })
+
+        # Add to active conversations
+        ACTIVE_CONVERSATIONS[session_id] = conv
+
+        return jsonify({
+            "conversation_id": conv_id,
+            "message": "Conversation restored successfully",
+            "total_turns": len(conv.turns)
+        })
+
+    except Exception as e:
+        return jsonify({"error": f"Failed to restore conversation: {e}"}), 500
 
 
 @app.get("/conversation/export/<conv_id>")
@@ -930,32 +1445,16 @@ def export_conversation(conv_id: str):
     return jsonify({"error": "unsupported format; use json, md, or docx"}), 400
 
 
-@app.get("/conversations/list")
-def list_conversations():
-    """List all conversations"""
-    conversations = []
-    
-    if CONVERSATIONS_CSV.exists():
-        with CONVERSATIONS_CSV.open() as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                conversations.append({
-                    "conversation_id": row["conversation_id"],
-                    "start_time": row["start_time"],
-                    "end_time": row["end_time"],
-                    "duration_seconds": row["duration_seconds"],
-                    "total_turns": row["total_turns"],
-                    "models_used": row["models_used"]
-                })
-    
-    return jsonify({"conversations": conversations})
-
-
 @app.get("/models/list")
 def list_models():
-    """List available Ollama models"""
-    models = get_ollama_models()
-    return jsonify({"models": models})
+    """List available models (Ollama + Claude)"""
+    ollama_models = get_ollama_models()
+    claude_models = get_claude_models()
+
+    # Combine models, Claude first for visibility
+    all_models = claude_models + ollama_models
+
+    return jsonify({"models": all_models})
 
 
 @app.post("/upload")

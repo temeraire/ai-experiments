@@ -1,0 +1,25 @@
+# LLM Logger v3 Dependencies
+
+# Flask web framework
+flask>=3.0.0
+
+# HTTP requests
+requests>=2.31.0
+
+# Markdown processing
+markdown>=3.5.0
+
+# Optional: Document conversion (requires pandoc binary)
+pypandoc>=1.12
+
+# Date utilities
+python-dateutil>=2.8.2
+
+# Claude API support
+anthropic>=0.40.0
+
+# Token counting for Claude
+tiktoken>=0.8.0
+
+# Environment variable management
+python-dotenv>=1.0.0
