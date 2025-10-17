@@ -38,11 +38,24 @@ try:
 except Exception:
     HAS_PYPANDOC = False
 
+try:
+    import anthropic
+    import tiktoken
+    HAS_CLAUDE = True
+except Exception:
+    HAS_CLAUDE = False
+
 # --------------------------
 # Configuration
 # --------------------------
+# Ollama Configuration
 OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434")
 DEFAULT_MODEL = os.environ.get("OLLAMA_MODEL", "qwen2.5:32b-instruct")
+
+# Claude API Configuration
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+
+# Server Configuration
 APP_PORT = int(os.environ.get("PORT", 5005))
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -87,6 +100,11 @@ class Conversation:
         self.files: List[Dict[str, Any]] = []  # Store uploaded files for conversation context
         self.conv_dir = CONVERSATIONS_DIR / conv_id
         self.conv_dir.mkdir(parents=True, exist_ok=True)
+
+        # Token tracking for Claude models
+        self.total_input_tokens = 0
+        self.total_output_tokens = 0
+        self.rate_limit_reset_time: Optional[datetime] = None
     
     def add_file(self, filename: str, content: str):
         """Add a file to the conversation context"""
@@ -107,9 +125,43 @@ class Conversation:
             context_parts.append(f"\n--- File: {f['filename']} ---\n{f['content']}\n--- End of file ---\n")
         return "\n".join(context_parts)
 
+    def estimate_tokens(self, text: str) -> int:
+        """Estimate token count for a given text"""
+        if not HAS_CLAUDE:
+            # Rough estimation: ~4 characters per token
+            return len(text) // 4
+
+        try:
+            # Use tiktoken for Claude models (cl100k_base encoding)
+            encoding = tiktoken.get_encoding("cl100k_base")
+            return len(encoding.encode(text))
+        except Exception:
+            # Fallback to rough estimation
+            return len(text) // 4
+
+    def get_token_stats(self) -> Dict[str, Any]:
+        """Get current token usage statistics"""
+        return {
+            "total_input_tokens": self.total_input_tokens,
+            "total_output_tokens": self.total_output_tokens,
+            "total_tokens": self.total_input_tokens + self.total_output_tokens,
+            "rate_limit_reset_time": self.rate_limit_reset_time.isoformat() if self.rate_limit_reset_time else None
+        }
+
     def add_turn(self, model: str, prompt: str, response: str,
-                 response_time: float, paths: Dict[str, str]):
+                 response_time: float, paths: Dict[str, str],
+                 input_tokens: int = 0, output_tokens: int = 0):
         turn_num = len(self.turns) + 1
+
+        # Track tokens (estimate if not provided)
+        if input_tokens == 0:
+            input_tokens = self.estimate_tokens(prompt)
+        if output_tokens == 0:
+            output_tokens = self.estimate_tokens(response)
+
+        self.total_input_tokens += input_tokens
+        self.total_output_tokens += output_tokens
+
         turn = {
             "turn_number": turn_num,
             "timestamp": datetime.now(),
@@ -117,7 +169,9 @@ class Conversation:
             "prompt": prompt,
             "response": response,
             "response_time": response_time,
-            "paths": paths
+            "paths": paths,
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens
         }
         self.turns.append(turn)
         self.models_used.add(model)
@@ -307,6 +361,53 @@ def call_chat(model: str, messages: List[Dict[str, str]]) -> str:
     return r.json().get("message", {}).get("content", "")
 
 
+def call_claude(model: str, messages: List[Dict[str, str]]) -> str:
+    """Call Claude API"""
+    if not HAS_CLAUDE:
+        raise RuntimeError("Claude support not available. Install: pip install anthropic tiktoken")
+
+    if not ANTHROPIC_API_KEY:
+        raise RuntimeError("ANTHROPIC_API_KEY environment variable not set")
+
+    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+
+    # Claude model names: claude-3-5-sonnet-20241022, claude-opus-4-20250514, etc.
+    response = client.messages.create(
+        model=model,
+        max_tokens=8192,
+        messages=messages
+    )
+
+    # Extract text content from response
+    return response.content[0].text
+
+
+def is_claude_model(model: str) -> bool:
+    """Check if a model name is a Claude model"""
+    return model.startswith("claude-")
+
+
+def call_llm(model: str, messages: List[Dict[str, str]]) -> str:
+    """Universal LLM caller - routes to appropriate API"""
+    if is_claude_model(model):
+        return call_claude(model, messages)
+    else:
+        return call_chat(model, messages)
+
+
+def get_claude_models() -> List[str]:
+    """Get list of available Claude models"""
+    if not HAS_CLAUDE or not ANTHROPIC_API_KEY:
+        return []
+
+    # Return commonly used Claude models
+    return [
+        "claude-opus-4-20250514",
+        "claude-3-5-sonnet-20241022",
+        "claude-3-5-haiku-20241022",
+    ]
+
+
 def get_ollama_models() -> List[str]:
     """Get list of available Ollama models"""
     try:
@@ -397,6 +498,7 @@ function App() {{
   const [snack, setSnack] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [conversationInfo, setConversationInfo] = useState(null);
+  const [tokenStats, setTokenStats] = useState(null);
   const [conversationFiles, setConversationFiles] = useState([]);
   const [showFileDialog, setShowFileDialog] = useState(false);
   const [selectedFileContent, setSelectedFileContent] = useState(null);
@@ -480,6 +582,7 @@ function App() {{
       
       setStatus(`Turn ${{data.turn_number}} • ${{data.response_time.toFixed(2)}}s`);
       setConversationInfo(data.conversation_info);
+      setTokenStats(data.token_stats);
     }} catch (err) {{
       setSnack('Error: ' + err);
       setStatus('Error');
@@ -581,6 +684,7 @@ function App() {{
 
       setStatus(`Turn ${{data.turn_number}} • ${{data.response_time.toFixed(2)}}s`);
       setConversationInfo(data.conversation_info);
+      setTokenStats(data.token_stats);
       setSnack(`Response from ${{targetModel}} received`);
     }} catch (err) {{
       setSnack('Error: ' + err);
@@ -604,6 +708,12 @@ function App() {{
             label: model,
             color: 'secondary',
             size: 'small'
+          }}),
+          tokenStats && tokenStats.total_tokens > 0 && e(Chip, {{
+            label: `Tokens: ${{(tokenStats.total_tokens / 1000).toFixed(1)}}k`,
+            color: 'info',
+            size: 'small',
+            variant: 'outlined'
           }})
         ])
       ]),
@@ -813,13 +923,13 @@ def send_message():
     if files_context:
         full_prompt = files_context + "\n" + prompt
 
-    # Call LLM
+    # Call LLM (routes to Ollama or Claude automatically)
     start_time = time.time()
     try:
-        result = call_chat(model, conv.messages + [{"role": "user", "content": full_prompt}])
+        result = call_llm(model, conv.messages + [{"role": "user", "content": full_prompt}])
         response_time = time.time() - start_time
     except Exception as e:
-        return jsonify({"error": f"ollama chat failed: {e}"}), 500
+        return jsonify({"error": f"LLM call failed: {e}"}), 500
 
     # Save artifacts (use original prompt without file context for display)
     turn_num = len(conv.turns) + 1
@@ -839,7 +949,8 @@ def send_message():
             "total_turns": len(conv.turns),
             "duration": (datetime.now() - conv.start_time).total_seconds(),
             "models_used": list(conv.models_used)
-        }
+        },
+        "token_stats": conv.get_token_stats()
     })
 
 
@@ -953,9 +1064,14 @@ def list_conversations():
 
 @app.get("/models/list")
 def list_models():
-    """List available Ollama models"""
-    models = get_ollama_models()
-    return jsonify({"models": models})
+    """List available models (Ollama + Claude)"""
+    ollama_models = get_ollama_models()
+    claude_models = get_claude_models()
+
+    # Combine models, Claude first for visibility
+    all_models = claude_models + ollama_models
+
+    return jsonify({"models": all_models})
 
 
 @app.post("/upload")
