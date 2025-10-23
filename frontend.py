@@ -68,7 +68,7 @@ const {{Container, TextField, Button, Paper, Typography, Stack, Divider, Alert, 
 function App() {{
   const [sessionId, setSessionId] = useState(localStorage.getItem('session_id') || '');
   const [conversationId, setConversationId] = useState(null);
-  const [model, setModel] = useState('{escape_html(DEFAULT_MODEL)}');
+  const [model, setModel] = useState(localStorage.getItem('selected_model') || '{escape_html(DEFAULT_MODEL)}');
   const [availableModels, setAvailableModels] = useState(['{escape_html(DEFAULT_MODEL)}']);
   const [prompt, setPrompt] = useState('');
   const [chatHistory, setChatHistory] = useState([]);
@@ -96,12 +96,25 @@ function App() {{
     fetch('/models/list').then(r=>r.json()).then(data=>{{
       if (data.models && data.models.length > 0) {{
         setAvailableModels(data.models);
-        if (!model || model === '{escape_html(DEFAULT_MODEL)}') {{
-          setModel(data.models[0]);
+        const savedModel = localStorage.getItem('selected_model');
+        // Only set to first model if no saved model and current model is default
+        if (!savedModel && model === '{escape_html(DEFAULT_MODEL)}') {{
+          const firstModel = data.models[0];
+          setModel(firstModel);
+          localStorage.setItem('selected_model', firstModel);
+        }} else if (savedModel && data.models.includes(savedModel)) {{
+          setModel(savedModel);
         }}
       }}
     }}).catch(err=>console.error('Failed to load models:', err));
   }}, []);
+
+  // Save model selection to localStorage whenever it changes
+  useEffect(() => {{
+    if (model) {{
+      localStorage.setItem('selected_model', model);
+    }}
+  }}, [model]);
 
   useEffect(() => {{
     chatEndRef.current?.scrollIntoView({{ behavior: 'smooth' }});
