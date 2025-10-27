@@ -15,7 +15,8 @@ Transform your Ollama LLM interactions into persistent, trackable conversations 
 ```bash
 # Ensure Ollama is running
 ollama serve
-
+# if you're using a venv (recommended)
+source .venv/bin/activate
 # Pull a model
 ollama pull qwen2.5:32b-instruct
 ```
@@ -64,26 +65,69 @@ Every conversation generates:
 - List all conversations with metadata
 - Full conversation summaries with turn-by-turn details
 
-## 📊 Data Structure
+## 📊 Data Structure & Output Files
+
+### Directory Layout
 
 ```
 conversations/
-├── conv_20250111_120530_a1b2c3d4/
-│   ├── conversation.json          # Full conversation summary
+├── conv_20250111_120530_a1b2c3d4/          # Conversation directory
+│   ├── conversation.json                   # Summary of entire conversation
 │   ├── turn_001_hello/
+│   │   ├── turn.jsonl                      # Raw turn data (JSON Lines format)
+│   │   ├── turn.md                         # Markdown format
+│   │   ├── turn.html                       # Styled HTML
+│   │   └── turn.docx                       # Word document (if pandoc installed)
+│   ├── turn_002_what-is-quantum-computing/
 │   │   ├── turn.jsonl
 │   │   ├── turn.md
 │   │   ├── turn.html
-│   │   └── turn.docx (optional)
-│   ├── turn_002_explain-quantum/
-│   │   └── ...
+│   │   └── turn.docx
 │   └── ...
 └── ...
 
 logs/
-├── conversations.csv  # Conversation-level metadata
-└── turns.csv         # All turns across all conversations
+├── conversations.csv                       # Global conversation registry
+└── turns.csv                               # Global turn registry
 ```
+
+### File Formats & Details
+
+| File Type | Location | When Created | Contents | Use Case |
+|-----------|----------|--------------|----------|----------|
+| **conversation.json** | `conversations/conv_{ID}/` | When conversation ends | Full conversation summary: metadata, all turns, models used, timing | Complete conversation snapshot |
+| **turn.jsonl** | `conversations/conv_{ID}/turn_{N:03d}_{slug}/` | After each turn | Raw turn data: turn number, timestamp, model used, prompt (user), response, token counts | Machine-readable, detailed turn information |
+| **turn.md** | `conversations/conv_{ID}/turn_{N:03d}_{slug}/` | After each turn | Formatted Markdown with headers, code blocks preserved, readable text | Human-readable documents |
+| **turn.html** | `conversations/conv_{ID}/turn_{N:03d}_{slug}/` | After each turn | Styled HTML with CSS, syntax-highlighted code blocks | Web viewing, archival, sharing |
+| **turn.docx** | `conversations/conv_{ID}/turn_{N:03d}_{slug}/` | After each turn (optional) | Word document with full formatting | Office integration, editing, printing |
+| **conversations.csv** | `logs/` | After each conversation ends | Comma-separated values: conversation_id, start_time, end_time, duration_seconds, total_turns, models_used, directory | Analytics, conversation tracking |
+| **turns.csv** | `logs/` | After each turn completes | Comma-separated values: conversation_id, turn_number, timestamp, model, response_time_seconds, artifact_paths | Turn-level analytics, performance tracking |
+
+### Naming Conventions
+
+**Conversation IDs:** `conv_YYYYMMDD_HHMMSS_XXXXXXXX`
+- Example: `conv_20250111_120530_a1b2c3d4`
+- Format: `conv_` + Date (YYYYMMDD) + Time (HHMMSS) + 8-character random UUID
+
+**Turn Folders:** `turn_{NNN}_{slug}`
+- Example: `turn_001_hello` or `turn_012_what-is-quantum-computing`
+- Format: `turn_` + 3-digit zero-padded turn number + slug derived from first line of prompt
+- Slug: First ~40 characters of prompt (sanitized, spaces replaced with hyphens)
+
+**File Names:**
+- `turn.jsonl` - Raw JSON Lines format (one JSON object per line)
+- `turn.md` - Markdown format
+- `turn.html` - HTML format
+- `turn.docx` - Word document (only created if pypandoc is installed)
+
+### Output Paths
+
+**Default Paths:**
+- Conversations: `./conversations/` (relative to project root)
+- Logs: `./logs/` (relative to project root)
+- CSV files: `./logs/conversations.csv` and `./logs/turns.csv`
+
+These can be customized by modifying `CONVERSATIONS_DIR` and `LOGS_DIR` in `config.py`
 
 ## 🎯 Usage Flow
 
@@ -94,6 +138,39 @@ logs/
 5. **Continue naturally** - context is maintained
 6. **Change models** if desired mid-conversation
 7. **Click "End & Save"** when done to archive
+
+## 🔄 Model Switching & Context Handling
+
+### How Context is Carried Between Models
+
+When you switch models mid-conversation, **the full conversation context IS maintained**. Here's how it works:
+
+- **Context Window**: The system uses a sliding context window (default: **10 turns = 20 messages**) to manage memory
+- **Every model gets the same context**: When you switch to a new model, it receives the same windowed messages as the previous model
+- **Automatic persistence**: All previous exchanges are stored in the conversation's message history and turn logs
+- **Growing context**: Each turn adds to the conversation history, so subsequent models can see the full conversation up to the context window limit
+
+### Example Flow
+```
+Turn 1: You ask about quantum computing (Model: qwen2.5:32b)
+        → AI responds, context grows
+
+Turn 2: You ask follow-up question (Model: qwen2.5:32b)
+        → AI responds with awareness of Turn 1
+
+Turn 3: You switch to llama2:13b
+        → New model SEES Turns 1-2 context automatically
+        → You ask a question about the previous discussion
+        → New model answers with full context from previous turns
+
+Turn 4+: Continue with llama2:13b (or switch again)
+         → Each model has access to the same context window
+```
+
+**Technical Details:**
+- Context window size is configurable via `CONTEXT_WINDOW_SIZE` in `config.py` (default: 10 turns)
+- When context exceeds the window, older turns are dropped to manage token usage
+- The model selection is saved to browser localStorage so your preference persists across sessions
 
 ## 📝 Example Workflow
 

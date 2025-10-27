@@ -542,6 +542,10 @@ function App() {{
   const [savedConversations, setSavedConversations] = useState([]);
   const [showLoadDialog, setShowLoadDialog] = useState(false);
   const [showSaveConfirmDialog, setShowSaveConfirmDialog] = useState(false);
+  const [compareMode, setCompareMode] = useState(false);
+  const [selectedModels, setSelectedModels] = useState([]);
+  const [compareResults, setCompareResults] = useState(null);
+  const [bestModel, setBestModel] = useState(null);
   const chatEndRef = useRef(null);
   const fileInputRef = useRef(null);
 
@@ -677,6 +681,59 @@ function App() {{
     }} catch (err) {{
       setSnack('Error clearing context: ' + err);
     }}
+  }};
+
+  const compareModels = async () => {{
+    if (!prompt.trim()) {{ setSnack('Please enter a message'); return; }}
+    if (!conversationId) {{ await startNewConversation(); return; }}
+    if (selectedModels.length < 2) {{ setSnack('Please select at least 2 models to compare'); return; }}
+
+    setIsLoading(true);
+    setStatus(`Comparing ${{selectedModels.length}} models...`);
+    setBestModel(null);
+
+    const currentPrompt = prompt;
+    setPrompt('');
+
+    try {{
+      const r = await fetch('/conversation/compare', {{
+        method: 'POST',
+        headers: {{'Content-Type': 'application/json'}},
+        body: JSON.stringify({{
+          conversation_id: conversationId,
+          models: selectedModels,
+          prompt: currentPrompt
+        }})
+      }});
+
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || 'HTTP ' + r.status);
+
+      setCompareResults({{
+        prompt: currentPrompt,
+        results: data.results
+      }});
+      setStatus(`Comparison complete • ${{selectedModels.length}} models`);
+      setConversationInfo(data.conversation_info);
+    }} catch (err) {{
+      setSnack('Error: ' + err);
+      setStatus('Error');
+    }} finally {{
+      setIsLoading(false);
+    }}
+  }};
+
+  const toggleModelSelection = (modelName) => {{
+    setSelectedModels(prev =>
+      prev.includes(modelName)
+        ? prev.filter(m => m !== modelName)
+        : [...prev, modelName]
+    );
+  }};
+
+  const copyToClipboard = (text) => {{
+    navigator.clipboard.writeText(text);
+    setSnack('Copied to clipboard');
   }};
 
   const fetchSavedConversations = async () => {{
@@ -858,7 +915,7 @@ function App() {{
       ]),
       
       e(Stack, {{direction: 'row', spacing: 2, mb: 2}}, [
-        e(FormControl, {{sx: {{minWidth: 300}}}}, [
+        !compareMode && e(FormControl, {{sx: {{minWidth: 300}}}}, [
           e(InputLabel, {{id: 'model-label'}}, 'Model'),
           e(Select, {{
             labelId: 'model-label',
@@ -868,6 +925,19 @@ function App() {{
             size: 'small'
           }}, availableModels.map(m => e(MenuItem, {{key: m, value: m}}, m)))
         ]),
+        e(Button, {{
+          variant: compareMode ? 'contained' : 'outlined',
+          onClick: () => {{
+            setCompareMode(!compareMode);
+            setCompareResults(null);
+            if (!compareMode) {{
+              // Entering compare mode - select first 2 models by default
+              setSelectedModels(availableModels.slice(0, Math.min(2, availableModels.length)));
+            }}
+          }},
+          disabled: isLoading,
+          color: compareMode ? 'secondary' : 'primary'
+        }}, compareMode ? 'Exit Compare Mode' : 'Compare Models'),
         e(Button, {{
           variant: conversationId ? 'outlined' : 'contained',
           onClick: handleNewConversation,
@@ -891,6 +961,20 @@ function App() {{
           onClick: endConversation,
           disabled: isLoading
         }}, 'End & Save')
+      ]),
+
+      compareMode && e(Box, {{sx: {{mb: 2, p: 2, bgcolor: '#f5f5f5', borderRadius: 2}}}}, [
+        e(Typography, {{variant: 'subtitle2', sx: {{mb: 1}}}}, 'Select models to compare (minimum 2):'),
+        e(Stack, {{direction: 'row', spacing: 1, flexWrap: 'wrap', gap: 1}},
+          availableModels.map(m => e(Chip, {{
+            key: m,
+            label: m,
+            onClick: () => toggleModelSelection(m),
+            color: selectedModels.includes(m) ? 'primary' : 'default',
+            variant: selectedModels.includes(m) ? 'filled' : 'outlined',
+            size: 'small'
+          }}))
+        )
       ]),
       
       status && e(Alert, {{
@@ -934,7 +1018,49 @@ function App() {{
       ),
       e('div', {{ref: chatEndRef}})
     ]),
-    
+
+    conversationId && compareMode && compareResults && e(Paper, {{elevation: 1, sx: {{p: 2, mb: 2, borderRadius: 4}}}}, [
+      e(Typography, {{variant: 'h6', sx: {{mb: 2}}}}, `Comparison Results`),
+      e(Typography, {{variant: 'subtitle2', sx: {{mb: 2, color: '#666'}}}}, `Prompt: "${{compareResults.prompt.substring(0, 100)}}${{compareResults.prompt.length > 100 ? '...' : ''}}"`),
+      e(Box, {{sx: {{display: 'grid', gridTemplateColumns: `repeat(${{Math.min(compareResults.results.length, 3)}}, 1fr)`, gap: 2}}}},
+        compareResults.results.map((result, idx) =>
+          e(Paper, {{key: idx, elevation: 3, sx: {{p: 2, bgcolor: bestModel === result.model ? '#e3f2fd' : 'white'}}}}, [
+            e(Stack, {{direction: 'row', justifyContent: 'space-between', alignItems: 'center', mb: 1}}, [
+              e(Typography, {{variant: 'subtitle1', fontWeight: 'bold'}}, result.model),
+              e(Typography, {{variant: 'caption', color: result.error ? 'error' : 'success.main'}},
+                result.error ? 'Error' : `${{result.response_time.toFixed(2)}}s`
+              )
+            ]),
+            result.error ?
+              e(Typography, {{color: 'error', variant: 'body2'}}, `Error: ${{result.error}}`) :
+              e(Box, {{}}, [
+                e(Typography, {{
+                  variant: 'body2',
+                  sx: {{
+                    maxHeight: '300px',
+                    overflowY: 'auto',
+                    whiteSpace: 'pre-wrap',
+                    mb: 2
+                  }}
+                }}, result.response),
+                e(Stack, {{direction: 'row', spacing: 1}}, [
+                  e(Button, {{
+                    size: 'small',
+                    variant: bestModel === result.model ? 'contained' : 'outlined',
+                    onClick: () => setBestModel(result.model)
+                  }}, 'Best'),
+                  e(Button, {{
+                    size: 'small',
+                    variant: 'outlined',
+                    onClick: () => copyToClipboard(result.response)
+                  }}, 'Copy')
+                ])
+              ])
+          ])
+        )
+      )
+    ]),
+
     conversationId && e(Paper, {{elevation: 1, sx: {{p: 2, borderRadius: 4}}}}, [
       conversationFiles.length > 0 && e(Box, {{sx: {{mb: 2, p: 1, bgcolor: '#f5f5f5', borderRadius: 2}}}}, [
         e(Typography, {{variant: 'caption', sx: {{display: 'block', mb: 1, color: '#666'}}}}, 'Attached files (available to all messages in this conversation):'),
@@ -988,9 +1114,9 @@ function App() {{
       e(Stack, {{direction: 'row', spacing: 2, sx: {{mt: 2}}}}, [
         e(Button, {{
           variant: 'contained',
-          onClick: sendMessage,
-          disabled: isLoading || !prompt.trim()
-        }}, isLoading ? 'Generating...' : 'Send'),
+          onClick: compareMode ? compareModels : sendMessage,
+          disabled: isLoading || !prompt.trim() || (compareMode && selectedModels.length < 2)
+        }}, isLoading ? 'Generating...' : (compareMode ? `Compare (${{selectedModels.length}} models)` : 'Send')),
         e(Button, {{
           variant: 'outlined',
           onClick: () => {{ setPrompt(''); }},
@@ -1154,6 +1280,87 @@ def send_message():
             "models_used": list(conv.models_used)
         },
         "token_stats": conv.get_token_stats()
+    })
+
+
+@app.post("/conversation/compare")
+def compare_models():
+    """Compare multiple models on the same prompt"""
+    data = request.get_json(force=True)
+    conv_id = data.get("conversation_id")
+    models = data.get("models", [])
+    prompt = data.get("prompt", "")
+
+    # Find conversation
+    conv = None
+    for c in ACTIVE_CONVERSATIONS.values():
+        if c.id == conv_id:
+            conv = c
+            break
+
+    if not conv:
+        return jsonify({"error": "Conversation not found"}), 404
+
+    # Build prompt with file context (if any)
+    prompt_with_files = conv.build_prompt_with_files(prompt)
+
+    # Get windowed messages for context
+    windowed_messages = conv.get_windowed_messages(CONTEXT_WINDOW_SIZE)
+
+    # Prepare messages for each model
+    messages = []
+    for msg in windowed_messages:
+        messages.append({
+            "role": msg["role"],
+            "content": msg["content"]
+        })
+    # Add the current prompt
+    messages.append({"role": "user", "content": prompt_with_files})
+
+    # Call all models in parallel
+    import concurrent.futures
+    results = []
+
+    def call_model(model_name):
+        start_time = time.time()
+        try:
+            result = call_llm(model_name, messages)
+            response_time = time.time() - start_time
+            return {
+                "model": model_name,
+                "response": result,
+                "response_time": response_time,
+                "error": None
+            }
+        except Exception as e:
+            response_time = time.time() - start_time
+            return {
+                "model": model_name,
+                "response": None,
+                "response_time": response_time,
+                "error": str(e)
+            }
+
+    # Use ThreadPoolExecutor for parallel execution
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(models)) as executor:
+        futures = [executor.submit(call_model, model) for model in models]
+        results = [future.result() for future in concurrent.futures.as_completed(futures)]
+
+    # Sort results back to original order
+    results_dict = {r["model"]: r for r in results}
+    sorted_results = [results_dict[m] for m in models if m in results_dict]
+
+    # Note: We don't add comparison results to conversation history
+    # They're just for comparison purposes
+
+    return jsonify({
+        "results": sorted_results,
+        "conversation_info": {
+            "id": conv.id,
+            "turn_count": len(conv.turns),
+            "message_count": len(conv.messages),
+            "models_used": list(conv.models_used)
+        }
     })
 
 

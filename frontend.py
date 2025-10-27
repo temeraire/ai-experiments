@@ -469,7 +469,7 @@ function App() {{
       ]),
 
       e(Stack, {{direction: 'row', spacing: 2, mb: 2, alignItems: 'center'}}, [
-        !compareMode && e(FormControl, {{sx: {{minWidth: 300}}}}, [
+        !compareMode && e(FormControl, {{key: 'model-select', sx: {{minWidth: 300}}}}, [
           e(InputLabel, {{id: 'model-label'}}, 'Model'),
           e(Select, {{
             labelId: 'model-label',
@@ -480,6 +480,7 @@ function App() {{
           }}, availableModels.map(m => e(MenuItem, {{key: m, value: m}}, m)))
         ]),
         e(Button, {{
+          key: 'compare-btn',
           variant: compareMode ? 'contained' : 'outlined',
           onClick: () => {{
             setCompareMode(!compareMode);
@@ -493,16 +494,19 @@ function App() {{
           color: compareMode ? 'secondary' : 'primary'
         }}, compareMode ? 'Exit Compare Mode' : 'Compare Models'),
         e(Button, {{
+          key: 'new-conv-btn',
           variant: conversationId ? 'outlined' : 'contained',
           onClick: handleNewConversation,
           disabled: isLoading
         }}, 'New Conversation'),
         e(Button, {{
+          key: 'load-conv-btn',
           variant: 'outlined',
           onClick: fetchSavedConversations,
           disabled: isLoading
         }}, 'Load Conversation'),
         conversationId && e(Button, {{
+          key: 'clear-context-btn',
           variant: 'outlined',
           color: 'warning',
           onClick: clearContext,
@@ -510,6 +514,7 @@ function App() {{
           title: 'Clear context to reduce tokens (history preserved)'
         }}, 'Clear Context'),
         conversationId && e(Button, {{
+          key: 'end-save-btn',
           variant: 'outlined',
           color: 'error',
           onClick: endConversation,
