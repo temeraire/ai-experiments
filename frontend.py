@@ -68,7 +68,7 @@ const {{Container, TextField, Button, Paper, Typography, Stack, Divider, Alert, 
 function App() {{
   const [sessionId, setSessionId] = useState(localStorage.getItem('session_id') || '');
   const [conversationId, setConversationId] = useState(null);
-  const [model, setModel] = useState('{escape_html(DEFAULT_MODEL)}');
+  const [model, setModel] = useState(localStorage.getItem('selected_model') || '{escape_html(DEFAULT_MODEL)}');
   const [availableModels, setAvailableModels] = useState(['{escape_html(DEFAULT_MODEL)}']);
   const [prompt, setPrompt] = useState('');
   const [chatHistory, setChatHistory] = useState([]);
@@ -83,6 +83,10 @@ function App() {{
   const [savedConversations, setSavedConversations] = useState([]);
   const [showLoadDialog, setShowLoadDialog] = useState(false);
   const [showSaveConfirmDialog, setShowSaveConfirmDialog] = useState(false);
+  const [compareMode, setCompareMode] = useState(false);
+  const [selectedModels, setSelectedModels] = useState([]);
+  const [compareResults, setCompareResults] = useState(null);
+  const [bestModel, setBestModel] = useState(null);
   const chatEndRef = useRef(null);
   const fileInputRef = useRef(null);
 
@@ -96,12 +100,25 @@ function App() {{
     fetch('/models/list').then(r=>r.json()).then(data=>{{
       if (data.models && data.models.length > 0) {{
         setAvailableModels(data.models);
-        if (!model || model === '{escape_html(DEFAULT_MODEL)}') {{
-          setModel(data.models[0]);
+        const savedModel = localStorage.getItem('selected_model');
+        // Only set to first model if no saved model and current model is default
+        if (!savedModel && model === '{escape_html(DEFAULT_MODEL)}') {{
+          const firstModel = data.models[0];
+          setModel(firstModel);
+          localStorage.setItem('selected_model', firstModel);
+        }} else if (savedModel && data.models.includes(savedModel)) {{
+          setModel(savedModel);
         }}
       }}
     }}).catch(err=>console.error('Failed to load models:', err));
   }}, []);
+
+  // Save model selection to localStorage whenever it changes
+  useEffect(() => {{
+    if (model) {{
+      localStorage.setItem('selected_model', model);
+    }}
+  }}, [model]);
 
   useEffect(() => {{
     chatEndRef.current?.scrollIntoView({{ behavior: 'smooth' }});
@@ -218,6 +235,59 @@ function App() {{
     }} catch (err) {{
       setSnack('Error clearing context: ' + err);
     }}
+  }};
+
+  const compareModels = async () => {{
+    if (!prompt.trim()) {{ setSnack('Please enter a message'); return; }}
+    if (!conversationId) {{ await startNewConversation(); return; }}
+    if (selectedModels.length < 2) {{ setSnack('Please select at least 2 models to compare'); return; }}
+
+    setIsLoading(true);
+    setStatus(`Comparing ${{selectedModels.length}} models...`);
+    setBestModel(null);
+
+    const currentPrompt = prompt;
+    setPrompt('');
+
+    try {{
+      const r = await fetch('/conversation/compare', {{
+        method: 'POST',
+        headers: {{'Content-Type': 'application/json'}},
+        body: JSON.stringify({{
+          conversation_id: conversationId,
+          models: selectedModels,
+          prompt: currentPrompt
+        }})
+      }});
+
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || 'HTTP ' + r.status);
+
+      setCompareResults({{
+        prompt: currentPrompt,
+        results: data.results
+      }});
+      setStatus(`Comparison complete • ${{selectedModels.length}} models`);
+      setConversationInfo(data.conversation_info);
+    }} catch (err) {{
+      setSnack('Error: ' + err);
+      setStatus('Error');
+    }} finally {{
+      setIsLoading(false);
+    }}
+  }};
+
+  const toggleModelSelection = (modelName) => {{
+    setSelectedModels(prev =>
+      prev.includes(modelName)
+        ? prev.filter(m => m !== modelName)
+        : [...prev, modelName]
+    );
+  }};
+
+  const copyToClipboard = (text) => {{
+    navigator.clipboard.writeText(text);
+    setSnack('Copied to clipboard');
   }};
 
   const fetchSavedConversations = async () => {{
@@ -398,8 +468,8 @@ function App() {{
         ])
       ]),
 
-      e(Stack, {{direction: 'row', spacing: 2, mb: 2}}, [
-        e(FormControl, {{sx: {{minWidth: 300}}}}, [
+      e(Stack, {{direction: 'row', spacing: 2, mb: 2, alignItems: 'center'}}, [
+        !compareMode && e(FormControl, {{key: 'model-select', sx: {{minWidth: 300}}}}, [
           e(InputLabel, {{id: 'model-label'}}, 'Model'),
           e(Select, {{
             labelId: 'model-label',
@@ -410,16 +480,33 @@ function App() {{
           }}, availableModels.map(m => e(MenuItem, {{key: m, value: m}}, m)))
         ]),
         e(Button, {{
+          key: 'compare-btn',
+          variant: compareMode ? 'contained' : 'outlined',
+          onClick: () => {{
+            setCompareMode(!compareMode);
+            setCompareResults(null);
+            if (!compareMode) {{
+              // Entering compare mode - select first 2 models by default
+              setSelectedModels(availableModels.slice(0, Math.min(2, availableModels.length)));
+            }}
+          }},
+          disabled: isLoading,
+          color: compareMode ? 'secondary' : 'primary'
+        }}, compareMode ? 'Exit Compare Mode' : 'Compare Models'),
+        e(Button, {{
+          key: 'new-conv-btn',
           variant: conversationId ? 'outlined' : 'contained',
           onClick: handleNewConversation,
           disabled: isLoading
         }}, 'New Conversation'),
         e(Button, {{
+          key: 'load-conv-btn',
           variant: 'outlined',
           onClick: fetchSavedConversations,
           disabled: isLoading
         }}, 'Load Conversation'),
         conversationId && e(Button, {{
+          key: 'clear-context-btn',
           variant: 'outlined',
           color: 'warning',
           onClick: clearContext,
@@ -427,11 +514,26 @@ function App() {{
           title: 'Clear context to reduce tokens (history preserved)'
         }}, 'Clear Context'),
         conversationId && e(Button, {{
+          key: 'end-save-btn',
           variant: 'outlined',
           color: 'error',
           onClick: endConversation,
           disabled: isLoading
         }}, 'End & Save')
+      ]),
+
+      compareMode && e(Box, {{sx: {{mb: 2, p: 2, bgcolor: '#f5f5f5', borderRadius: 2}}}}, [
+        e(Typography, {{variant: 'subtitle2', sx: {{mb: 1}}}}, 'Select models to compare (minimum 2):'),
+        e(Stack, {{direction: 'row', spacing: 1, flexWrap: 'wrap', gap: 1}},
+          availableModels.map(m => e(Chip, {{
+            key: m,
+            label: m,
+            onClick: () => toggleModelSelection(m),
+            color: selectedModels.includes(m) ? 'primary' : 'default',
+            variant: selectedModels.includes(m) ? 'filled' : 'outlined',
+            size: 'small'
+          }}))
+        )
       ]),
 
       status && e(Alert, {{
@@ -474,6 +576,41 @@ function App() {{
         ])
       ),
       e('div', {{ref: chatEndRef}})
+    ]),
+
+    conversationId && compareMode && compareResults && e(Paper, {{elevation: 1, sx: {{p: 2, mb: 2, borderRadius: 4}}}}, [
+      e(Typography, {{variant: 'h6', sx: {{mb: 2}}}}, `Comparison Results`),
+      e(Typography, {{variant: 'subtitle2', sx: {{mb: 2, color: '#666'}}}}, `Prompt: "${{compareResults.prompt.substring(0, 100)}}${{compareResults.prompt.length > 100 ? '...' : ''}}"`),
+      e(Box, {{sx: {{display: 'grid', gridTemplateColumns: `repeat(${{Math.min(compareResults.results.length, 3)}}, 1fr)`, gap: 2}}}},
+        compareResults.results.map((result, idx) =>
+          e(Paper, {{key: idx, elevation: 3, sx: {{p: 2, bgcolor: bestModel === result.model ? '#e3f2fd' : 'white'}}}}, [
+            e(Stack, {{direction: 'row', justifyContent: 'space-between', alignItems: 'center', mb: 1}}, [
+              e(Typography, {{variant: 'subtitle1', fontWeight: 'bold'}}, result.model),
+              e(Typography, {{variant: 'caption', color: result.error ? 'error' : 'success.main'}},
+                result.error ? 'Error' : `${{result.response_time.toFixed(2)}}s`
+              )
+            ]),
+            result.error ?
+              e(Typography, {{color: 'error', variant: 'body2'}}, `Error: ${{result.error}}`) :
+              e(Box, {{}}, [
+                e(Typography, {{variant: 'body2', sx: {{whiteSpace: 'pre-wrap', maxHeight: '400px', overflowY: 'auto', mb: 2}}}}, result.response),
+                e(Stack, {{direction: 'row', spacing: 1}}, [
+                  e(Button, {{
+                    size: 'small',
+                    variant: bestModel === result.model ? 'contained' : 'outlined',
+                    onClick: () => setBestModel(result.model),
+                    startIcon: bestModel === result.model ? '⭐' : '☆'
+                  }}, 'Best'),
+                  e(Button, {{
+                    size: 'small',
+                    variant: 'outlined',
+                    onClick: () => copyToClipboard(result.response)
+                  }}, '📋 Copy')
+                ])
+              ])
+          ])
+        )
+      )
     ]),
 
     conversationId && e(Paper, {{elevation: 1, sx: {{p: 2, borderRadius: 4}}}}, [
@@ -529,9 +666,9 @@ function App() {{
       e(Stack, {{direction: 'row', spacing: 2, sx: {{mt: 2}}}}, [
         e(Button, {{
           variant: 'contained',
-          onClick: sendMessage,
-          disabled: isLoading || !prompt.trim()
-        }}, isLoading ? 'Generating...' : 'Send'),
+          onClick: compareMode ? compareModels : sendMessage,
+          disabled: isLoading || !prompt.trim() || (compareMode && selectedModels.length < 2)
+        }}, isLoading ? 'Generating...' : (compareMode ? `Compare (${{selectedModels.length}} models)` : 'Send')),
         e(Button, {{
           variant: 'outlined',
           onClick: () => {{ setPrompt(''); }},

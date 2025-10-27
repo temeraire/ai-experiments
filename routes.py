@@ -114,6 +114,84 @@ def register_routes(app: Flask):
             "token_stats": conv.get_token_stats()
         })
 
+    @app.post("/conversation/compare")
+    def compare_models():
+        """Send prompt to multiple models in parallel for comparison"""
+        data = request.get_json(force=True)
+        conv_id = data.get("conversation_id")
+        models = data.get("models", [])  # List of model names
+        prompt = data.get("prompt", "")
+
+        if not prompt:
+            return jsonify({"error": "missing prompt"}), 400
+
+        if not models or len(models) == 0:
+            return jsonify({"error": "no models specified"}), 400
+
+        # Find conversation
+        conv = None
+        for sid, c in ACTIVE_CONVERSATIONS.items():
+            if c.id == conv_id:
+                conv = c
+                break
+
+        if not conv:
+            return jsonify({"error": "conversation not found"}), 404
+
+        # Build full prompt with file context
+        files_context = conv.get_files_context()
+        full_prompt = prompt
+        if files_context:
+            full_prompt = files_context + "\n" + prompt
+
+        # Get windowed messages (same context for all models)
+        windowed_messages = conv.get_windowed_messages(CONTEXT_WINDOW_SIZE)
+        messages = windowed_messages + [{"role": "user", "content": full_prompt}]
+
+        # Call all models in parallel
+        import concurrent.futures
+        results = []
+
+        def call_model(model_name):
+            start_time = time.time()
+            try:
+                result = call_llm(model_name, messages)
+                response_time = time.time() - start_time
+                return {
+                    "model": model_name,
+                    "response": result,
+                    "response_time": response_time,
+                    "error": None
+                }
+            except Exception as e:
+                response_time = time.time() - start_time
+                return {
+                    "model": model_name,
+                    "response": None,
+                    "response_time": response_time,
+                    "error": str(e)
+                }
+
+        # Use ThreadPoolExecutor for parallel execution
+        with concurrent.futures.ThreadPoolExecutor(max_workers=len(models)) as executor:
+            futures = [executor.submit(call_model, model) for model in models]
+            results = [future.result() for future in concurrent.futures.as_completed(futures)]
+
+        # Sort results by original model order
+        results_dict = {r["model"]: r for r in results}
+        ordered_results = [results_dict[model] for model in models if model in results_dict]
+
+        return jsonify({
+            "conversation_id": conv.id,
+            "prompt": prompt,
+            "results": ordered_results,
+            "conversation_info": {
+                "total_turns": len(conv.turns),
+                "duration": (datetime.now() - conv.start_time).total_seconds(),
+                "models_used": list(conv.models_used)
+            }
+        })
+
     @app.post("/conversation/clear-context")
     def clear_context():
         """Clear conversation context (keeps history logged, reduces token usage)"""
