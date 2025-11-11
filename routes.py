@@ -14,7 +14,7 @@ from flask import Flask, request, jsonify, Response, send_file
 from config import CONVERSATIONS_DIR, CONTEXT_WINDOW_SIZE
 from models import Conversation
 from llm_client import call_llm, get_ollama_models, get_claude_models
-from storage import save_turn_artifacts, export_conversation_to_markdown, export_conversation_to_docx
+from storage import save_turn_artifacts, save_comparison_artifacts, export_conversation_to_markdown, export_conversation_to_docx
 from frontend import generate_index_html
 
 # Active conversations by session_id
@@ -180,6 +180,11 @@ def register_routes(app: Flask):
         # Sort results by original model order
         results_dict = {r["model"]: r for r in results}
         ordered_results = [results_dict[model] for model in models if model in results_dict]
+
+        # Save comparison results to conversation history
+        turn_num = len(conv.turns) + 1
+        paths = save_comparison_artifacts(conv, turn_num, prompt, ordered_results)
+        conv.add_comparison_turn(prompt, ordered_results, paths)
 
         return jsonify({
             "conversation_id": conv.id,

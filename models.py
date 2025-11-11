@@ -113,6 +113,7 @@ class Conversation:
         turn = {
             "turn_number": turn_num,
             "timestamp": datetime.now(),
+            "type": "regular",
             "model": model,
             "prompt": prompt,
             "response": response,
@@ -131,6 +132,49 @@ class Conversation:
         # Log turn to CSV
         self._log_turn(turn)
 
+    def add_comparison_turn(self, prompt: str, results: List[Dict[str, Any]], paths: Dict[str, str]):
+        """Add a comparison turn to the conversation"""
+        turn_num = len(self.turns) + 1
+
+        # Calculate total tokens and track models from all results
+        total_input_tokens = 0
+        total_output_tokens = 0
+        total_response_time = 0
+
+        for result in results:
+            if result.get('error') is None:
+                # Estimate tokens for each model's response
+                input_tokens = self.estimate_tokens(prompt)
+                output_tokens = self.estimate_tokens(result['response'])
+                total_input_tokens += input_tokens
+                total_output_tokens += output_tokens
+                total_response_time += result['response_time']
+
+                # Track models used
+                self.models_used.add(result['model'])
+
+        self.total_input_tokens += total_input_tokens
+        self.total_output_tokens += total_output_tokens
+
+        turn = {
+            "turn_number": turn_num,
+            "timestamp": datetime.now(),
+            "type": "comparison",
+            "prompt": prompt,
+            "results": results,  # Store all model results
+            "response_time": total_response_time,
+            "paths": paths,
+            "input_tokens": total_input_tokens,
+            "output_tokens": total_output_tokens
+        }
+        self.turns.append(turn)
+
+        # Note: We don't add comparison results to messages array
+        # since they're meant to be compared, not used as context
+
+        # Log each result to CSV
+        self._log_comparison_turn(turn)
+
     def _log_turn(self, turn: Dict[str, Any]):
         """Log a turn to CSV file"""
         with TURNS_CSV.open("a", newline="") as f:
@@ -148,6 +192,26 @@ class Conversation:
                 turn["paths"].get("html_path", ""),
                 turn["paths"].get("docx_path", "")
             ])
+
+    def _log_comparison_turn(self, turn: Dict[str, Any]):
+        """Log a comparison turn to CSV file (one row per model result)"""
+        with TURNS_CSV.open("a", newline="") as f:
+            writer = csv.writer(f)
+            for result in turn["results"]:
+                # Log each model's result as a separate row with same turn number
+                writer.writerow([
+                    self.id,
+                    turn["turn_number"],
+                    turn["timestamp"].isoformat(),
+                    result["model"],
+                    turn["prompt"],
+                    result.get("response", f"ERROR: {result.get('error', 'Unknown error')}"),
+                    f"{result['response_time']:.2f}",
+                    turn["paths"].get("jsonl_path", ""),
+                    turn["paths"].get("md_path", ""),
+                    turn["paths"].get("html_path", ""),
+                    turn["paths"].get("docx_path", "")
+                ])
 
     def end_conversation(self):
         """End the conversation and save summary"""
@@ -172,6 +236,31 @@ class Conversation:
 
     def _save_summary(self):
         """Save conversation summary to JSON file"""
+        # Build turns list, handling both regular and comparison turns
+        turns_summary = []
+        for t in self.turns:
+            if t.get("type") == "comparison":
+                # Comparison turn - include all model results
+                turns_summary.append({
+                    "turn": t["turn_number"],
+                    "timestamp": t["timestamp"].isoformat(),
+                    "type": "comparison",
+                    "prompt": t["prompt"],
+                    "results": t["results"],
+                    "response_time": t["response_time"]
+                })
+            else:
+                # Regular turn - single model/response
+                turns_summary.append({
+                    "turn": t["turn_number"],
+                    "timestamp": t["timestamp"].isoformat(),
+                    "type": "regular",
+                    "model": t["model"],
+                    "prompt": t["prompt"],
+                    "response": t["response"],
+                    "response_time": t["response_time"]
+                })
+
         summary = {
             "conversation_id": self.id,
             "start_time": self.start_time.isoformat(),
@@ -179,17 +268,7 @@ class Conversation:
             "duration_seconds": (self.end_time - self.start_time).total_seconds() if self.end_time else None,
             "total_turns": len(self.turns),
             "models_used": list(self.models_used),
-            "turns": [
-                {
-                    "turn": t["turn_number"],
-                    "timestamp": t["timestamp"].isoformat(),
-                    "model": t["model"],
-                    "prompt": t["prompt"],
-                    "response": t["response"],
-                    "response_time": t["response_time"]
-                }
-                for t in self.turns
-            ]
+            "turns": turns_summary
         }
 
         summary_path = self.conv_dir / "conversation.json"
