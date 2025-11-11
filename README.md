@@ -4,10 +4,11 @@ Transform your Ollama LLM interactions into persistent, trackable conversations 
 
 ## 📦 What's Included
 
-- **`local_llm_logger_v3_continuous_chat.py`** - Main application file
+- **Modular Python files** - Main application files (main.py, config.py, models.py, llm_client.py, storage.py, routes.py, frontend.py)
 - **`CHANGELOG_v3.md`** - Detailed changelog and migration guide
 - **`COMPARISON_v2_v3.md`** - Side-by-side comparison with v2
 - **`API_REFERENCE.md`** - Complete API documentation
+- **`MODULAR_STRUCTURE.md`** - Documentation of the modular architecture
 
 ## 🚀 Quick Start
 
@@ -33,7 +34,7 @@ sudo apt-get install pandoc  # Linux
 
 ### 3. Run the App
 ```bash
-python local_llm_logger_v3_continuous_chat.py
+python main.py
 ```
 
 ### 4. Open Browser
@@ -230,7 +231,7 @@ export PORT="5005"                            # Flask port
 
 ### Custom Port
 ```bash
-PORT=8080 python local_llm_logger_v3_continuous_chat.py
+PORT=8080 python main.py
 ```
 
 ## 📚 Documentation
@@ -384,7 +385,7 @@ Built with:
 ┌─────────────────────────────────────────────┐
 │  LOCAL LLM LOGGER V3 - QUICK REFERENCE      │
 ├─────────────────────────────────────────────┤
-│  Start:    python local_llm_logger_v3...py  │
+│  Start:    python main.py                   │
 │  URL:      http://127.0.0.1:5005/          │
 │  Logs:     logs/*.csv                       │
 │  Data:     conversations/conv_*/            │
