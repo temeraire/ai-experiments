@@ -146,3 +146,24 @@ def get_ollama_models() -> List[str]:
     except Exception as e:
         print(f"Error getting models: {e}")
         return [DEFAULT_MODEL]
+
+
+def generate_summary(model: str, response: str) -> str:
+    """
+    Generate a concise summary of the model's response.
+    Uses the same model that generated the response for consistency.
+    """
+    summary_prompt = f"""Summarize the following response in 2-3 concise sentences, highlighting the key points:
+
+{response}
+
+Summary:"""
+
+    try:
+        # Create a simple message for summary generation
+        messages = [{"role": "user", "content": summary_prompt}]
+        summary = call_llm(model, messages)
+        return summary.strip()
+    except Exception as e:
+        # If summary generation fails, return a fallback
+        return f"[Summary generation failed: {e}]"

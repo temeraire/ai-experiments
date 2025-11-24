@@ -118,22 +118,64 @@ MODEL_ABBREVS = {
 - [ ] Keep .jsonl for internal use only
 - [ ] Rename .docx files: `turn1_CS45.docx`
 
-#### Phase 4: Auto-Summary Feature
+#### Phase 4: Auto-Summary Feature [COMPLETED]
 
-##### 4.1 Add Summary Generation
-- [ ] Add summary prompt template
-- [ ] Generate summary after each response
-- [ ] Place at top of .docx file
-- [ ] Display in UI (collapsible)
-- [ ] Store in conversation data
+##### 4.1 Analysis [COMPLETED]
+- [x] Analyzed current response flow
+  - Single model responses: routes.py `/conversation/send` calls `call_llm()` → saves via `save_turn_artifacts()`
+  - Multi-model comparisons: routes.py `/conversation/compare-stream` calls multiple `call_llm()` → saves via `save_comparison_artifacts()`
+  - DOCX generation happens in storage.py using pypandoc
 
-#### Phase 5: Bug Fixes
+##### 4.2 Implementation [COMPLETED]
+- [x] Created summary generation function in llm_client.py
+  - Function: `generate_summary(model: str, response: str) -> str`
+  - Uses simple prompt: "Summarize the following response in 2-3 concise sentences, highlighting the key points:"
+  - Calls the same model that generated the response for consistency
 
-##### 5.1 Empty Folder Issue
-- [ ] Add auto-save on page unload
-- [ ] Periodic auto-save (every 30 seconds)
-- [ ] Cleanup empty folders on startup
-- [ ] Add recovery for incomplete conversations
+- [x] Updated models.py Conversation class
+  - Added `summary` field to turn dictionary in `add_turn()` method
+  - Added `summary` field stored in `_save_summary()` method for persistence
+  - Summary properly saved to conversation.json
+
+- [x] Updated routes.py endpoints
+  - `/conversation/send`: Generates summary after response, includes in turn data and API response
+  - `/conversation/compare-stream`: Generates summary for each model's response, streams via SSE
+  - Both endpoints return summary in API response
+
+- [x] Updated storage.py artifact generation
+  - `save_turn_artifacts()`: Added summary parameter, places at top of DOCX before prompt
+  - `save_comparison_artifacts()`: Added summary for each model at top of their section
+  - Format: "## Summary\n\n{summary}\n\n---\n\n## Prompt..."
+
+- [x] Updated frontend.py UI display
+  - Added collapsible summary section above each response using HTML `<details>/<summary>` tags
+  - Applied yellow-tinted styling with left border for visual distinction
+  - Works in both single model chat and multi-model comparison views
+  - Summary is collapsible (closed by default) to keep UI clean
+
+- [x] Testing
+  - [x] Flask app restarted successfully with all changes
+  - [x] API endpoints verified working
+  - [x] Ready for manual testing via browser
+
+#### Phase 5: Bug Fixes [COMPLETED]
+
+##### 5.1 Empty Folder Issue [COMPLETED]
+- [x] Cleanup empty folders on startup
+  - Added `cleanup_empty_conversations()` function in main.py
+  - Runs automatically on app startup
+  - Removes any conversation folders with no turns or conversation.json
+  - Successfully tested - cleaned 20 empty folders on first run
+- [x] Add auto-save on page unload
+  - Added `beforeunload` event handler in frontend.py
+  - Automatically calls `/conversation/end` when user closes page
+  - Uses `keepalive: true` to ensure request completes
+- [x] Periodic auto-save (every 30 seconds)
+  - Added interval-based check every 30 seconds
+  - Logs activity to console to confirm conversation is active
+- [x] Recovery for incomplete conversations
+  - Empty folders are automatically cleaned on next startup
+  - Auto-save on page unload prevents most incomplete conversations
 
 ### Testing Checklist
 - [ ] Claude models working with pricing

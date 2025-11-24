@@ -13,7 +13,7 @@ from flask import Flask, request, jsonify, Response, send_file
 
 from config import CONVERSATIONS_DIR, CONTEXT_WINDOW_SIZE, is_paid_model, MODEL_PRICING, get_model_cost
 from models import Conversation
-from llm_client import call_llm, get_ollama_models, get_claude_models, get_gemini_models
+from llm_client import call_llm, get_ollama_models, get_claude_models, get_gemini_models, generate_summary
 from storage import save_turn_artifacts, save_comparison_artifacts, export_conversation_to_markdown, export_conversation_to_docx
 from frontend import generate_index_html
 
@@ -92,12 +92,15 @@ def register_routes(app: Flask):
         except Exception as e:
             return jsonify({"error": f"LLM call failed: {e}"}), 500
 
+        # Generate summary of the response
+        summary = generate_summary(model, result)
+
         # Save artifacts (use original prompt without file context for display)
         turn_num = len(conv.turns) + 1
-        paths = save_turn_artifacts(conv, turn_num, model, prompt, result)
+        paths = save_turn_artifacts(conv, turn_num, model, prompt, result, summary)
 
         # Add turn to conversation (store original prompt)
-        conv.add_turn(model, prompt, result, response_time, paths)
+        conv.add_turn(model, prompt, result, response_time, paths, summary=summary)
 
         # Calculate cost for this turn and total
         token_stats = conv.get_token_stats()
@@ -108,6 +111,7 @@ def register_routes(app: Flask):
             "turn_number": turn_num,
             "model": model,
             "response": result,
+            "summary": summary,
             "response_time": response_time,
             "paths": paths,
             "conversation_info": {
@@ -162,9 +166,12 @@ def register_routes(app: Flask):
             try:
                 result = call_llm(model_name, messages)
                 response_time = time.time() - start_time
+                # Generate summary for this model's response
+                summary = generate_summary(model_name, result)
                 return {
                     "model": model_name,
                     "response": result,
+                    "summary": summary,
                     "response_time": response_time,
                     "error": None
                 }
@@ -173,6 +180,7 @@ def register_routes(app: Flask):
                 return {
                     "model": model_name,
                     "response": None,
+                    "summary": "",
                     "response_time": response_time,
                     "error": str(e)
                 }
@@ -247,9 +255,12 @@ def register_routes(app: Flask):
                 try:
                     result = call_llm(model_name, messages)
                     response_time = time.time() - start_time
+                    # Generate summary for this model's response
+                    summary = generate_summary(model_name, result)
                     return {
                         "model": model_name,
                         "response": result,
+                        "summary": summary,
                         "response_time": response_time,
                         "error": None
                     }
@@ -258,6 +269,7 @@ def register_routes(app: Flask):
                     return {
                         "model": model_name,
                         "response": None,
+                        "summary": "",
                         "response_time": response_time,
                         "error": str(e)
                     }
@@ -280,6 +292,7 @@ def register_routes(app: Flask):
                         "type": "result",
                         "model": result["model"],
                         "response": result["response"],
+                        "summary": result.get("summary", ""),
                         "response_time": result["response_time"],
                         "error": result["error"],
                         "completed": len(results_collected),

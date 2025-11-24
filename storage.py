@@ -26,7 +26,7 @@ def escape_html(s: str) -> str:
 
 
 def save_turn_artifacts(conv, turn_num: int, model: str,
-                        prompt: str, result_md: str) -> Dict[str, str]:
+                        prompt: str, result_md: str, summary: str = "") -> Dict[str, str]:
     """Save artifacts for a single turn within a conversation"""
     slug = slugify(prompt.split("\n", 1)[0])
     model_abbrev = get_model_abbrev(model)
@@ -44,6 +44,7 @@ def save_turn_artifacts(conv, turn_num: int, model: str,
         "model": model,
         "prompt": prompt,
         "result_markdown": result_md,
+        "summary": summary,
     }
     jsonl_path = turn_dir / "turn.jsonl"
     with jsonl_path.open("w", encoding="utf-8") as jf:
@@ -72,7 +73,9 @@ def save_turn_artifacts(conv, turn_num: int, model: str,
             from pypandoc import convert_text
             # New naming: turn{num}_{model_abbrev}.docx
             docx_path = turn_dir / f"turn{turn_num}_{model_abbrev}.docx"
-            combined_md = f"# Turn {turn_num}\n\n## Prompt\n\n````\n{prompt}\n````\n\n---\n\n## Response\n\n{result_md}\n"
+            # Include summary at the top if available
+            summary_section = f"## Summary\n\n{summary}\n\n---\n\n" if summary else ""
+            combined_md = f"# Turn {turn_num}\n\n{summary_section}## Prompt\n\n````\n{prompt}\n````\n\n---\n\n## Response\n\n{result_md}\n"
             convert_text(combined_md, "docx", format="md", outputfile=str(docx_path))
             docx_out = str(docx_path)
         except Exception:
@@ -115,6 +118,9 @@ def save_comparison_artifacts(conv, turn_num: int, prompt: str, results: list) -
     md_parts = [f"# Turn {turn_num} - Model Comparison\n\n## Prompt\n\n{prompt}\n\n---\n\n"]
     for result in results:
         md_parts.append(f"## {result['model']}\n\n")
+        # Add summary at the top of each model's section if available
+        if result.get('summary'):
+            md_parts.append(f"### Summary\n\n{result['summary']}\n\n---\n\n")
         if result.get('error'):
             md_parts.append(f"**ERROR:** {result['error']}\n\n")
         else:
