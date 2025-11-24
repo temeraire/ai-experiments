@@ -27,12 +27,21 @@ try:
 except Exception:
     HAS_CLAUDE = False
 
+try:
+    import google.generativeai
+    HAS_GEMINI = True
+except Exception:
+    HAS_GEMINI = False
+
 # Ollama Configuration
 OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434")
 DEFAULT_MODEL = os.environ.get("OLLAMA_MODEL", "qwen2.5:32b-instruct")
 
 # Claude API Configuration
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+
+# Gemini API Configuration
+GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY", "")
 
 # Context Window Configuration
 # How many recent turns to keep in context (0 = unlimited)

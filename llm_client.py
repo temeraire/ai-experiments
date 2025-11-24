@@ -7,7 +7,7 @@ from typing import List, Dict
 
 import requests
 
-from config import OLLAMA_HOST, DEFAULT_MODEL, ANTHROPIC_API_KEY, HAS_CLAUDE
+from config import OLLAMA_HOST, DEFAULT_MODEL, ANTHROPIC_API_KEY, HAS_CLAUDE, GOOGLE_API_KEY, HAS_GEMINI
 
 
 def call_chat(model: str, messages: List[Dict[str, str]]) -> str:
@@ -46,10 +46,51 @@ def is_claude_model(model: str) -> bool:
     return model.startswith("claude-")
 
 
+def is_gemini_model(model: str) -> bool:
+    """Check if a model name is a Gemini model"""
+    return model.startswith("gemini-")
+
+
+def call_gemini(model: str, messages: List[Dict[str, str]]) -> str:
+    """Call Gemini API"""
+    if not HAS_GEMINI:
+        raise RuntimeError("Gemini support not available. Install: pip install google-generativeai")
+
+    if not GOOGLE_API_KEY:
+        raise RuntimeError("GOOGLE_API_KEY environment variable not set")
+
+    import google.generativeai as genai
+    genai.configure(api_key=GOOGLE_API_KEY)
+
+    # Create model instance
+    gemini_model = genai.GenerativeModel(model)
+
+    # Convert messages to Gemini format
+    # Gemini uses a different format: list of content dicts with 'role' and 'parts'
+    gemini_messages = []
+    for msg in messages:
+        role = "user" if msg["role"] == "user" else "model"
+        gemini_messages.append({
+            "role": role,
+            "parts": [msg["content"]]
+        })
+
+    # Start chat and send messages
+    chat = gemini_model.start_chat(history=gemini_messages[:-1] if len(gemini_messages) > 1 else [])
+
+    # Send the last message and get response
+    last_message = messages[-1]["content"] if messages else ""
+    response = chat.send_message(last_message)
+
+    return response.text
+
+
 def call_llm(model: str, messages: List[Dict[str, str]]) -> str:
     """Universal LLM caller - routes to appropriate API"""
     if is_claude_model(model):
         return call_claude(model, messages)
+    elif is_gemini_model(model):
+        return call_gemini(model, messages)
     else:
         return call_chat(model, messages)
 
@@ -67,6 +108,21 @@ def get_claude_models() -> List[str]:
         "claude-haiku-4-5-20251015",       # Fastest: Cost-effective
         "claude-3-5-sonnet-20241022",      # Legacy: Still available
         "claude-3-5-haiku-20241022",       # Legacy: Still available
+    ]
+
+
+def get_gemini_models() -> List[str]:
+    """Get list of available Gemini models"""
+    if not HAS_GEMINI or not GOOGLE_API_KEY:
+        return []
+
+    # Return available Gemini models
+    return [
+        "gemini-2.5-flash",        # Latest Flash: Fast and efficient
+        "gemini-2.5-pro",          # Latest Pro: Best quality
+        "gemini-2.0-flash",        # Previous generation Flash
+        "gemini-1.5-pro",          # Previous generation Pro
+        "gemini-1.5-flash",        # Previous generation Flash
     ]
 
 

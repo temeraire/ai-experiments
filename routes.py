@@ -13,7 +13,7 @@ from flask import Flask, request, jsonify, Response, send_file
 
 from config import CONVERSATIONS_DIR, CONTEXT_WINDOW_SIZE
 from models import Conversation
-from llm_client import call_llm, get_ollama_models, get_claude_models
+from llm_client import call_llm, get_ollama_models, get_claude_models, get_gemini_models
 from storage import save_turn_artifacts, save_comparison_artifacts, export_conversation_to_markdown, export_conversation_to_docx
 from frontend import generate_index_html
 
@@ -196,6 +196,116 @@ def register_routes(app: Flask):
                 "models_used": list(conv.models_used)
             }
         })
+
+    @app.post("/conversation/compare-stream")
+    def compare_models_stream():
+        """Send prompt to multiple models in parallel with real-time SSE streaming"""
+        data = request.get_json(force=True)
+        conv_id = data.get("conversation_id")
+        models = data.get("models", [])
+        prompt = data.get("prompt", "")
+
+        if not prompt:
+            return jsonify({"error": "missing prompt"}), 400
+
+        if not models or len(models) == 0:
+            return jsonify({"error": "no models specified"}), 400
+
+        # Find conversation
+        conv = None
+        for sid, c in ACTIVE_CONVERSATIONS.items():
+            if c.id == conv_id:
+                conv = c
+                break
+
+        if not conv:
+            return jsonify({"error": "conversation not found"}), 404
+
+        # Build full prompt with file context
+        files_context = conv.get_files_context()
+        full_prompt = prompt
+        if files_context:
+            full_prompt = files_context + "\n" + prompt
+
+        # Get windowed messages (same context for all models)
+        windowed_messages = conv.get_windowed_messages(CONTEXT_WINDOW_SIZE)
+        messages = windowed_messages + [{"role": "user", "content": full_prompt}]
+
+        def generate_sse():
+            """Generator function for Server-Sent Events"""
+            import concurrent.futures
+            results_collected = []
+
+            def call_model_with_stream(model_name):
+                """Call model and return result for SSE streaming"""
+                start_time = time.time()
+                try:
+                    result = call_llm(model_name, messages)
+                    response_time = time.time() - start_time
+                    return {
+                        "model": model_name,
+                        "response": result,
+                        "response_time": response_time,
+                        "error": None
+                    }
+                except Exception as e:
+                    response_time = time.time() - start_time
+                    return {
+                        "model": model_name,
+                        "response": None,
+                        "response_time": response_time,
+                        "error": str(e)
+                    }
+
+            # Send initial event with list of models
+            yield f"data: {json.dumps({'type': 'init', 'models': models, 'conversation_id': conv.id})}\n\n"
+
+            # Use ThreadPoolExecutor for parallel execution
+            with concurrent.futures.ThreadPoolExecutor(max_workers=len(models)) as executor:
+                # Submit all tasks
+                futures = {executor.submit(call_model_with_stream, model): model for model in models}
+
+                # Stream results as they complete
+                for future in concurrent.futures.as_completed(futures):
+                    result = future.result()
+                    results_collected.append(result)
+
+                    # Send SSE event for this model's completion
+                    event_data = {
+                        "type": "result",
+                        "model": result["model"],
+                        "response": result["response"],
+                        "response_time": result["response_time"],
+                        "error": result["error"],
+                        "completed": len(results_collected),
+                        "total": len(models)
+                    }
+                    yield f"data: {json.dumps(event_data)}\n\n"
+
+            # Sort results by original model order
+            results_dict = {r["model"]: r for r in results_collected}
+            ordered_results = [results_dict[model] for model in models if model in results_dict]
+
+            # Save comparison results to conversation history
+            turn_num = len(conv.turns) + 1
+            paths = save_comparison_artifacts(conv, turn_num, prompt, ordered_results)
+            conv.add_comparison_turn(prompt, ordered_results, paths)
+
+            # Send final completion event
+            final_data = {
+                "type": "complete",
+                "conversation_id": conv.id,
+                "turn_number": turn_num,
+                "results": ordered_results,
+                "conversation_info": {
+                    "total_turns": len(conv.turns),
+                    "duration": (datetime.now() - conv.start_time).total_seconds(),
+                    "models_used": list(conv.models_used)
+                }
+            }
+            yield f"data: {json.dumps(final_data)}\n\n"
+
+        return Response(generate_sse(), mimetype="text/event-stream")
 
     @app.post("/conversation/clear-context")
     def clear_context():
@@ -460,12 +570,13 @@ def register_routes(app: Flask):
 
     @app.get("/models/list")
     def list_models():
-        """List available models (Ollama + Claude)"""
+        """List available models (Ollama + Claude + Gemini)"""
         ollama_models = get_ollama_models()
         claude_models = get_claude_models()
+        gemini_models = get_gemini_models()
 
-        # Combine models, Claude first for visibility
-        all_models = claude_models + ollama_models
+        # Combine models: Claude first, then Gemini, then Ollama
+        all_models = claude_models + gemini_models + ollama_models
 
         return jsonify({"models": all_models})
 
