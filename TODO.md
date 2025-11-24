@@ -62,29 +62,22 @@ This is a Flask-based web application that allows users to interact with multipl
 - [ ] Test functionality - BLOCKED: Requires Kimi API authentication (401 Unauthorized)
   - Note: This is a cloud-hosted model requiring Moonshot AI API credentials
 
-#### Phase 2: UI Cost Visibility
+#### Phase 2: UI Cost Visibility [COMPLETED]
 
-##### 2.1 Model Color Coding
-- [ ] Add model metadata with pricing info
-- [ ] Update frontend.py with color coding:
+##### 2.1 Model Color Coding [COMPLETED]
+- [x] Add model metadata with pricing info - Added MODEL_PRICING to config.py
+- [x] Update frontend.py with color coding:
   - Light green (#c8e6c9): Paid models available
   - Dark green (#2e7d32): Paid models selected
   - Normal: Free/local models
-- [ ] Add $ icon for paid models
+- [x] Add $ prefix for paid models in dropdown and chips
 
-##### 2.2 Cost Estimation
-- [ ] Create pricing configuration:
-  ```python
-  PRICING = {
-      "claude-sonnet-4-5": {"input": 0.003, "output": 0.015},
-      "claude-opus-4-1": {"input": 0.015, "output": 0.075},
-      "claude-haiku-4-5": {"input": 0.0008, "output": 0.004},
-      # Add Gemini pricing when available
-  }
-  ```
-- [ ] Display cost per turn
-- [ ] Show cumulative conversation cost
-- [ ] Add to exports
+##### 2.2 Cost Estimation [COMPLETED]
+- [x] Create pricing configuration in config.py with 11 models (Claude + Gemini)
+- [x] Added is_paid_model() and get_model_cost() helper functions
+- [x] Display cumulative conversation cost in UI (green chip)
+- [x] API returns cost with each response
+- [ ] Add to exports (future enhancement)
 
 #### Phase 3: File System Improvements
 

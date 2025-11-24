@@ -87,6 +87,9 @@ function App() {{
   const [selectedModels, setSelectedModels] = useState([]);
   const [compareResults, setCompareResults] = useState(null);
   const [bestModel, setBestModel] = useState(null);
+  const [modelStatuses, setModelStatuses] = useState({{}});  // Track per-model status: pending/running/complete/error
+  const [modelMetadata, setModelMetadata] = useState({{}});  // Track model pricing/paid status
+  const [conversationCost, setConversationCost] = useState(0);  // Track cumulative cost in USD
   const chatEndRef = useRef(null);
   const fileInputRef = useRef(null);
 
@@ -100,6 +103,12 @@ function App() {{
     fetch('/models/list').then(r=>r.json()).then(data=>{{
       if (data.models && data.models.length > 0) {{
         setAvailableModels(data.models);
+        // Store model metadata for pricing/paid status
+        if (data.modelsWithMetadata) {{
+          const metaMap = {{}};
+          data.modelsWithMetadata.forEach(m => {{ metaMap[m.name] = m; }});
+          setModelMetadata(metaMap);
+        }}
         const savedModel = localStorage.getItem('selected_model');
         // Only set to first model if no saved model and current model is default
         if (!savedModel && model === '{escape_html(DEFAULT_MODEL)}') {{
@@ -145,6 +154,7 @@ function App() {{
       setConversationId(data.conversation_id);
       setChatHistory([]);
       setConversationFiles([]);
+      setConversationCost(0);  // Reset cost for new conversation
       setStatus('New conversation started');
       setSnack('New conversation started');
     }} catch (err) {{
@@ -196,6 +206,9 @@ function App() {{
       setStatus(`Turn ${{data.turn_number}} • ${{data.response_time.toFixed(2)}}s`);
       setConversationInfo(data.conversation_info);
       setTokenStats(data.token_stats);
+      if (data.cost !== undefined) {{
+        setConversationCost(data.cost);
+      }}
     }} catch (err) {{
       setSnack('Error: ' + err);
       setStatus('Error');
@@ -242,15 +255,32 @@ function App() {{
     if (!conversationId) {{ await startNewConversation(); return; }}
     if (selectedModels.length < 2) {{ setSnack('Please select at least 2 models to compare'); return; }}
 
+    console.log('Starting comparison with models:', selectedModels);
     setIsLoading(true);
     setStatus(`Comparing ${{selectedModels.length}} models...`);
     setBestModel(null);
+
+    // Initialize model statuses
+    const initialStatuses = {{}};
+    selectedModels.forEach(m => {{ initialStatuses[m] = 'pending'; }});
+    setModelStatuses(initialStatuses);
+
+    // Initialize results structure
+    const initialResults = {{}};
+    selectedModels.forEach(m => {{
+      initialResults[m] = {{ model: m, status: 'pending', response: null, response_time: null, error: null }};
+    }});
+    setCompareResults({{
+      prompt: prompt,
+      results: initialResults
+    }});
 
     const currentPrompt = prompt;
     setPrompt('');
 
     try {{
-      const r = await fetch('/conversation/compare', {{
+      // Use fetch with streaming to handle SSE (EventSource doesn't support POST)
+      const response = await fetch('/conversation/compare-stream', {{
         method: 'POST',
         headers: {{'Content-Type': 'application/json'}},
         body: JSON.stringify({{
@@ -260,19 +290,70 @@ function App() {{
         }})
       }});
 
-      const data = await r.json();
-      if (!r.ok) throw new Error(data.error || 'HTTP ' + r.status);
+      if (!response.ok) {{
+        throw new Error('HTTP ' + response.status);
+      }}
 
-      setCompareResults({{
-        prompt: currentPrompt,
-        results: data.results
-      }});
-      setStatus(`Comparison complete • ${{selectedModels.length}} models`);
-      setConversationInfo(data.conversation_info);
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {{
+        const {{done, value}} = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, {{stream: true}});
+        const lines = buffer.split('\\n\\n');
+        buffer = lines.pop(); // Keep incomplete line in buffer
+
+        for (const line of lines) {{
+          if (!line.trim() || !line.startsWith('data: ')) continue;
+
+          try {{
+            const data = JSON.parse(line.substring(6)); // Remove 'data: ' prefix
+            console.log('SSE event received:', data.type, data);
+
+            if (data.type === 'init') {{
+            // Initial event - models list confirmed
+            const statuses = {{}};
+            data.models.forEach(m => {{ statuses[m] = 'running'; }});
+            setModelStatuses(statuses);
+          }} else if (data.type === 'result') {{
+            // Individual model completed
+            setModelStatuses(prev => ({{
+              ...prev,
+              [data.model]: data.error ? 'error' : 'complete'
+            }}));
+
+            setCompareResults(prev => ({{
+              ...prev,
+              results: {{
+                ...prev.results,
+                [data.model]: {{
+                  model: data.model,
+                  status: data.error ? 'error' : 'complete',
+                  response: data.response,
+                  response_time: data.response_time,
+                  error: data.error
+                }}
+              }}
+            }}));
+
+            setStatus(`Completed ${{data.completed}}/${{data.total}} models...`);
+            }} else if (data.type === 'complete') {{
+              // All models finished
+              setStatus(`Comparison complete • ${{selectedModels.length}} models`);
+              setConversationInfo(data.conversation_info);
+              setIsLoading(false);
+            }}
+          }} catch (parseErr) {{
+            console.error('Error parsing SSE event:', parseErr, line);
+          }}
+        }}
+      }}
     }} catch (err) {{
       setSnack('Error: ' + err);
       setStatus('Error');
-    }} finally {{
       setIsLoading(false);
     }}
   }};
@@ -458,6 +539,13 @@ function App() {{
             size: 'small',
             variant: 'outlined'
           }}),
+          conversationCost > 0 && e(Chip, {{
+            label: `Cost: $${{conversationCost.toFixed(4)}}`,
+            color: 'success',
+            size: 'small',
+            variant: 'outlined',
+            title: 'Estimated API cost for this conversation'
+          }}),
           conversationId && e(Chip, {{
             label: `Context: ${{Math.min(chatHistory.length, 20)}}/${{chatHistory.length}} msgs`,
             color: chatHistory.length > 20 ? 'warning' : 'success',
@@ -477,7 +565,27 @@ function App() {{
             value: model,
             onChange: (ev) => setModel(ev.target.value),
             size: 'small'
-          }}, availableModels.map(m => e(MenuItem, {{key: m, value: m}}, m)))
+          }}, availableModels.map(m => {{
+            const meta = modelMetadata[m] || {{}};
+            const isPaid = meta.isPaid || false;
+            // Light green for paid available, darker when selected
+            const bgColor = isPaid ? (m === model ? '#2e7d32' : '#c8e6c9') : undefined;
+            const textColor = isPaid && m === model ? '#fff' : undefined;
+            return e(MenuItem, {{
+              key: m,
+              value: m,
+              sx: {{
+                backgroundColor: bgColor,
+                color: textColor,
+                '&:hover': {{ backgroundColor: isPaid ? '#a5d6a7' : undefined }},
+                '&.Mui-selected': {{ backgroundColor: isPaid ? '#2e7d32' : undefined, color: isPaid ? '#fff' : undefined }},
+                '&.Mui-selected:hover': {{ backgroundColor: isPaid ? '#1b5e20' : undefined }}
+              }}
+            }}, isPaid ? `$ ${{m}}` : m);
+          }}))
+        ]),
+        compareMode && e(Box, {{key: 'compare-mode-label', sx: {{minWidth: 300, display: 'flex', alignItems: 'center'}}}}, [
+          e(Typography, {{variant: 'subtitle1', color: 'secondary'}}, `Comparing ${{selectedModels.length}} models`)
         ]),
         e(Button, {{
           key: 'compare-btn',
@@ -525,14 +633,22 @@ function App() {{
       compareMode && e(Box, {{sx: {{mb: 2, p: 2, bgcolor: '#f5f5f5', borderRadius: 2}}}}, [
         e(Typography, {{variant: 'subtitle2', sx: {{mb: 1}}}}, 'Select models to compare (minimum 2):'),
         e(Stack, {{direction: 'row', spacing: 1, flexWrap: 'wrap', gap: 1}},
-          availableModels.map(m => e(Chip, {{
-            key: m,
-            label: m,
-            onClick: () => toggleModelSelection(m),
-            color: selectedModels.includes(m) ? 'primary' : 'default',
-            variant: selectedModels.includes(m) ? 'filled' : 'outlined',
-            size: 'small'
-          }}))
+          availableModels.map(m => {{
+            const meta = modelMetadata[m] || {{}};
+            const isPaid = meta.isPaid || false;
+            const isSelected = selectedModels.includes(m);
+            // Green colors for paid models
+            const chipColor = isPaid ? (isSelected ? 'success' : 'default') : (isSelected ? 'primary' : 'default');
+            return e(Chip, {{
+              key: m,
+              label: isPaid ? `$ ${{m}}` : m,
+              onClick: () => toggleModelSelection(m),
+              color: chipColor,
+              variant: isSelected ? 'filled' : 'outlined',
+              size: 'small',
+              sx: isPaid && !isSelected ? {{ borderColor: '#4caf50', color: '#2e7d32' }} : undefined
+            }});
+          }})
         )
       ]),
 
@@ -581,35 +697,47 @@ function App() {{
     conversationId && compareMode && compareResults && e(Paper, {{elevation: 1, sx: {{p: 2, mb: 2, borderRadius: 4}}}}, [
       e(Typography, {{variant: 'h6', sx: {{mb: 2}}}}, `Comparison Results`),
       e(Typography, {{variant: 'subtitle2', sx: {{mb: 2, color: '#666'}}}}, `Prompt: "${{compareResults.prompt.substring(0, 100)}}${{compareResults.prompt.length > 100 ? '...' : ''}}"`),
-      e(Box, {{sx: {{display: 'grid', gridTemplateColumns: `repeat(${{Math.min(compareResults.results.length, 3)}}, 1fr)`, gap: 2}}}},
-        compareResults.results.map((result, idx) =>
-          e(Paper, {{key: idx, elevation: 3, sx: {{p: 2, bgcolor: bestModel === result.model ? '#e3f2fd' : 'white'}}}}, [
+      e(Box, {{sx: {{display: 'grid', gridTemplateColumns: `repeat(${{Math.min(selectedModels.length, 3)}}, 1fr)`, gap: 2}}}},
+        selectedModels.map((modelName, idx) => {{
+          const result = compareResults.results[modelName] || {{}};
+          const status = modelStatuses[modelName] || 'pending';
+          const isRunning = status === 'running' || status === 'pending';
+          const isComplete = status === 'complete';
+          const isError = status === 'error';
+
+          return e(Paper, {{key: idx, elevation: 3, sx: {{p: 2, bgcolor: bestModel === modelName ? '#e3f2fd' : 'white'}}}}, [
             e(Stack, {{direction: 'row', justifyContent: 'space-between', alignItems: 'center', mb: 1}}, [
-              e(Typography, {{variant: 'subtitle1', fontWeight: 'bold'}}, result.model),
-              e(Typography, {{variant: 'caption', color: result.error ? 'error' : 'success.main'}},
-                result.error ? 'Error' : `${{result.response_time.toFixed(2)}}s`
-              )
+              e(Typography, {{variant: 'subtitle1', fontWeight: 'bold'}}, modelName),
+              isRunning && e('span', {{className: 'throbber'}}, [
+                e('span'),
+                e('span'),
+                e('span')
+              ]),
+              isComplete && e(Typography, {{variant: 'caption', color: 'success.main'}},
+                `${{result.response_time.toFixed(2)}}s`
+              ),
+              isError && e(Typography, {{variant: 'caption', color: 'error'}}, 'Error')
             ]),
-            result.error ?
-              e(Typography, {{color: 'error', variant: 'body2'}}, `Error: ${{result.error}}`) :
-              e(Box, {{}}, [
-                e(Typography, {{variant: 'body2', sx: {{whiteSpace: 'pre-wrap', maxHeight: '400px', overflowY: 'auto', mb: 2}}}}, result.response),
-                e(Stack, {{direction: 'row', spacing: 1}}, [
-                  e(Button, {{
-                    size: 'small',
-                    variant: bestModel === result.model ? 'contained' : 'outlined',
-                    onClick: () => setBestModel(result.model),
-                    startIcon: bestModel === result.model ? '⭐' : '☆'
-                  }}, 'Best'),
-                  e(Button, {{
-                    size: 'small',
-                    variant: 'outlined',
-                    onClick: () => copyToClipboard(result.response)
-                  }}, '📋 Copy')
-                ])
+            isRunning && e(Typography, {{color: 'text.secondary', variant: 'body2', fontStyle: 'italic'}}, 'Generating response...'),
+            isError && e(Typography, {{color: 'error', variant: 'body2'}}, `Error: ${{result.error}}`),
+            isComplete && result.response && e(Box, {{}}, [
+              e(Typography, {{variant: 'body2', sx: {{whiteSpace: 'pre-wrap', maxHeight: '400px', overflowY: 'auto', mb: 2}}}}, result.response),
+              e(Stack, {{direction: 'row', spacing: 1}}, [
+                e(Button, {{
+                  size: 'small',
+                  variant: bestModel === modelName ? 'contained' : 'outlined',
+                  onClick: () => setBestModel(modelName),
+                  startIcon: bestModel === modelName ? '⭐' : '☆'
+                }}, 'Best'),
+                e(Button, {{
+                  size: 'small',
+                  variant: 'outlined',
+                  onClick: () => copyToClipboard(result.response)
+                }}, '📋 Copy')
               ])
-          ])
-        )
+            ])
+          ]);
+        }})
       )
     ]),
 

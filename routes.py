@@ -11,7 +11,7 @@ from typing import Dict
 
 from flask import Flask, request, jsonify, Response, send_file
 
-from config import CONVERSATIONS_DIR, CONTEXT_WINDOW_SIZE
+from config import CONVERSATIONS_DIR, CONTEXT_WINDOW_SIZE, is_paid_model, MODEL_PRICING, get_model_cost
 from models import Conversation
 from llm_client import call_llm, get_ollama_models, get_claude_models, get_gemini_models
 from storage import save_turn_artifacts, save_comparison_artifacts, export_conversation_to_markdown, export_conversation_to_docx
@@ -99,6 +99,10 @@ def register_routes(app: Flask):
         # Add turn to conversation (store original prompt)
         conv.add_turn(model, prompt, result, response_time, paths)
 
+        # Calculate cost for this turn and total
+        token_stats = conv.get_token_stats()
+        turn_cost = get_model_cost(model, token_stats["total_input_tokens"], token_stats["total_output_tokens"])
+
         return jsonify({
             "conversation_id": conv.id,
             "turn_number": turn_num,
@@ -111,7 +115,8 @@ def register_routes(app: Flask):
                 "duration": (datetime.now() - conv.start_time).total_seconds(),
                 "models_used": list(conv.models_used)
             },
-            "token_stats": conv.get_token_stats()
+            "token_stats": token_stats,
+            "cost": turn_cost
         })
 
     @app.post("/conversation/compare")
@@ -570,15 +575,30 @@ def register_routes(app: Flask):
 
     @app.get("/models/list")
     def list_models():
-        """List available models (Ollama + Claude + Gemini)"""
+        """List available models (Ollama + Claude + Gemini) with metadata"""
         ollama_models = get_ollama_models()
         claude_models = get_claude_models()
         gemini_models = get_gemini_models()
 
         # Combine models: Claude first, then Gemini, then Ollama
-        all_models = claude_models + gemini_models + ollama_models
+        all_model_names = claude_models + gemini_models + ollama_models
 
-        return jsonify({"models": all_models})
+        # Build model list with metadata
+        models_with_metadata = []
+        for name in all_model_names:
+            is_paid = is_paid_model(name)
+            pricing = MODEL_PRICING.get(name, None)
+            models_with_metadata.append({
+                "name": name,
+                "isPaid": is_paid,
+                "pricing": pricing  # None for free models
+            })
+
+        # Also return simple list for backward compatibility
+        return jsonify({
+            "models": all_model_names,
+            "modelsWithMetadata": models_with_metadata
+        })
 
     @app.post("/upload")
     def upload_file():
