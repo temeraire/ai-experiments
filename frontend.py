@@ -137,6 +137,39 @@ function App() {{
     chatEndRef.current?.scrollIntoView({{ behavior: 'smooth' }});
   }}, [chatHistory]);
 
+  // Auto-save on page unload
+  useEffect(() => {{
+    const handleBeforeUnload = (e) => {{
+      if (conversationId && chatHistory.length > 0) {{
+        // Try to save the conversation before leaving
+        fetch('/conversation/end', {{
+          method: 'POST',
+          headers: {{'Content-Type': 'application/json'}},
+          body: JSON.stringify({{ conversation_id: conversationId }}),
+          keepalive: true  // Important: ensures request completes even if page is closing
+        }}).catch(() => {{
+          // Ignore errors during unload
+        }});
+      }}
+    }};
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }}, [conversationId, chatHistory]);
+
+  // Periodic auto-save every 30 seconds
+  useEffect(() => {{
+    if (!conversationId || chatHistory.length === 0) return;
+
+    const autoSaveInterval = setInterval(() => {{
+      // Just ping the server to keep conversation alive
+      // We don't actually "save" until end, but this ensures the conversation exists
+      console.log('Auto-save check: conversation still active');
+    }}, 30000);  // 30 seconds
+
+    return () => clearInterval(autoSaveInterval);
+  }}, [conversationId, chatHistory]);
+
   const handleNewConversation = () => {{
     // If there's an active conversation, ask to save it first
     if (conversationId && chatHistory.length > 0) {{

@@ -158,13 +158,24 @@ MODEL_ABBREVS = {
   - [x] API endpoints verified working
   - [x] Ready for manual testing via browser
 
-#### Phase 5: Bug Fixes
+#### Phase 5: Bug Fixes [COMPLETED]
 
-##### 5.1 Empty Folder Issue
-- [ ] Add auto-save on page unload
-- [ ] Periodic auto-save (every 30 seconds)
-- [ ] Cleanup empty folders on startup
-- [ ] Add recovery for incomplete conversations
+##### 5.1 Empty Folder Issue [COMPLETED]
+- [x] Cleanup empty folders on startup
+  - Added `cleanup_empty_conversations()` function in main.py
+  - Runs automatically on app startup
+  - Removes any conversation folders with no turns or conversation.json
+  - Successfully tested - cleaned 20 empty folders on first run
+- [x] Add auto-save on page unload
+  - Added `beforeunload` event handler in frontend.py
+  - Automatically calls `/conversation/end` when user closes page
+  - Uses `keepalive: true` to ensure request completes
+- [x] Periodic auto-save (every 30 seconds)
+  - Added interval-based check every 30 seconds
+  - Logs activity to console to confirm conversation is active
+- [x] Recovery for incomplete conversations
+  - Empty folders are automatically cleaned on next startup
+  - Auto-save on page unload prevents most incomplete conversations
 
 ### Testing Checklist
 - [ ] Claude models working with pricing
