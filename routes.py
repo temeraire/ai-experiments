@@ -166,9 +166,12 @@ def register_routes(app: Flask):
             try:
                 result = call_llm(model_name, messages)
                 response_time = time.time() - start_time
+                # Generate summary for this model's response
+                summary = generate_summary(model_name, result)
                 return {
                     "model": model_name,
                     "response": result,
+                    "summary": summary,
                     "response_time": response_time,
                     "error": None
                 }
@@ -177,6 +180,7 @@ def register_routes(app: Flask):
                 return {
                     "model": model_name,
                     "response": None,
+                    "summary": "",
                     "response_time": response_time,
                     "error": str(e)
                 }
