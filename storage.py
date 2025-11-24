@@ -10,7 +10,7 @@ from typing import Dict
 
 from markdown import markdown as md_to_html
 
-from config import HAS_PYPANDOC
+from config import HAS_PYPANDOC, get_model_abbrev
 
 
 def slugify(text: str, maxlen: int = 40) -> str:
@@ -29,12 +29,14 @@ def save_turn_artifacts(conv, turn_num: int, model: str,
                         prompt: str, result_md: str) -> Dict[str, str]:
     """Save artifacts for a single turn within a conversation"""
     slug = slugify(prompt.split("\n", 1)[0])
-    turn_dir = conv.conv_dir / f"turn_{turn_num:03d}_{slug}"
+    model_abbrev = get_model_abbrev(model)
+    # Include model abbreviation in folder name
+    turn_dir = conv.conv_dir / f"turn_{turn_num:03d}_{model_abbrev}_{slug}"
     turn_dir.mkdir(parents=True, exist_ok=True)
 
     now = datetime.now()
 
-    # JSONL
+    # JSONL - kept for internal use (metadata)
     rec = {
         "conversation_id": conv.id,
         "turn_number": turn_num,
@@ -47,39 +49,29 @@ def save_turn_artifacts(conv, turn_num: int, model: str,
     with jsonl_path.open("w", encoding="utf-8") as jf:
         jf.write(json.dumps(rec, ensure_ascii=False) + "\n")
 
-    # Markdown
-    md_path = turn_dir / "turn.md"
-    with md_path.open("w", encoding="utf-8") as mf:
-        mf.write(f"# Turn {turn_num}\n\n## Prompt\n\n{prompt}\n\n---\n\n## Response\n\n{result_md}\n")
+    # Markdown - COMMENTED OUT per user request
+    # md_path = turn_dir / "turn.md"
+    # with md_path.open("w", encoding="utf-8") as mf:
+    #     mf.write(f"# Turn {turn_num}\n\n## Prompt\n\n{prompt}\n\n---\n\n## Response\n\n{result_md}\n")
+    md_path = ""
 
-    # HTML
-    html = md_to_html(result_md)
-    html_doc = f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8" />
-<title>Turn {turn_num}</title>
-<style>body{{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;max-width:900px;margin:2rem auto;padding:0 1rem;line-height:1.6}}pre,code{{background:#f5f5f5;padding:.2rem .4rem;border-radius:4px}}pre{{overflow-x:auto;padding:1rem}}h1,h2,h3{{line-height:1.25}}</style>
-</head>
-<body>
-<h1>Turn {turn_num}</h1>
-<h2>Prompt</h2>
-<pre>{escape_html(prompt)}</pre>
-<hr/>
-<h2>Response</h2>
-{html}
-</body>
-</html>"""
-    html_path = turn_dir / "turn.html"
-    with html_path.open("w", encoding="utf-8") as hf:
-        hf.write(html_doc)
+    # HTML - COMMENTED OUT per user request
+    # html = md_to_html(result_md)
+    # html_doc = f"""<!DOCTYPE html>
+    # ... (HTML template removed)
+    # """
+    # html_path = turn_dir / "turn.html"
+    # with html_path.open("w", encoding="utf-8") as hf:
+    #     hf.write(html_doc)
+    html_path = ""
 
-    # Optional DOCX
+    # DOCX - Primary output format with model name in filename
     docx_out = ""
     if HAS_PYPANDOC:
         try:
             from pypandoc import convert_text
-            docx_path = turn_dir / "turn.docx"
+            # New naming: turn{num}_{model_abbrev}.docx
+            docx_path = turn_dir / f"turn{turn_num}_{model_abbrev}.docx"
             combined_md = f"# Turn {turn_num}\n\n## Prompt\n\n````\n{prompt}\n````\n\n---\n\n## Response\n\n{result_md}\n"
             convert_text(combined_md, "docx", format="md", outputfile=str(docx_path))
             docx_out = str(docx_path)
@@ -88,8 +80,8 @@ def save_turn_artifacts(conv, turn_num: int, model: str,
 
     return {
         "jsonl_path": str(jsonl_path),
-        "md_path": str(md_path),
-        "html_path": str(html_path),
+        "md_path": md_path,
+        "html_path": html_path,
         "docx_path": docx_out,
         "turn_dir": str(turn_dir),
     }
@@ -98,12 +90,15 @@ def save_turn_artifacts(conv, turn_num: int, model: str,
 def save_comparison_artifacts(conv, turn_num: int, prompt: str, results: list) -> Dict[str, str]:
     """Save artifacts for a comparison turn with multiple model results"""
     slug = slugify(prompt.split("\n", 1)[0])
-    turn_dir = conv.conv_dir / f"turn_{turn_num:03d}_comparison_{slug}"
+    # Get model abbreviations for all models in comparison
+    model_abbrevs = [get_model_abbrev(r['model']) for r in results if not r.get('error')]
+    models_str = "-".join(model_abbrevs) if model_abbrevs else "comparison"
+    turn_dir = conv.conv_dir / f"turn_{turn_num:03d}_{models_str}_{slug}"
     turn_dir.mkdir(parents=True, exist_ok=True)
 
     now = datetime.now()
 
-    # JSONL - save all results
+    # JSONL - kept for internal use (metadata)
     rec = {
         "conversation_id": conv.id,
         "turn_number": turn_num,
@@ -116,7 +111,7 @@ def save_comparison_artifacts(conv, turn_num: int, prompt: str, results: list) -
     with jsonl_path.open("w", encoding="utf-8") as jf:
         jf.write(json.dumps(rec, ensure_ascii=False) + "\n")
 
-    # Markdown - side-by-side comparison
+    # Build markdown content (used for DOCX conversion)
     md_parts = [f"# Turn {turn_num} - Model Comparison\n\n## Prompt\n\n{prompt}\n\n---\n\n"]
     for result in results:
         md_parts.append(f"## {result['model']}\n\n")
@@ -126,71 +121,23 @@ def save_comparison_artifacts(conv, turn_num: int, prompt: str, results: list) -
             md_parts.append(f"{result['response']}\n\n")
         md_parts.append(f"*Response time: {result['response_time']:.2f}s*\n\n---\n\n")
 
-    md_path = turn_dir / "comparison.md"
-    with md_path.open("w", encoding="utf-8") as mf:
-        mf.write("".join(md_parts))
+    # Markdown file - COMMENTED OUT per user request
+    # md_path = turn_dir / "comparison.md"
+    # with md_path.open("w", encoding="utf-8") as mf:
+    #     mf.write("".join(md_parts))
+    md_path = ""
 
-    # HTML - nice comparison layout
-    html_results = []
-    for result in results:
-        if result.get('error'):
-            html_results.append(f"""
-<div class="model-result error">
-  <h3>{escape_html(result['model'])}</h3>
-  <p class="error-message">ERROR: {escape_html(result['error'])}</p>
-  <p class="timing">Response time: {result['response_time']:.2f}s</p>
-</div>
-""")
-        else:
-            response_html = md_to_html(result['response'])
-            html_results.append(f"""
-<div class="model-result">
-  <h3>{escape_html(result['model'])}</h3>
-  <div class="response">{response_html}</div>
-  <p class="timing">Response time: {result['response_time']:.2f}s</p>
-</div>
-""")
+    # HTML - COMMENTED OUT per user request
+    # (HTML generation code removed for brevity)
+    html_path = ""
 
-    html_doc = f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8" />
-<title>Turn {turn_num} - Model Comparison</title>
-<style>
-body{{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;max-width:1400px;margin:2rem auto;padding:0 1rem;line-height:1.6}}
-pre,code{{background:#f5f5f5;padding:.2rem .4rem;border-radius:4px}}
-pre{{overflow-x:auto;padding:1rem}}
-h1,h2,h3{{line-height:1.25}}
-.prompt{{background:#f9f9f9;padding:1rem;border-radius:8px;margin:1rem 0}}
-.comparison-grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(400px,1fr));gap:1rem;margin:2rem 0}}
-.model-result{{border:1px solid #ddd;padding:1rem;border-radius:8px;background:#fff}}
-.model-result.error{{border-color:#e74c3c;background:#fff5f5}}
-.error-message{{color:#e74c3c;font-weight:bold}}
-.timing{{color:#666;font-size:0.9em;font-style:italic;margin-top:0.5rem}}
-.response{{margin:1rem 0}}
-</style>
-</head>
-<body>
-<h1>Turn {turn_num} - Model Comparison</h1>
-<h2>Prompt</h2>
-<div class="prompt"><pre>{escape_html(prompt)}</pre></div>
-<h2>Model Responses</h2>
-<div class="comparison-grid">
-{"".join(html_results)}
-</div>
-</body>
-</html>"""
-
-    html_path = turn_dir / "comparison.html"
-    with html_path.open("w", encoding="utf-8") as hf:
-        hf.write(html_doc)
-
-    # Optional DOCX
+    # DOCX - Primary output format with model names in filename
     docx_out = ""
     if HAS_PYPANDOC:
         try:
             from pypandoc import convert_text
-            docx_path = turn_dir / "comparison.docx"
+            # New naming: turn{num}_{model_abbrevs}.docx
+            docx_path = turn_dir / f"turn{turn_num}_{models_str}.docx"
             convert_text("".join(md_parts), "docx", format="md", outputfile=str(docx_path))
             docx_out = str(docx_path)
         except Exception:
@@ -198,8 +145,8 @@ h1,h2,h3{{line-height:1.25}}
 
     return {
         "jsonl_path": str(jsonl_path),
-        "md_path": str(md_path),
-        "html_path": str(html_path),
+        "md_path": md_path,
+        "html_path": html_path,
         "docx_path": docx_out,
         "turn_dir": str(turn_dir),
     }

@@ -96,3 +96,39 @@ def get_model_cost(model_name: str, input_tokens: int, output_tokens: int) -> fl
     input_cost = (input_tokens / 1_000_000) * pricing["input"]
     output_cost = (output_tokens / 1_000_000) * pricing["output"]
     return input_cost + output_cost
+
+
+# Model Abbreviation System for folder/file naming
+# Format: [Provider Initial][Model Initial][Version/Size]
+MODEL_ABBREVS = {
+    # Claude models
+    "claude-sonnet-4-5-20250929": "CS45",
+    "claude-opus-4-1-20250805": "CO41",
+    "claude-sonnet-4-20250522": "CS4",
+    "claude-haiku-4-5-20251015": "CH45",
+    "claude-3-5-sonnet-20241022": "C35S",
+    "claude-3-5-haiku-20241022": "C35H",
+
+    # Gemini models
+    "gemini-2.5-flash": "G25F",
+    "gemini-2.5-pro": "G25P",
+    "gemini-2.0-flash": "G20F",
+    "gemini-1.5-pro": "G15P",
+    "gemini-1.5-flash": "G15F",
+}
+
+def get_model_abbrev(model_name: str) -> str:
+    """Get abbreviation for a model name, or generate one if not defined"""
+    if model_name in MODEL_ABBREVS:
+        return MODEL_ABBREVS[model_name]
+
+    # Generate abbreviation for unknown models (Ollama models, etc.)
+    # Take first chars of each part, max 6 chars
+    parts = model_name.replace(":", "-").replace(".", "-").split("-")
+    abbrev = ""
+    for part in parts:
+        if part and part[0].isalpha():
+            abbrev += part[0].upper()
+        elif part and part[0].isdigit():
+            abbrev += part[:2]  # Include numbers (like 32b)
+    return abbrev[:6] if abbrev else model_name[:6].upper()
