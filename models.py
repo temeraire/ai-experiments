@@ -97,7 +97,8 @@ class Conversation:
 
     def add_turn(self, model: str, prompt: str, response: str,
                  response_time: float, paths: Dict[str, str],
-                 input_tokens: int = 0, output_tokens: int = 0):
+                 input_tokens: int = 0, output_tokens: int = 0,
+                 summary: str = ""):
         """Add a turn to the conversation"""
         turn_num = len(self.turns) + 1
 
@@ -117,6 +118,7 @@ class Conversation:
             "model": model,
             "prompt": prompt,
             "response": response,
+            "summary": summary,
             "response_time": response_time,
             "paths": paths,
             "input_tokens": input_tokens,
@@ -258,6 +260,7 @@ class Conversation:
                     "model": t["model"],
                     "prompt": t["prompt"],
                     "response": t["response"],
+                    "summary": t.get("summary", ""),
                     "response_time": t["response_time"]
                 })
 

@@ -32,6 +32,10 @@ body{{margin:0;background:#fafafa}}
 .user-message{{background:#e3f2fd;text-align:right}}
 .assistant-message{{background:#f5f5f5}}
 .message-meta{{font-size:0.85em;color:#666;margin-top:4px}}
+.summary-box{{background:#fff3cd;border-left:3px solid #ffc107;padding:8px 12px;margin-bottom:12px;border-radius:4px}}
+.summary-box summary{{cursor:pointer;font-weight:600;color:#856404;font-size:0.9em;user-select:none}}
+.summary-box summary:hover{{color:#533f03}}
+.summary-content{{margin-top:8px;font-size:0.9em;color:#856404;line-height:1.5}}
 @keyframes jump{{
   0%, 80%, 100% {{transform:translateY(0)}}
   40% {{transform:translateY(-10px)}}
@@ -198,6 +202,7 @@ function App() {{
       setChatHistory(prev => [...prev, {{
         role: 'assistant',
         content: data.response,
+        summary: data.summary || '',
         model: data.model,
         turn: data.turn_number,
         response_time: data.response_time
@@ -333,6 +338,7 @@ function App() {{
                   model: data.model,
                   status: data.error ? 'error' : 'complete',
                   response: data.response,
+                  summary: data.summary || '',
                   response_time: data.response_time,
                   error: data.error
                 }}
@@ -501,6 +507,7 @@ function App() {{
       setChatHistory(prev => [...prev, {{
         role: 'assistant',
         content: data.response,
+        summary: data.summary || '',
         model: data.model,
         turn: data.turn_number,
         response_time: data.response_time
@@ -665,6 +672,11 @@ function App() {{
           key: idx,
           className: msg.role === 'user' ? 'chat-message user-message' : 'chat-message assistant-message'
         }}, [
+          // Show collapsible summary for assistant messages
+          msg.role === 'assistant' && msg.summary && e('details', {{className: 'summary-box'}}, [
+            e('summary', {{}}, 'Summary'),
+            e('div', {{className: 'summary-content'}}, msg.summary)
+          ]),
           e(Typography, {{variant: 'body1', sx: {{whiteSpace: 'pre-wrap'}}}}, msg.content),
           e('div', {{className: 'message-meta'}}, [
             msg.role === 'assistant' && msg.turn && `Turn ${{msg.turn}} • `,
@@ -721,6 +733,11 @@ function App() {{
             isRunning && e(Typography, {{color: 'text.secondary', variant: 'body2', fontStyle: 'italic'}}, 'Generating response...'),
             isError && e(Typography, {{color: 'error', variant: 'body2'}}, `Error: ${{result.error}}`),
             isComplete && result.response && e(Box, {{}}, [
+              // Show summary if available
+              result.summary && e('details', {{className: 'summary-box', style: {{marginBottom: '12px'}}}}, [
+                e('summary', {{}}, 'Summary'),
+                e('div', {{className: 'summary-content'}}, result.summary)
+              ]),
               e(Typography, {{variant: 'body2', sx: {{whiteSpace: 'pre-wrap', maxHeight: '400px', overflowY: 'auto', mb: 2}}}}, result.response),
               e(Stack, {{direction: 'row', spacing: 1}}, [
                 e(Button, {{
