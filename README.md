@@ -1,400 +1,403 @@
-# Local LLM Logger v3 - Continuous Chat Edition
+# Local LLM Logger v3 - Multi-Model AI Chat Platform
 
-Transform your Ollama LLM interactions into persistent, trackable conversations with comprehensive logging.
+A powerful Flask-based web application for interacting with multiple AI models (Ollama, Claude, Gemini) with comprehensive conversation logging, cost tracking, and auto-summarization.
 
-## 📦 What's Included
+## 🌟 Features
 
-- **Modular Python files** - Main application files (main.py, config.py, models.py, llm_client.py, storage.py, routes.py, frontend.py)
-- **`CHANGELOG_v3.md`** - Detailed changelog and migration guide
-- **`COMPARISON_v2_v3.md`** - Side-by-side comparison with v2
-- **`API_REFERENCE.md`** - Complete API documentation
-- **`MODULAR_STRUCTURE.md`** - Documentation of the modular architecture
+### Multi-Model Support
+- **Local Models via Ollama** - Run models locally (qwen2.5, mixtral, gemma3, deepseek-r1, etc.)
+- **Claude API Integration** - Access 6 Claude models (Sonnet 4.5, Opus 4.1, Haiku 4.5, etc.)
+- **Gemini API Integration** - Use 5 Gemini models (2.5-flash/pro, 2.0-flash, 1.5-pro/flash)
+- **Model Comparison Mode** - Run the same prompt across multiple models simultaneously
+- **Real-time Streaming** - See responses appear in real-time for multi-model comparisons
+
+### Intelligent Features
+- **Auto-Summarization** - Every response gets a concise 2-3 sentence summary
+- **Cost Tracking** - Real-time cost estimation for paid API models
+- **Smart Naming** - Conversations and files named with model abbreviations
+- **Context Management** - Sliding window keeps recent conversation context
+
+### User Experience
+- **ChatGPT-like Interface** - Natural conversation flow with full history
+- **Color-Coded Models** - Green highlighting for paid models (light=available, dark=selected)
+- **Collapsible Summaries** - Yellow summary boxes for quick scanning
+- **File Upload Support** - Attach PDFs, DOCX, Jupyter notebooks to conversations
+- **Auto-Save** - Conversations saved automatically when closing browser
+
+### Data Management
+- **DOCX Export** - Professional document output with summaries
+- **JSONL Logging** - Structured data for analysis
+- **Organized Storage** - Conversations stored with descriptive names
+- **Empty Folder Cleanup** - Automatic cleanup on startup
 
 ## 🚀 Quick Start
 
-### 1. Prerequisites
+### Prerequisites
+
+1. **Ollama** (for local models)
 ```bash
-# Ensure Ollama is running
+# Install Ollama from https://ollama.ai
 ollama serve
-# if you're using a venv (recommended)
-source .venv/bin/activate
-# Pull a model
+
+# Pull some models
 ollama pull qwen2.5:32b-instruct
+ollama pull gemma3:4b
 ```
 
-### 2. Install Dependencies
+2. **Python 3.8+**
 ```bash
-pip install flask requests markdown pypandoc python-dateutil
+python --version  # Should be 3.8 or higher
+```
 
-# Optional (for DOCX export)
+3. **API Keys** (optional, for Claude/Gemini)
+```bash
+# Create .env file
+cp .env.example .env
+
+# Add your API keys to .env
+ANTHROPIC_API_KEY=your_claude_key_here
+GOOGLE_API_KEY=your_gemini_key_here
+```
+
+### Installation
+
+```bash
+# Clone the repository
+cd ai_experiments
+
+# Create virtual environment (recommended)
+python -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+
+# Install dependencies
+pip install flask requests markdown pypandoc python-dateutil anthropic google-generativeai
+
+# Install pandoc for DOCX export (optional but recommended)
 brew install pandoc  # macOS
 # or
 sudo apt-get install pandoc  # Linux
 ```
 
-### 3. Run the App
+### Running the Application
+
 ```bash
 python main.py
 ```
 
-### 4. Open Browser
-Navigate to: **http://127.0.0.1:5005/**
+The server will start on **http://127.0.0.1:5005**
 
-## ✨ Key Features
+You should see:
+```
+============================================================
+Local LLM Logger v3 - Modular Edition
+============================================================
+Server: http://127.0.0.1:5005
+Ollama host: http://127.0.0.1:11434
+Checking for empty conversation folders...
+============================================================
+```
 
-### Continuous Conversations
-- Chat naturally like ChatGPT
-- Full conversation history visible in UI
-- Context maintained throughout conversation
-- Switch models mid-conversation
+Open your browser and navigate to **http://127.0.0.1:5005**
 
-### Comprehensive Tracking
-- **Conversation-level**: ID, start/end times, duration, total turns, models used
-- **Turn-level**: Turn number, timestamp, prompt, response, response time
-- **Model tracking**: See which models were used when
+## 📖 How to Use
 
-### Complete Logging
-Every conversation generates:
-- ✅ **CSV logs** - Structured data for analysis
-- ✅ **JSONL** - Machine-readable per-turn data
-- ✅ **Markdown** - Human-readable format
-- ✅ **HTML** - Rendered output
-- ✅ **DOCX** - Word documents (optional)
+### Basic Chat
+1. Click "New Conversation"
+2. Select a model from the dropdown
+3. Type your message and press Enter (or Shift+Enter for new line)
+4. See the response with an auto-generated summary
+5. Click "End & Save" when finished
 
-### Export Options
-- Export individual conversations (JSON, Markdown, DOCX)
-- List all conversations with metadata
-- Full conversation summaries with turn-by-turn details
+### Multi-Model Comparison
+1. Click "Compare Models" button
+2. Select 2+ models from the chips
+3. Enter your prompt
+4. Watch responses appear in real-time
+5. Mark the best response with the star button
 
-## 📊 Data Structure & Output Files
+### File Upload
+1. Start a conversation
+2. Click the "+" button to upload files
+3. Supported formats: .txt, .py, .pdf, .docx, .ipynb
+4. Files are available to all messages in that conversation
 
-### Directory Layout
+### Cost Tracking
+- Paid models show with $ prefix and green highlighting
+- Cumulative cost displayed in green chip
+- Per-turn costs returned in API responses
+
+## 🏗️ Architecture
+
+### Modular Structure
+
+The application follows a clean modular architecture with separated concerns:
+
+```
+ai_experiments/
+├── main.py              # Application entry point
+├── config.py            # Configuration & settings
+├── models.py            # Data models (Conversation class)
+├── llm_client.py        # LLM API integrations
+├── storage.py           # File operations & exports
+├── routes.py            # Flask API endpoints
+├── frontend.py          # React/MUI UI generation
+├── conversations/       # Saved conversation data
+├── logs/               # CSV logs
+└── .env                # API keys (not in git)
+```
+
+### Core Files
+
+#### `main.py` - Application Entry Point
+- Initializes Flask app
+- Runs cleanup on startup
+- Starts web server
+- **Key Function:** `cleanup_empty_conversations()` - Removes empty folders
+
+#### `config.py` - Configuration Management
+- Environment settings (ports, hosts, directories)
+- Model abbreviations (`CS45`, `CO41`, `G3P`, etc.)
+- Pricing information for paid models
+- Helper functions (`get_model_abbrev()`, `is_paid_model()`, `get_model_cost()`)
+
+#### `models.py` - Data Models
+- **`Conversation` class** - Main data structure
+  - Tracks turns, messages, models used
+  - Token estimation and tracking
+  - Context window management
+  - File attachment support
+- **CSV initialization** - Creates log files if needed
+
+#### `llm_client.py` - LLM Integration Layer
+- **Ollama Integration**
+  - `call_chat()` - Chat with local models
+  - `get_ollama_models()` - List available models
+- **Claude Integration**
+  - `call_claude()` - Anthropic API calls
+  - `get_claude_models()` - List Claude models
+- **Gemini Integration**
+  - `call_gemini()` - Google API calls
+  - `get_gemini_models()` - List Gemini models
+- **Universal Router**
+  - `call_llm()` - Routes to correct API based on model name
+  - `generate_summary()` - Creates 2-3 sentence summaries
+
+#### `storage.py` - File Operations
+- **Artifact Generation**
+  - `save_turn_artifacts()` - Save single model responses
+  - `save_comparison_artifacts()` - Save multi-model comparisons
+  - Creates DOCX files with summaries at top
+  - Generates JSONL for metadata
+- **Export Functions**
+  - `export_conversation_to_markdown()`
+  - `export_conversation_to_docx()`
+- **Naming Utilities**
+  - `slugify()` - Create filesystem-safe names
+
+#### `routes.py` - API Endpoints
+- **Conversation Management**
+  - `POST /conversation/new` - Start new conversation
+  - `POST /conversation/send` - Send message to model
+  - `POST /conversation/compare` - Compare multiple models (parallel)
+  - `POST /conversation/compare-stream` - Streaming comparison (SSE)
+  - `POST /conversation/end` - Save and end conversation
+  - `POST /conversation/clear-context` - Clear context window
+- **Data Access**
+  - `GET /conversations/list` - List saved conversations
+  - `GET /conversations/load/<id>` - Load conversation
+  - `GET /conversation/export/<id>?fmt=docx` - Export conversation
+- **Model Information**
+  - `GET /models/list` - Get available models with pricing
+- **File Upload**
+  - `POST /upload` - Handle file attachments
+
+#### `frontend.py` - UI Generation
+- **React/Material-UI Interface**
+  - Server-side React component generation
+  - Material-UI components for modern design
+- **Features**
+  - Chat history display with summaries
+  - Model selection with color coding
+  - Multi-model comparison interface
+  - Cost tracking display
+  - File upload interface
+  - Auto-save hooks (beforeunload, periodic)
+- **Styling**
+  - Yellow collapsible summary boxes
+  - Green highlighting for paid models
+  - Responsive layout
+
+### Data Flow
+
+```
+User Input → Frontend (React/MUI)
+    ↓
+Flask Routes → LLM Client
+    ↓
+API Call (Ollama/Claude/Gemini)
+    ↓
+Response + Summary Generation
+    ↓
+Storage (DOCX + JSONL)
+    ↓
+Conversation Model Update
+    ↓
+Frontend Display (with summary)
+```
+
+### Conversation Storage Structure
 
 ```
 conversations/
-├── conv_20250111_120530_a1b2c3d4/          # Conversation directory
-│   ├── conversation.json                   # Summary of entire conversation
-│   ├── turn_001_hello/
-│   │   ├── turn.jsonl                      # Raw turn data (JSON Lines format)
-│   │   ├── turn.md                         # Markdown format
-│   │   ├── turn.html                       # Styled HTML
-│   │   └── turn.docx                       # Word document (if pandoc installed)
-│   ├── turn_002_what-is-quantum-computing/
-│   │   ├── turn.jsonl
-│   │   ├── turn.md
-│   │   ├── turn.html
-│   │   └── turn.docx
-│   └── ...
-└── ...
-
-logs/
-├── conversations.csv                       # Global conversation registry
-└── turns.csv                               # Global turn registry
+└── conv_20251124_130026_G1b_1model/
+    ├── conversation.json              # Metadata
+    └── turn_001_G1b_Explain-what-a-binary/
+        ├── turn.jsonl                 # Structured data
+        └── turn1_G1b.docx            # DOCX export with summary
 ```
 
-### File Formats & Details
+## 🔧 Configuration
 
-| File Type | Location | When Created | Contents | Use Case |
-|-----------|----------|--------------|----------|----------|
-| **conversation.json** | `conversations/conv_{ID}/` | When conversation ends | Full conversation summary: metadata, all turns, models used, timing | Complete conversation snapshot |
-| **turn.jsonl** | `conversations/conv_{ID}/turn_{N:03d}_{slug}/` | After each turn | Raw turn data: turn number, timestamp, model used, prompt (user), response, token counts | Machine-readable, detailed turn information |
-| **turn.md** | `conversations/conv_{ID}/turn_{N:03d}_{slug}/` | After each turn | Formatted Markdown with headers, code blocks preserved, readable text | Human-readable documents |
-| **turn.html** | `conversations/conv_{ID}/turn_{N:03d}_{slug}/` | After each turn | Styled HTML with CSS, syntax-highlighted code blocks | Web viewing, archival, sharing |
-| **turn.docx** | `conversations/conv_{ID}/turn_{N:03d}_{slug}/` | After each turn (optional) | Word document with full formatting | Office integration, editing, printing |
-| **conversations.csv** | `logs/` | After each conversation ends | Comma-separated values: conversation_id, start_time, end_time, duration_seconds, total_turns, models_used, directory | Analytics, conversation tracking |
-| **turns.csv** | `logs/` | After each turn completes | Comma-separated values: conversation_id, turn_number, timestamp, model, response_time_seconds, artifact_paths | Turn-level analytics, performance tracking |
-
-### Naming Conventions
-
-**Conversation IDs:** `conv_YYYYMMDD_HHMMSS_XXXXXXXX`
-- Example: `conv_20250111_120530_a1b2c3d4`
-- Format: `conv_` + Date (YYYYMMDD) + Time (HHMMSS) + 8-character random UUID
-
-**Turn Folders:** `turn_{NNN}_{slug}`
-- Example: `turn_001_hello` or `turn_012_what-is-quantum-computing`
-- Format: `turn_` + 3-digit zero-padded turn number + slug derived from first line of prompt
-- Slug: First ~40 characters of prompt (sanitized, spaces replaced with hyphens)
-
-**File Names:**
-- `turn.jsonl` - Raw JSON Lines format (one JSON object per line)
-- `turn.md` - Markdown format
-- `turn.html` - HTML format
-- `turn.docx` - Word document (only created if pypandoc is installed)
-
-### Output Paths
-
-**Default Paths:**
-- Conversations: `./conversations/` (relative to project root)
-- Logs: `./logs/` (relative to project root)
-- CSV files: `./logs/conversations.csv` and `./logs/turns.csv`
-
-These can be customized by modifying `CONVERSATIONS_DIR` and `LOGS_DIR` in `config.py`
-
-## 🎯 Usage Flow
-
-1. **Click "New Conversation"** to start
-2. **Type your message** in the text field
-3. **Press Enter** to send (Shift+Enter for multi-line)
-4. **See the response** appear in chat history
-5. **Continue naturally** - context is maintained
-6. **Change models** if desired mid-conversation
-7. **Click "End & Save"** when done to archive
-
-## 🔄 Model Switching & Context Handling
-
-### How Context is Carried Between Models
-
-When you switch models mid-conversation, **the full conversation context IS maintained**. Here's how it works:
-
-- **Context Window**: The system uses a sliding context window (default: **10 turns = 20 messages**) to manage memory
-- **Every model gets the same context**: When you switch to a new model, it receives the same windowed messages as the previous model
-- **Automatic persistence**: All previous exchanges are stored in the conversation's message history and turn logs
-- **Growing context**: Each turn adds to the conversation history, so subsequent models can see the full conversation up to the context window limit
-
-### Example Flow
-```
-Turn 1: You ask about quantum computing (Model: qwen2.5:32b)
-        → AI responds, context grows
-
-Turn 2: You ask follow-up question (Model: qwen2.5:32b)
-        → AI responds with awareness of Turn 1
-
-Turn 3: You switch to llama2:13b
-        → New model SEES Turns 1-2 context automatically
-        → You ask a question about the previous discussion
-        → New model answers with full context from previous turns
-
-Turn 4+: Continue with llama2:13b (or switch again)
-         → Each model has access to the same context window
-```
-
-**Technical Details:**
-- Context window size is configurable via `CONTEXT_WINDOW_SIZE` in `config.py` (default: 10 turns)
-- When context exceeds the window, older turns are dropped to manage token usage
-- The model selection is saved to browser localStorage so your preference persists across sessions
-
-## 📝 Example Workflow
+### Environment Variables (.env)
 
 ```bash
-# Start conversation
-Click "New Conversation" button
+# API Keys
+ANTHROPIC_API_KEY=sk-ant-...
+GOOGLE_API_KEY=AIza...
 
-# Chat naturally
-You: "What is quantum computing?"
-AI: [Response appears with turn #1, model, response time]
-
-You: "How does it compare to classical computing?"
-AI: [Response appears with turn #2 - maintains context]
-
-You: "What are the key challenges?"
-AI: [Response appears with turn #3 - still maintains context]
-
-# Switch models if desired
-Change model dropdown to "llama2:13b"
-
-You: "Summarize our discussion"
-AI: [Response with new model, maintains full context]
-
-# End conversation
-Click "End & Save" button
-→ Conversation archived with full metadata
+# Optional: Override defaults
+OLLAMA_HOST=http://127.0.0.1:11434
+APP_PORT=5005
 ```
 
-## 🔍 Data Analysis
+### Model Abbreviations
 
-The CSV format makes it easy to analyze your conversations:
+Models are abbreviated in file names for brevity:
+- `CS45` - Claude Sonnet 4.5
+- `CO41` - Claude Opus 4.1
+- `CH45` - Claude Haiku 4.5
+- `G25F` - Gemini 2.5 Flash
+- `G25P` - Gemini 2.5 Pro
+- `QW32` - Qwen 2.5:32b
+- See `config.py` for full list
 
-```python
-import pandas as pd
+### Cost Tracking
 
-# Load conversation data
-conversations = pd.read_csv('logs/conversations.csv')
-print(f"Total conversations: {len(conversations)}")
-print(f"Average duration: {conversations['duration_seconds'].mean():.1f}s")
-print(f"Average turns: {conversations['total_turns'].mean():.1f}")
+Pricing per 1M tokens (input/output):
+- **Claude Sonnet 4.5**: $3/$15
+- **Claude Opus 4.1**: $15/$75
+- **Claude Haiku 4.5**: $0.80/$4
+- **Gemini 2.5 Flash**: $0.075/$0.30
+- **Gemini 2.5 Pro**: $1.25/$5.00
 
-# Load turn data
-turns = pd.read_csv('logs/turns.csv')
-print(f"Total turns: {len(turns)}")
-print(f"Average response time: {turns['response_time_seconds'].mean():.2f}s")
-print(f"Models used: {turns['model'].value_counts()}")
-```
+## 📊 Recent Updates
 
-## 🛠️ Configuration
+### Phase 4: Auto-Summary Feature (PR #7)
+- Automatic 2-3 sentence summaries for all responses
+- Collapsible UI display with yellow styling
+- Summaries placed at top of DOCX files
+- Works for single and multi-model comparisons
 
-### Environment Variables
+### Phase 5: Bug Fixes (PR #8)
+- Empty folder cleanup on startup
+- Auto-save on page close
+- Periodic activity checks
+- Prevents data loss
+
+### Phase 1-3: External Models & Cost Tracking (PR #6)
+- Claude and Gemini API integration
+- Real-time cost tracking and display
+- Model abbreviation system
+- Simplified file naming
+
+## 🛠️ Development
+
+### Project Structure
+- **Modular Design** - Each file has a single responsibility
+- **Type Hints** - Modern Python with type annotations
+- **Error Handling** - Comprehensive try/catch blocks
+- **Clean Code** - Following CLAUDE.md guidelines
+
+### Adding a New Model
+1. Add to `llm_client.py`:
+   - Create `call_newmodel()` function
+   - Add to `call_llm()` router
+   - Add to `get_newmodel_models()`
+2. Update `config.py`:
+   - Add abbreviation to `MODEL_ABBREVS`
+   - Add pricing to `MODEL_PRICING` (if paid)
+3. Test with a conversation
+
+### Running Tests
 ```bash
-export OLLAMA_HOST="http://127.0.0.1:11434"  # Ollama API endpoint
-export OLLAMA_MODEL="qwen2.5:32b-instruct"   # Default model
-export PORT="5005"                            # Flask port
+# Start the app
+python main.py
+
+# Open browser and test features manually
+# Or use curl for API testing:
+curl -X POST http://127.0.0.1:5005/conversation/new \
+  -H "Content-Type: application/json" \
+  -d '{"session_id": "test"}'
 ```
 
-### Custom Port
+## 📝 API Documentation
+
+See `API_REFERENCE.md` for complete API documentation.
+
+### Quick Examples
+
+**Create Conversation:**
 ```bash
-PORT=8080 python main.py
+curl -X POST http://127.0.0.1:5005/conversation/new \
+  -H "Content-Type: application/json" \
+  -d '{"session_id": "my-session"}'
 ```
 
-## 📚 Documentation
-
-### Full Documentation Files
-
-1. **CHANGELOG_v3.md**
-   - Detailed feature list
-   - Migration from v2
-   - Installation guide
-   - Troubleshooting
-
-2. **COMPARISON_v2_v3.md**
-   - Side-by-side comparison
-   - When to use which version
-   - Migration strategies
-   - Architecture differences
-
-3. **API_REFERENCE.md**
-   - Complete API documentation
-   - Request/response examples
-   - cURL examples
-   - Python/Bash scripts
-
-## 🔑 Key Differences from v2
-
-| Feature | v2 | v3 |
-|---------|----|----|
-| **Model** | Single-turn or N-turn window | Full conversations |
-| **UI** | Prompt → Result | Chat interface |
-| **Context** | Auto-clears after N | Persists until ended |
-| **Tracking** | Per-turn only | Per-turn + Per-conversation |
-| **Export** | Daily batches | Individual conversations |
-
-## 🎨 UI Features
-
-- **Real-time chat history** - See all messages
-- **Color-coded messages** - User vs Assistant
-- **Metadata display** - Turn #, model, response time
-- **Auto-scroll** - Always see latest message
-- **Keyboard shortcuts** - Enter to send, Shift+Enter for newline
-- **Loading states** - Visual feedback during generation
-- **Status indicators** - Current turn count and model
-- **Responsive design** - Works on mobile and desktop
-
-## 📦 Export Examples
-
-### Export as JSON
+**Send Message:**
 ```bash
-curl -O http://127.0.0.1:5005/conversation/export/conv_20250111_120530_a1b2c3d4?fmt=json
+curl -X POST http://127.0.0.1:5005/conversation/send \
+  -H "Content-Type: application/json" \
+  -d '{
+    "conversation_id": "conv_20251124_130026_068c611a",
+    "model": "gemma3:4b",
+    "prompt": "What is Python?"
+  }'
 ```
 
-### Export as Markdown
+**Compare Models:**
 ```bash
-curl -O http://127.0.0.1:5005/conversation/export/conv_20250111_120530_a1b2c3d4?fmt=md
+curl -X POST http://127.0.0.1:5005/conversation/compare \
+  -H "Content-Type: application/json" \
+  -d '{
+    "conversation_id": "conv_20251124_130026_068c611a",
+    "models": ["gemma3:1b", "gemma3:4b"],
+    "prompt": "Explain recursion"
+  }'
 ```
 
-### List All Conversations
-```bash
-curl http://127.0.0.1:5005/conversations/list | jq
-```
+## 🤝 Contributing
 
-## 🔒 Security Note
-
-**This application is designed for LOCAL USE ONLY.**
-
-For production deployment:
-- Add authentication
-- Implement rate limiting
-- Sanitize inputs
-- Use HTTPS
-- Configure CORS properly
-
-## 🐛 Troubleshooting
-
-### "Conversation not found" error
-→ Server was restarted. Click "New Conversation" to start fresh.
-
-### Pandoc errors
-→ DOCX export requires Pandoc. Either install it or ignore .docx files.
-
-### Ollama connection errors
-→ Ensure Ollama is running: `ollama serve`
-
-### Model not found
-→ Pull the model: `ollama pull model-name`
-
-## 💡 Tips
-
-1. **End conversations regularly** to free up memory
-2. **Use model switching** to try different approaches
-3. **Export important conversations** for archival
-4. **Monitor turn counts** to track conversation complexity
-5. **Check response times** to optimize model selection
-
-## 🎯 Use Cases
-
-- **Research interviews** - Track multi-turn explorations
-- **Learning sessions** - Maintain educational context
-- **Problem solving** - Keep context across complex questions
-- **Creative writing** - Build narratives over time
-- **Code assistance** - Maintain project context
-- **Data analysis** - Track analytical conversations
-
-## 📈 Performance
-
-### Memory Usage
-- Each active conversation stays in memory
-- End conversations to free memory
-- No hard limits, but monitor for very long conversations
-
-### Response Time
-- Grows slightly with conversation length (more context)
-- Depends on model's context window handling
-- Tracked per-turn for analysis
-
-### Disk Usage
-- One directory per conversation
-- Subdirectories for each turn
-- CSV logs append-only (efficient)
-
-## 🔄 Updates & Extensions
-
-### Potential Future Features
-- Resume archived conversations
-- Search through conversation history
-- Conversation tagging/labeling
-- Multi-conversation export
-- Response regeneration
-- Conversation branching
-- Streaming responses
-- Voice input/output
+1. Follow the modular structure
+2. Add type hints to functions
+3. Update documentation
+4. Test thoroughly
+5. Follow CLAUDE.md guidelines (minimal changes, preserve features)
 
 ## 📄 License
 
-This is a personal tool for logging LLM interactions. Use and modify as needed.
+See repository for license information.
 
 ## 🙏 Credits
 
-Built with:
-- **Flask** - Web framework
-- **Ollama** - Local LLM runtime
-- **React + Material-UI** - Frontend
-- **Pandoc** - Document conversion (optional)
+- Built with Flask, React, and Material-UI
+- Powered by Ollama, Anthropic Claude, and Google Gemini
+- Auto-summarization using the same models that generate responses
 
 ---
 
-## Quick Reference Card
-
-```
-┌─────────────────────────────────────────────┐
-│  LOCAL LLM LOGGER V3 - QUICK REFERENCE      │
-├─────────────────────────────────────────────┤
-│  Start:    python main.py                   │
-│  URL:      http://127.0.0.1:5005/          │
-│  Logs:     logs/*.csv                       │
-│  Data:     conversations/conv_*/            │
-├─────────────────────────────────────────────┤
-│  UI:       New Conversation → Chat → End   │
-│  Keys:     Enter (send), Shift+Enter (line)│
-│  Export:   /conversation/export/<id>?fmt=   │
-│  List:     /conversations/list              │
-└─────────────────────────────────────────────┘
-```
-
-**Ready to start logging? Run the script and open your browser!** 🚀
+**Questions or issues?** Check the existing documentation files:
+- `CHANGELOG_v3.md` - Version history and migration guide
+- `COMPARISON_v2_v3.md` - Comparison with previous version
+- `API_REFERENCE.md` - Complete API documentation
+- `MODULAR_STRUCTURE.md` - Detailed architecture guide
+- `TODO.md` - Implementation roadmap and completed phases
