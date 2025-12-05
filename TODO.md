@@ -25,11 +25,12 @@ Update `handleKeyPress` to check `compareMode` and call the appropriate function
 - [x] Read and understand the code
 - [x] Identify the bug location (frontend.py:474-477)
 - [x] Create plan in TODO.md
-- [ ] Commit and push current changes
-- [ ] Create new git branch for this bug fix
-- [ ] Update `handleKeyPress` function to check compareMode
-- [ ] Test the fix
-- [ ] Update TODO.md review section
+- [x] Commit and push current changes
+- [x] Create new git branch for this bug fix (fix/compare-mode-enter-key)
+- [x] Update `handleKeyPress` function to check compareMode
+- [x] Flask app restarted successfully
+- [ ] Manual testing required (user to test in browser)
+- [x] Update TODO.md review section
 - [ ] Create pull request
 
 ### Changes to Make
@@ -65,3 +66,54 @@ const handleKeyPress = (ev) => {
 - [ ] Type a prompt and press Enter
 - [ ] Verify all 6 models run in parallel
 - [ ] Exit compare mode and verify single model still works
+
+---
+
+## REVIEW: Compare Mode Enter Key Fix (2025-12-05)
+
+### Issue
+When in compare mode with multiple models selected, pressing Enter would only run a single model (the default model) instead of running all selected models in parallel comparison.
+
+### Root Cause
+The `handleKeyPress` function in frontend.py did not check the `compareMode` state. It always called `sendMessage()` which runs a single model, even when the user was in compare mode and had selected multiple models.
+
+### Changes Made
+**File**: `frontend.py` (lines 474-483)
+
+**Before**:
+```javascript
+const handleKeyPress = (ev) => {
+  if (ev.key === 'Enter' && !ev.shiftKey) {
+    ev.preventDefault();
+    sendMessage();
+  }
+};
+```
+
+**After**:
+```javascript
+const handleKeyPress = (ev) => {
+  if (ev.key === 'Enter' && !ev.shiftKey) {
+    ev.preventDefault();
+    if (compareMode) {
+      compareModels();
+    } else {
+      sendMessage();
+    }
+  }
+};
+```
+
+### Impact
+- **Minimal code change**: Only modified the `handleKeyPress` function to add a conditional check
+- **No features removed**: All existing functionality preserved
+- **Better UX**: Compare mode now works as expected when pressing Enter
+- **No breaking changes**: Single model mode continues to work as before
+
+### Testing Required
+User should test:
+1. Enter compare mode and select 6 models
+2. Type a prompt and press Enter
+3. Verify all 6 models run in parallel (not just one)
+4. Exit compare mode
+5. Verify single model still works when pressing Enter
