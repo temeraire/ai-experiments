@@ -3832,7 +3832,6 @@ Error: SyntaxError: Unexpected token '<', "<!doctype "... is not valid JSON
     - All comparison results now persist in the conversation directory
 
   What This Achieves:
-
   ✅ Comparison results are now saved to disk in conversations/conv_ID/turn_XXX_comparison_SLUG/
   ✅ Multiple file formats: comparison.jsonl, comparison.md, comparison.html, comparison.docx
   ✅ Included in conversation summary when saving conversation.json
@@ -3843,4 +3842,228 @@ Error: SyntaxError: Unexpected token '<', "<!doctype "... is not valid JSON
   The app is now running at http://127.0.0.1:5005 - you can test the comparison feature and you'll see the results are now saved to your
   conversation history!
 
+    What's included:
+  - Multi-model comparison with side-by-side view
+  - Modular architecture refactoring (7 focused modules)
+  - Model selection persistence
+  - Conversation management features
+  - Complete artifact generation and persistence
 
+Perfect! All the changes have been implemented successfully. Let me create a summary:
+
+  Summary of Changes
+
+  I've successfully implemented real-time streaming comparison mode for your multi-model LLM logger! Here's what was done:
+
+  Changes Made:
+
+  1. Backend (routes.py) - Added SSE Streaming Endpoint
+
+  - Created new /conversation/compare-stream endpoint (lines 200-308)
+  - Uses Server-Sent Events (SSE) to stream results as each model completes
+  - Models still run in parallel using ThreadPoolExecutor (already worked!)
+  - Sends three types of events:
+    - init - confirms which models are being compared
+    - result - each model's response as it finishes
+    - complete - final event with all results and metadata
+
+  2. Frontend (frontend.py) - Real-Time UI Updates
+
+  - Added modelStatuses state to track per-model status (pending/running/complete/error)
+  - Replaced synchronous compareModels() function with streaming version using fetch API
+  - Removed single-model dropdown when in compare mode - replaced with "Comparing N models" label
+  - Updated comparison results display to show:
+    - Individual spinning throbbers for models that are running
+    - Real-time status updates as each model completes
+    - Response displays immediately when available (not waiting for all)
+    - Per-model response times and error states
+
+  3. UI Improvements
+
+  - Each model gets its own card in the comparison grid
+  - Shows animated throbber while model is generating
+  - Displays "Generating response..." while waiting
+  - Shows response time when complete
+  - Immediate visual feedback - no more waiting in the dark!
+
+  How It Works Now:
+
+  1. Enter compare mode - click "Compare Models" button
+  2. Select models - use the chip interface (manual selection preserved as you requested)
+  3. Send prompt - all selected models start running immediately in parallel
+  4. Watch results appear - each model's response appears as soon as it finishes
+  5. No waiting - faster models show results first, slower ones fill in later
+
+  Testing:
+
+  - ✅ Server starts without errors
+  - ✅ Frontend loads correctly
+  - ✅ Models endpoint working
+  - ✅ All code changes implemented
+
+  1. Please first read the TODO.md file and follow the implementation plan
+  2. Key points to emphasize:
+    - Follow the CLAUDE.md guidelines (minimal changes, preserve ALL existing features)
+    - Create a new git branch before starting work
+    - Test each phase before moving to the next
+    - The Claude API key is already configured in .env
+    - Start with Phase 1 (External Model Integration)
+  3. Specific first steps:
+    - Test that Claude API is working with the existing key
+    - Then proceed with adding kimi-k2-thinking:cloud and Gemini integration
+  4. Important reminders:
+    - Don't remove any existing features
+    - Make changes as simple as possible
+    - Comment out (don't delete) the .md, .jsonl, and .html file generation
+    - Test thoroughly before marking tasks complete
+
+
+⏺ Now let me provide a summary of what was completed in Phase 1:
+
+  Phase 1 Summary: External Model Integration - COMPLETED
+
+  What was done:
+
+  1. Created new git branch: feature/external-model-integration
+  2. Claude API (Already Working):
+    - API key was already configured in .env
+    - Tested successfully with claude-3-5-haiku-20241022
+    - Response: "Hi there! How are you?"
+  3. Gemini Integration (NEW - Added):
+    - Installed google-generativeai SDK (required installing grpcio first)
+    - Found GOOGLE_API_KEY was already in .env
+    - Added to config.py: HAS_GEMINI check and GOOGLE_API_KEY config
+    - Added to llm_client.py:
+        - is_gemini_model() function
+      - call_gemini() function with proper message format conversion
+      - get_gemini_models() returning 5 models
+    - Updated routes.py to include Gemini models in the model list
+    - Tested successfully: Gemini API responds with "Hello!"
+  4. kimi-k2-thinking:cloud (Partial):
+    - Model pulled successfully from Ollama
+    - Shows in ollama list
+    - BLOCKED: Requires Moonshot AI API authentication (401 Unauthorized error)
+    - This is a cloud-hosted model, not a local one
+
+  Files Modified:
+
+  - config.py - Added Gemini config
+  - llm_client.py - Added Gemini functions
+  - routes.py - Added Gemini to model list
+  - TODO.md - Updated with progress
+
+  Phase 2 Completed and Committed
+
+  Commit: fd0efa1 - Feature: Add UI cost visibility for paid models
+
+  What was implemented:
+
+  1. Model Pricing Configuration (config.py):
+    - Added MODEL_PRICING dict with pricing for 11 models (6 Claude + 5 Gemini)
+    - Added is_paid_model() function to identify API models
+    - Added get_model_cost() function to calculate costs based on token usage
+  2. API Updates (routes.py):
+    - /models/list now returns modelsWithMetadata array with isPaid and pricing info
+    - Send message response now includes cost field
+  3. Frontend Updates (frontend.py):
+    - Model dropdown shows paid models with green coloring:
+        - Light green (#c8e6c9) when available
+      - Dark green (#2e7d32) when selected
+    - $ prefix shows which models cost money
+    - Compare mode chips also color-coded for paid models
+    - Cost display chip shows cumulative conversation cost
+    - Cost resets when starting new conversation
+
+     Phase 3 Complete!
+
+  Summary of Phase 3 changes:
+  - Model abbreviation system: Added MODEL_ABBREVS dictionary with 11 predefined abbreviations (Claude: CS45, CO41, CH45, etc.
+   | Gemini: G25F, G25P, etc.)
+  - Dynamic abbreviation fallback: Ollama models get auto-generated abbreviations (e.g., qwen2.5:32b-instruct → Q532I)
+  - Folder naming: Now includes model abbreviation (e.g., turn_001_CS45_prompt-slug)
+  - File naming: DOCX files now named turn{num}_{model_abbrev}.docx
+  - Output simplification: Commented out .md and .html generation, keeping only .docx and .jsonl
+
+Phase 4 Implementation Plan: Auto-Summary Feature
+
+  I've created a new git branch feature/auto-summary and analyzed the codebase. Here's my plan:
+
+  Current Flow Analysis (Completed)
+
+  - Single model responses: User sends prompt → routes.py calls call_llm() → saves via save_turn_artifacts() → returns to UI
+  - Multi-model comparisons: Similar flow but calls multiple models in parallel → saves via save_comparison_artifacts()
+  - DOCX generation happens in storage.py using pypandoc
+
+  Implementation Steps
+
+  1. Create Summary Generation Function (llm_client.py)
+  - Add generate_summary(model: str, response: str) -> str
+  - Use same model that generated the response
+  - Simple prompt: "Summarize the following response in 2-3 concise sentences, highlighting the key points:"
+
+  2. Update Data Models (models.py)
+  - Add summary field to turn data in add_turn() method
+  - Add summary field to comparison results in add_comparison_turn()
+  - Store summaries in conversation.json
+
+  3. Update API Endpoints (routes.py)
+  - /conversation/send: Generate summary after response, include in return data
+  - /conversation/compare-stream: Generate summary for each model's response
+  - Return summaries in API responses
+
+  4. Update Storage (storage.py)
+  - save_turn_artifacts(): Add summary parameter, place at top of DOCX
+  - save_comparison_artifacts(): Add summaries for each model's section
+  - Format: "## Summary\n\n{summary}\n\n---\n\n## Prompt..."
+
+  5. Update UI (frontend.py)
+  - Add collapsible summary section above each response
+  - Use HTML <details>/<summary> tags for native collapse
+  - Style with light background, slightly smaller font
+
+  6. Testing
+  - Test single model with summary
+  - Test multi-model comparison with summaries
+  - Verify DOCX files have summaries at top
+  - Verify UI collapsible summaries work
+
+  Key Design Decisions
+
+  1. Minimal changes: Each change impacts only what's needed
+  2. Same model for summary: The model that generates a response also summarizes it (more coherent, understands its own
+  output)
+  3. Preserves all existing features: No removal of functionality, just adds summaries
+  4. Simple implementation: 2-3 sentence summaries, no complex logic
+
+Branch Status:
+  - Branch: feature/auto-summary
+  - Commits: 2
+  - Ready for: Merge to main or manual testing via browser
+
+  ---
+  How to Test in Browser:
+
+  1. Open http://127.0.0.1:5005 in your browser
+  2. Click "New Conversation"
+  3. Select any model and send a prompt
+  4. Look for the yellow collapsible "Summary" box above the response
+  5. Click "Summary" to expand/collapse it
+  6. For multi-model comparison:
+    - Click "Compare Models"
+    - Select 2+ models
+    - Send a prompt
+    - Each model's response will have its own summary
+
+  Next Steps:
+
+  The feature is fully implemented and tested! You can:
+  1. Test it manually in the browser at http://127.0.0.1:5005
+  2. Check the generated DOCX files in the conversations folder
+  3. Merge the feature/auto-summary branch when ready
+  4. Move on to Phase 5 (Bug Fixes) if desired
+
+  Would you like me to help with anything else, or shall we proceed to the next phase?
+
+> Let's proceed to the next phase! 
+
+⏺ Let me create a new branch for Phase 5 and plan the work:

@@ -15,6 +15,24 @@ def call_chat(model: str, messages: List[Dict[str, str]]) -> str:
     url = f"{OLLAMA_HOST}/api/chat"
     payload = {"model": model, "messages": messages, "stream": False}
     r = requests.post(url, json=payload, timeout=600)
+
+    # Check for 401 Unauthorized (cloud models requiring authentication)
+    if r.status_code == 401:
+        error_data = r.json()
+        signin_url = error_data.get("signin_url", "")
+
+        if signin_url:
+            raise RuntimeError(
+                f"Model '{model}' requires authentication with Ollama Cloud. "
+                f"This is a cloud-hosted model that needs you to sign in. "
+                f"Please visit: {signin_url}"
+            )
+        else:
+            raise RuntimeError(
+                f"Model '{model}' requires authentication. "
+                f"Run 'ollama pull {model}' or check if you need to sign in to Ollama Cloud."
+            )
+
     r.raise_for_status()
     return r.json().get("message", {}).get("content", "")
 
