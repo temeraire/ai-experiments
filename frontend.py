@@ -474,7 +474,11 @@ function App() {{
   const handleKeyPress = (ev) => {{
     if (ev.key === 'Enter' && !ev.shiftKey) {{
       ev.preventDefault();
-      sendMessage();
+      if (compareMode) {{
+        compareModels();
+      }} else {{
+        sendMessage();
+      }}
     }}
   }};
 
