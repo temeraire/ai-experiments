@@ -7,7 +7,7 @@ from typing import List, Dict
 
 import requests
 
-from config import OLLAMA_HOST, DEFAULT_MODEL, ANTHROPIC_API_KEY, HAS_CLAUDE, GOOGLE_API_KEY, HAS_GEMINI
+from config import OLLAMA_HOST, DEFAULT_MODEL, ANTHROPIC_API_KEY, HAS_CLAUDE, GOOGLE_API_KEY, HAS_GEMINI, TOGETHER_API_KEY, HAS_TOGETHER
 
 
 def call_chat(model: str, messages: List[Dict[str, str]]) -> str:
@@ -103,12 +103,45 @@ def call_gemini(model: str, messages: List[Dict[str, str]]) -> str:
     return response.text
 
 
+def is_together_model(model: str) -> bool:
+    """Check if a model name is a Together.ai model"""
+    return model.startswith("together/")
+
+
+def call_together(model: str, messages: List[Dict[str, str]]) -> str:
+    """Call Together.ai API (OpenAI-compatible)"""
+    if not HAS_TOGETHER:
+        raise RuntimeError("Together.ai support not available. Install: pip install openai")
+
+    if not TOGETHER_API_KEY:
+        raise RuntimeError("TOGETHER_API_KEY environment variable not set")
+
+    import openai
+    client = openai.OpenAI(
+        api_key=TOGETHER_API_KEY,
+        base_url="https://api.together.xyz/v1"
+    )
+
+    # Strip the "together/" prefix to get the actual model ID
+    model_id = model[len("together/"):]
+
+    response = client.chat.completions.create(
+        model=model_id,
+        messages=messages,
+        max_tokens=8192
+    )
+
+    return response.choices[0].message.content
+
+
 def call_llm(model: str, messages: List[Dict[str, str]]) -> str:
     """Universal LLM caller - routes to appropriate API"""
     if is_claude_model(model):
         return call_claude(model, messages)
     elif is_gemini_model(model):
         return call_gemini(model, messages)
+    elif is_together_model(model):
+        return call_together(model, messages)
     else:
         return call_chat(model, messages)
 
@@ -141,6 +174,20 @@ def get_gemini_models() -> List[str]:
         "gemini-2.0-flash",        # Previous generation Flash
         "gemini-1.5-pro",          # Previous generation Pro
         "gemini-1.5-flash",        # Previous generation Flash
+    ]
+
+
+def get_together_models() -> List[str]:
+    """Get list of available Together.ai models"""
+    if not HAS_TOGETHER or not TOGETHER_API_KEY:
+        return []
+
+    return [
+        "together/meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8",
+        "together/meta-llama/Llama-4-Scout-17B-16E-Instruct",
+        "together/deepseek-ai/DeepSeek-R1",
+        "together/Qwen/Qwen3-235B-A22B-fp8",
+        "together/moonshotai/Kimi-K2-Instruct",
     ]
 
 

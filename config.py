@@ -33,6 +33,12 @@ try:
 except Exception:
     HAS_GEMINI = False
 
+try:
+    import openai
+    HAS_TOGETHER = True
+except Exception:
+    HAS_TOGETHER = False
+
 # Ollama Configuration
 OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434")
 DEFAULT_MODEL = os.environ.get("OLLAMA_MODEL", "qwen2.5:32b-instruct")
@@ -42,6 +48,9 @@ ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 
 # Gemini API Configuration
 GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY", "")
+
+# Together.ai API Configuration
+TOGETHER_API_KEY = os.environ.get("TOGETHER_API_KEY", "")
 
 # Context Window Configuration
 # How many recent turns to keep in context (0 = unlimited)
@@ -81,11 +90,18 @@ MODEL_PRICING = {
     "gemini-2.0-flash": {"input": 0.075, "output": 0.30},
     "gemini-1.5-pro": {"input": 1.25, "output": 5.00},
     "gemini-1.5-flash": {"input": 0.075, "output": 0.30},
+
+    # Together.ai models - approximate pricing (per 1M tokens)
+    "together/meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8": {"input": 0.27, "output": 0.85},
+    "together/meta-llama/Llama-4-Scout-17B-16E-Instruct": {"input": 0.18, "output": 0.59},
+    "together/deepseek-ai/DeepSeek-R1": {"input": 3.00, "output": 7.00},
+    "together/Qwen/Qwen3-235B-A22B-fp8": {"input": 0.20, "output": 0.60},
+    "together/moonshotai/Kimi-K2-Instruct": {"input": 0.20, "output": 0.60},
 }
 
 def is_paid_model(model_name: str) -> bool:
     """Check if a model is a paid API model (not local/Ollama)"""
-    return model_name.startswith("claude-") or model_name.startswith("gemini-")
+    return model_name.startswith("claude-") or model_name.startswith("gemini-") or model_name.startswith("together/")
 
 def get_model_cost(model_name: str, input_tokens: int, output_tokens: int) -> float:
     """Calculate cost for a model call in USD"""
@@ -115,6 +131,13 @@ MODEL_ABBREVS = {
     "gemini-2.0-flash": "G20F",
     "gemini-1.5-pro": "G15P",
     "gemini-1.5-flash": "G15F",
+
+    # Together.ai models
+    "together/meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8": "TL4M",
+    "together/meta-llama/Llama-4-Scout-17B-16E-Instruct": "TL4S",
+    "together/deepseek-ai/DeepSeek-R1": "TDR1",
+    "together/Qwen/Qwen3-235B-A22B-fp8": "TQ3",
+    "together/moonshotai/Kimi-K2-Instruct": "TKK2",
 }
 
 def get_model_abbrev(model_name: str) -> str:

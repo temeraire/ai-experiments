@@ -13,7 +13,7 @@ from flask import Flask, request, jsonify, Response, send_file
 
 from config import CONVERSATIONS_DIR, CONTEXT_WINDOW_SIZE, is_paid_model, MODEL_PRICING, get_model_cost
 from models import Conversation
-from llm_client import call_llm, get_ollama_models, get_claude_models, get_gemini_models, generate_summary
+from llm_client import call_llm, get_ollama_models, get_claude_models, get_gemini_models, get_together_models, generate_summary
 from storage import save_turn_artifacts, save_comparison_artifacts, export_conversation_to_markdown, export_conversation_to_docx
 from frontend import generate_index_html
 
@@ -592,9 +592,10 @@ def register_routes(app: Flask):
         ollama_models = get_ollama_models()
         claude_models = get_claude_models()
         gemini_models = get_gemini_models()
+        together_models = get_together_models()
 
-        # Combine models: Claude first, then Gemini, then Ollama
-        all_model_names = claude_models + gemini_models + ollama_models
+        # Combine models: Claude first, then Gemini, then Together, then Ollama
+        all_model_names = claude_models + gemini_models + together_models + ollama_models
 
         # Build model list with metadata
         models_with_metadata = []
@@ -738,3 +739,61 @@ def register_routes(app: Flask):
             })
         except Exception as e:
             return jsonify({"error": f"failed to read file: {e}"}), 500
+
+    # --------------------------
+    # Music: prompt -> ABC notation
+    # --------------------------
+
+    ABC_SYSTEM = (
+        "You are a composer that writes short pieces in ABC notation. "
+        "Respond with ONLY a single ABC notation block inside a fenced code block "
+        "labelled abc, like ```abc ... ```. Do not include any prose, explanation, "
+        "or text outside the fenced block. The ABC must include X:, T:, M:, L:, Q:, K: headers."
+    )
+
+    @app.post("/music/generate")
+    def music_generate():
+        import re
+        data = request.get_json(force=True)
+        model = (data.get("model") or "").strip()
+        user_prompt = data.get("prompt", "").strip()
+        key = data.get("key", "C")
+        meter = data.get("meter", "4/4")
+        tempo = int(data.get("tempo", 100))
+        bars = int(data.get("bars", 16))
+
+        if not user_prompt:
+            return jsonify({"error": "missing prompt"}), 400
+        if not model:
+            return jsonify({"error": "missing model"}), 400
+
+        full_prompt = (
+            f"{ABC_SYSTEM}\n\n"
+            f"Compose approximately {bars} bars in key {key}, meter {meter}, tempo {tempo} bpm.\n"
+            f"Description: {user_prompt}\n"
+            f"Return only the ABC code block."
+        )
+
+        try:
+            result = call_llm(model, [{"role": "user", "content": full_prompt}])
+        except Exception as e:
+            return jsonify({"error": f"LLM call failed: {e}"}), 500
+
+        # Extract ABC from fenced block or raw X: header
+        abc = ""
+        m = re.search(r"```(?:abc)?\s*\n(.*?)```", result, re.DOTALL | re.IGNORECASE)
+        if m:
+            abc = m.group(1).strip()
+        else:
+            m = re.search(r"(X:\s*\d.*)", result, re.DOTALL)
+            if m:
+                abc = m.group(1).strip()
+
+        if not abc:
+            return jsonify({"error": "Model did not return valid ABC notation", "raw": result}), 422
+
+        return jsonify({
+            "abc": abc,
+            "model": model,
+            "paths": {"turn_dir": ""},
+        })
