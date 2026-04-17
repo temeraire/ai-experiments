@@ -20,14 +20,14 @@ from stable_baselines3.common.callbacks import (
 )
 from stable_baselines3.common.monitor import Monitor
 
-from taylor_sim.envs import TabletopMovingGazeEnv
-from taylor_sim.envs.flatten_wrapper import FlattenVisionWrapper
-from taylor_sim.agents.train_staged import (
+from alien_baby.envs import TabletopMovingGazeEnv
+from alien_baby.envs.flatten_wrapper import FlattenVisionWrapper
+from alien_baby.agents.train_staged import (
     MetricsCallback,
     _transfer_proprio_weights,
     _evaluate,
 )
-from taylor_sim.agents.train_v5 import ConsistencySAC
+from alien_baby.agents.train_v5 import ConsistencySAC
 
 RESULTS_DIR = pathlib.Path(__file__).parent.parent / "results"
 RESULTS_DIR.mkdir(exist_ok=True)

@@ -1,5 +1,5 @@
 """
-v6: Taylor-staged training on the gaze env.
+v6: staged training on the gaze env.
 
 Stage 1: 9-dim proprio (3 joint pos + 3 vel + 1 touch + 2 head angles), no
 vision. Agent learns to reach by touch. Head actions 3-4 exist but don't
@@ -20,14 +20,14 @@ from stable_baselines3 import SAC
 from stable_baselines3.common.callbacks import EvalCallback
 from stable_baselines3.common.monitor import Monitor
 
-from taylor_sim.envs import TabletopGazeEnv
-from taylor_sim.envs.flatten_wrapper import FlattenVisionWrapper
-from taylor_sim.agents.train_staged import (
+from alien_baby.envs import TabletopGazeEnv
+from alien_baby.envs.flatten_wrapper import FlattenVisionWrapper
+from alien_baby.agents.train_staged import (
     MetricsCallback,
     _transfer_proprio_weights,
     _evaluate,
 )
-from taylor_sim.agents.train_v5 import ConsistencySAC
+from alien_baby.agents.train_v5 import ConsistencySAC
 
 RESULTS_DIR = pathlib.Path(__file__).parent.parent / "results"
 RESULTS_DIR.mkdir(exist_ok=True)

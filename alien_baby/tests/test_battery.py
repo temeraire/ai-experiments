@@ -1,5 +1,5 @@
 """
-Test battery for comparing Taylor (staged) vs baseline agents.
+Test battery for comparing the source theorist (staged) vs baseline agents.
 
 Test 1: Action-based equivalence — do agents group objects by affordance?
 Test 2: Cross-modal transfer — does seeing X activate same state as touching X?
@@ -13,8 +13,8 @@ import torch
 from stable_baselines3 import SAC
 from stable_baselines3.common.monitor import Monitor
 
-from taylor_sim.envs import TabletopReachEnv
-from taylor_sim.envs.flatten_wrapper import FlattenVisionWrapper
+from alien_baby.envs import TabletopReachEnv
+from alien_baby.envs.flatten_wrapper import FlattenVisionWrapper
 
 RESULTS_DIR = pathlib.Path(__file__).parent.parent / "results"
 
@@ -235,7 +235,7 @@ def run_all_tests(staged_path=None, allatonce_path=None, fusion_path=None):
 
     if staged_path and pathlib.Path(staged_path + ".zip").exists():
         agents["staged"] = SAC.load(staged_path)
-        print("Loaded staged (Taylor) agent")
+        print("Loaded staged agent")
     if allatonce_path and pathlib.Path(allatonce_path + ".zip").exists():
         agents["allatonce"] = SAC.load(allatonce_path)
         print("Loaded all-at-once agent")

@@ -1,5 +1,5 @@
 """
-Baseline agents for comparison with the staged (Taylor) agent.
+Baseline agents for comparison with the staged agent.
 
 1. All-at-once: Same architecture, all modalities from the start.
 2. Feature-fusion: Separate encoders merged at a fusion layer.
@@ -10,9 +10,9 @@ from stable_baselines3 import SAC
 from stable_baselines3.common.callbacks import EvalCallback
 from stable_baselines3.common.monitor import Monitor
 
-from taylor_sim.envs import TabletopReachEnv
-from taylor_sim.envs.flatten_wrapper import FlattenVisionWrapper
-from taylor_sim.agents.train_staged import MetricsCallback, _evaluate
+from alien_baby.envs import TabletopReachEnv
+from alien_baby.envs.flatten_wrapper import FlattenVisionWrapper
+from alien_baby.agents.train_staged import MetricsCallback, _evaluate
 
 RESULTS_DIR = pathlib.Path(__file__).parent.parent / "results"
 RESULTS_DIR.mkdir(exist_ok=True)

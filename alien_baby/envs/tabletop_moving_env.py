@@ -15,7 +15,7 @@ import pathlib
 import numpy as np
 import mujoco
 
-from taylor_sim.envs.tabletop_gaze_env import TabletopGazeEnv, CAM_HEIGHT, CAM_WIDTH
+from alien_baby.envs.tabletop_gaze_env import TabletopGazeEnv, CAM_HEIGHT, CAM_WIDTH
 
 
 XML_PATH_V7 = str(pathlib.Path(__file__).parent / "tabletop_v7.xml")

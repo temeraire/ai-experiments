@@ -1,14 +1,14 @@
-# Taylor Perception Simulation — Proof of Concept
+# Alien Baby perception simulation — Proof of Concept
 
 ## Goal
-Build a minimal MuJoCo simulation to test whether Taylor's developmental staging and interpenetration (modalities bound through shared action) produces qualitatively different internal representations than standard multimodal RL.
+Build a minimal MuJoCo simulation to test whether the theory's developmental staging and interpenetration (modalities bound through shared action) produces qualitatively different internal representations than standard multimodal RL.
 
 ## Plan
 
 ### Phase 1: Setup
-- [x] Create a new git branch `feature/taylor-simulation`
+- [x] Create a new git branch `feature/perception-simulation`
 - [x] Install dependencies: mujoco, gymnasium, stable-baselines3, torch
-- [x] Create `taylor_sim/` directory structure
+- [x] Create `alien_baby/` directory structure
 - [x] Verify MuJoCo works with a basic test
 
 ### Phase 2: Environment
@@ -50,7 +50,7 @@ Build a minimal MuJoCo simulation to test whether Taylor's developmental staging
 ### Training Performance
 | Agent | Success Rate | Training Budget |
 |-------|-------------|----------------|
-| Staged (Taylor) | 95% | 100K (50K proprio + 50K vision) |
+| Staged | 95% | 100K (50K proprio + 50K vision) |
 | All-at-once | 95% | 100K |
 | Feature-fusion | 90% | 100K |
 
@@ -79,13 +79,13 @@ Build a minimal MuJoCo simulation to test whether Taylor's developmental staging
 | All-at-once | 95% / 13.94 | 30% / -27.34 | 41.27 |
 | Fusion | 90% / 10.64 | 65% / -8.80 | 19.44 |
 
-**KEY FINDING:** The staged (Taylor) agent degrades most gracefully — 70% success even with fully corrupted vision (reward drop of only 17.58). The all-at-once agent crashes hardest (30% success, 41.27 reward drop). This matches Taylor's prediction: interpenetrated representations (vision woven into proprioception pathways) survive modality loss better than fusion-based or jointly-learned representations.
+**KEY FINDING:** The staged agent degrades most gracefully — 70% success even with fully corrupted vision (reward drop of only 17.58). The all-at-once agent crashes hardest (30% success, 41.27 reward drop). This matches the theory's prediction: interpenetrated representations (vision woven into proprioception pathways) survive modality loss better than fusion-based or jointly-learned representations.
 
 ## Review
 - Built a MuJoCo 3-joint planar arm environment (based on Gymnasium Reacher design) with 3 objects, touch sensing, and overhead camera
 - Implemented staged developmental training: proprioception → add vision with weight transfer
 - Key architectural choice: vision flattened into same MLP as proprioception (no separate encoder) — forces interpenetration
-- Trained 3 agents: staged (Taylor), all-at-once, feature-fusion
+- Trained 3 agents: staged, all-at-once, feature-fusion
 - Test battery shows staged agent has (a) highest cross-object activation similarity, (b) highest cross-modal similarity, and (c) most graceful degradation when vision is corrupted
-- The graceful degradation result is the strongest finding — supports Taylor's interpenetration theory over standard feature fusion
+- The graceful degradation result is the strongest finding — supports the interpenetration idea theory over standard feature fusion
 - Cross-modal transfer gap is small — would benefit from more training and more diverse objects

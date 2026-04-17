@@ -1,4 +1,0 @@
-from taylor_sim.envs.tabletop_env import TabletopReachEnv
-from taylor_sim.envs.tabletop_gaze_env import TabletopGazeEnv
-from taylor_sim.envs.tabletop_moving_env import TabletopMovingGazeEnv
-from taylor_sim.envs.platform_creature_env import PlatformCreatureEnv

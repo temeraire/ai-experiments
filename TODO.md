@@ -206,13 +206,13 @@ _(to be filled in after implementation)_
 
 ---
 
-## Taylor v5: consistency-loss follow-on
+## v5: consistency-loss follow-on
 
 ### Goal
 Train a follow-on agent whose vision contribution is pulled toward proprio's manifold via an MSE consistency loss on hidden1 activations. Protects proprio, rewards *confirmation* not *sharpening*.
 
 ### Plan
-- [x] Create `taylor_sim/agents/train_v5.py`:
+- [x] Create `alien_baby/agents/train_v5.py`:
   - Subclass `SAC` → `ConsistencySAC`; override `train()` (copy SB3's, add `λ·MSE(h_full, h_blind)` to actor_loss).
   - `h = latent_pi[1](latent_pi[0](features))`; `obs_blind` zeros pixel cols.
   - Log `train/consistency_loss` to monitor.
@@ -221,7 +221,7 @@ Train a follow-on agent whose vision contribution is pulled toward proprio's man
 - [x] Train 200k steps; evaluate task success (clean + 100% noise).
 - [x] Compute CKA(v5.hidden1, stage1_v3.hidden1) on matched states; expect higher than v3 follow-on.
 - [x] Compute neighbor-consistency equivalence-class ratio; expect ≤ v3 follow-on's 0.27.
-- [x] Append v5 section to `taylor_sim/FINDINGS.md`.
+- [x] Append v5 section to `alien_baby/FINDINGS.md`.
 
 ### Review
 - `train_v5.py`: `ConsistencySAC` subclass overrides `train()` and adds `λ·MSE(h_full, h_blind)` to actor loss. λ=0.1, 200k steps, proprio-drift = 0.0 verified.
@@ -234,7 +234,7 @@ Train a follow-on agent whose vision contribution is pulled toward proprio's man
 ## v6 — Head-mounted gaze camera ("the eye in the head")
 
 ### Motivation
-Up through v5, the agent has a fixed overhead camera — it sees everything all the time. That's not how vision develops. In Taylor's account (confirmed by Chs 6-7 reading), the child has to *orient* to look at what's happening, and depth perception emerges from motion — parallax during locomotion, expansion of retinal images as objects are approached, pair-wise `<, =, >` judgments conditioned to terminal-manipulation responses.
+Up through v5, the agent has a fixed overhead camera — it sees everything all the time. That's not how vision develops. In the theory's account (confirmed by Chs 6-7 reading), the child has to *orient* to look at what's happening, and depth perception emerges from motion — parallax during locomotion, expansion of retinal images as objects are approached, pair-wise `<, =, >` judgments conditioned to terminal-manipulation responses.
 
 The agent needs two things it currently lacks:
 1. **Gaze** — limited field of view that must be pointed
@@ -253,15 +253,15 @@ The agent needs two things it currently lacks:
 - Agent gets 2 new action dims (head gaze)
 - Motion parallax emerges automatically as the arm-mounted scene (held object + background) shifts under head rotation
 
-**Option B — Stereo head cameras (Taylor-faithful):**
+**Option B — Stereo head cameras (theory-faithful):**
 - Two cameras ~30mm apart on the head
 - Agent sees two small images per step
 - Binocular parallax is available as an additional depth cue
-- Consistency loss extended to action level: *both eyes' views should evoke the same reaching action* (Taylor's response-conditioned binocular fusion)
+- Consistency loss extended to action level: *both eyes' views should evoke the same reaching action* (the theory's response-conditioned binocular fusion)
 
 Recommended path: start with A, graduate to B once A works. A is a strict addition to v5; B requires extending the consistency loss.
 
-### The Taylor story this tells
+### The developmental story this tells
 1. Hand gropes, finds the ball by touch (Stage 1 — proprio, as before)
 2. Eyes learn to look toward where the hand is (Stage 2 — gaze emerges)
 3. The agent's motion during reach produces motion parallax in the head camera — depth cue available before stereo
@@ -277,13 +277,13 @@ Split-screen video:
 You watch the ball appear/disappear in the agent's camera as it learns to track. Early episodes: head flails, ball rarely in view. Late episodes: head tracks hand, ball consistently in frame during approach, parallax visible as background shifts against held object.
 
 ### Plan
-- [x] 1. **MuJoCo XML**: `taylor_sim/envs/tabletop_v6.xml` adds a head body at (0,-0.28,0.15) with `head_pan` (z-axis hinge) + `head_tilt` (x-axis hinge) joints. `head_cam` on head, FOV 45°, default tilted 30° downward via xyaxes so neutral head sees table center. Overhead kept for rendering.
-- [x] 2. **Environment**: `taylor_sim/envs/tabletop_gaze_env.py` — `TabletopGazeEnv`. Action 5D (3 arm torque + 2 head position, rescaled [-1,1] → joint ranges). Proprio 9D (adds head pan/tilt angles). Vision from head cam. Reward unchanged from v5 (no reward for looking).
+- [x] 1. **MuJoCo XML**: `alien_baby/envs/tabletop_v6.xml` adds a head body at (0,-0.28,0.15) with `head_pan` (z-axis hinge) + `head_tilt` (x-axis hinge) joints. `head_cam` on head, FOV 45°, default tilted 30° downward via xyaxes so neutral head sees table center. Overhead kept for rendering.
+- [x] 2. **Environment**: `alien_baby/envs/tabletop_gaze_env.py` — `TabletopGazeEnv`. Action 5D (3 arm torque + 2 head position, rescaled [-1,1] → joint ranges). Proprio 9D (adds head pan/tilt angles). Vision from head cam. Reward unchanged from v5 (no reward for looking).
 - [x] 3. **Stage 1**: `train_stage1_v6()` — proprio-only SAC on 9D obs + 5D action. Smoke test: 2k steps → 30% success on blind-proprio task. Full run pending.
 - [x] 4. **Follow-on**: `train_followon_v6()` — v5 `ConsistencySAC` with `proprio_dim=9`, `lambda=0.1`. Verified end-to-end: obs dim 777 (9 + 16×16×3 pixels), Stage 1 weights transfer, proprio-column drift = 0.0, consistency loss computed. Smoke test: 1k steps → 30% success.
 - [x] 5. **Full training runs**: 200k stage1 + 200k followon. Stage 1 = 90% success. Follow-on final checkpoint regressed to 20%; **best EvalCallback checkpoint = 95% clean / 35% full-noise.**
-- [x] 6. **Visualization**: `taylor_sim/visualization/render_v6.py`. Split-screen (overhead + head cam) solo + 2x2 stage1-vs-followon comparison videos. Rendered at seeds 0/1/2; best-checkpoint solo episodes succeed in 17-36 steps.
-- [x] 7. **Evaluation**: `taylor_sim/tests/evaluate_v6.py`. Success, CKA, neighbor-consistency, plus gaze metrics (in_view_frac_near vs in_view_frac_far).
+- [x] 6. **Visualization**: `alien_baby/visualization/render_v6.py`. Split-screen (overhead + head cam) solo + 2x2 stage1-vs-followon comparison videos. Rendered at seeds 0/1/2; best-checkpoint solo episodes succeed in 17-36 steps.
+- [x] 7. **Evaluation**: `alien_baby/tests/evaluate_v6.py`. Success, CKA, neighbor-consistency, plus gaze metrics (in_view_frac_near vs in_view_frac_far).
 - [x] 8. **FINDINGS.md** updated with v6 section — honest mixed result.
 - [ ] 9. **(Parked)** Option B (stereo cameras + binocular action-consistency): on hold pending better gaze behavior in monocular case.
 
@@ -294,7 +294,7 @@ You watch the ball appear/disappear in the agent's camera as it learns to track.
 - **Late-training regression: real.** Final checkpoint worse than mid-training best. Evaluation uses best checkpoint.
 
 ### What v6 teaches us
-Environmental pressure, not architectural capability, is what forces gaze behavior to emerge. We gave the agent the means to gaze but not the need. Taylor's theory is about conditioning under conditions that make a response *necessary*.
+Environmental pressure, not architectural capability, is what forces gaze behavior to emerge. We gave the agent the means to gaze but not the need. the source theory is about conditioning under conditions that make a response *necessary*.
 
 ### Follow-up candidates
 - Narrower FOV (~20°) to force tracking
@@ -313,7 +313,7 @@ v7 aims to fix both problems at once:
 2. **Moving targets** — objects drift at reset with random initial velocity (0.15-0.35 m/s). Over a 200-step episode they move ~10-30 cm, plus get bumped by the arm. Static "sits there" targets don't require gaze tracking; drifting ones do.
 3. **Periodic checkpoints** every 50k steps + a developmental timelapse video script — we can literally watch the agent's behavior improve from random flailing to coordinated gaze-reach-track.
 
-This is **Option 2** from our discussion: make the environment demand the behavior, don't reward-shape it directly. Taylor-faithful.
+This is **Option 2** from our discussion: make the environment demand the behavior, don't reward-shape it directly. theory-faithful.
 
 ### Architecture
 - `tabletop_v7.xml`: same head/arm/objects as v6 but FOV=22, object damping=0.05 (low, so they drift but don't bounce forever).
@@ -345,7 +345,7 @@ This is **Option 2** from our discussion: make the environment demand the behavi
 - Head camera FOV: 30° narrow (forces precise gaze) vs 60° wide (forgiving). Start with 45°.
 - Head position: centered above arm base, elevated ~20cm. Not physically attached to the arm (would couple head motion to arm motion in confounding ways).
 - Gaze control: position-controlled is simpler. Start there; torque control is more biological but harder to learn.
-- Stereo baseline (Option B): 30mm mimics infant interocular distance. The small baseline means disparity is small except for close objects — matches how Taylor's toddler-scale parallax works.
+- Stereo baseline (Option B): 30mm mimics infant interocular distance. The small baseline means disparity is small except for close objects — matches how the theory's toddler-scale parallax works.
 
 ---
 
@@ -357,9 +357,9 @@ v1–v7 proved the mechanics of interpenetration (staged development, consistenc
 measurement, frozen proprio). But the arm lives in a consequence-free world. Proprio is
 primary only because we declared it so architecturally (freezing weights).
 
-Taylor's deeper point — and David's reframe — is that proprio is primary because **the
+the theory's deeper point — and David's reframe — is that proprio is primary because **the
 physical world kills you when you get it wrong.** The truck doesn't care what your visual
-system thinks. The pencil tap in Taylor's Experiment I wasn't just a training signal — it
+system thinks. The pencil tap in the reversing-spectacles experiment wasn't just a training signal — it
 was a survival signal: "your body is about to do something the physical world will punish."
 
 v8 creates a world with physical stakes. A creature on a finite platform can roll off the
@@ -443,8 +443,8 @@ hands against the platform surface.
 
 ### Implementation Plan
 
-- [ ] 1. Build MuJoCo XML: creature + platform (`taylor_sim/envs/platform_creature.xml`)
-- [ ] 2. Build Gymnasium env (`taylor_sim/envs/platform_creature_env.py`)
+- [ ] 1. Build MuJoCo XML: creature + platform (`alien_baby/envs/platform_creature.xml`)
+- [ ] 2. Build Gymnasium env (`alien_baby/envs/platform_creature_env.py`)
   - [ ] Proprio-only and vision modes
   - [ ] Health system + fall damage
   - [ ] Reward structure
@@ -462,22 +462,22 @@ hands against the platform surface.
 
 ---
 
-## Long-range: Binding an LLM to the Taylor-grounded agent
+## Long-range: Binding an LLM to the theory-grounded agent
 
 ### The question
-If v5 (and v6) produce hidden-layer representations with genuine Taylor-faithful properties — equivalence classes, interpenetration, size/shape constancy derived from invariant manipulation — how do those representations come to anchor an LLM's words?
+If v5 (and v6) produce hidden-layer representations with genuine theory-faithful properties — equivalence classes, interpenetration, size/shape constancy derived from invariant manipulation — how do those representations come to anchor an LLM's words?
 
 This is the eventual payoff of the whole project. The agent alone is a toy arm that reaches for balls. The LLM alone speaks fluently about everything and is grounded in nothing. The target is a system where the LLM's words are anchored to the agent's behaviorally-formed equivalence classes the way an infant's first words attach to classes it already has from pre-verbal experience.
 
-### Four possible paths (ranked by Taylor-faithfulness)
+### Four possible paths (ranked by theory-faithfulness)
 
 1. **Shared embedding space** — Align LLM token embeddings with agent hidden1 activations via a paired (episode, caption) dataset. Correlational, not conditional. LLM's concepts were formed from text, not action; alignment papers over that. Probably insufficient.
 
 2. **Frozen-feature fine-tuning** — Treat hidden1 as a frozen feature extractor, condition LLM output on it. Better, but the LLM is still a module reading features, not a system that *has* perception.
 
-3. **Words as responses (purest Taylor)** — One transformer, output vocabulary includes both language tokens and action tokens, input includes perception. Saying "ball" and grasping the ball are siblings: both are responses conditioned to the same equivalence class. Requires starting language acquisition *after* embodied grounding (the infant pathway). Hardest to implement; most faithful to Taylor.
+3. **Words as responses (purest theory)** — One transformer, output vocabulary includes both language tokens and action tokens, input includes perception. Saying "ball" and grasping the ball are siblings: both are responses conditioned to the same equivalence class. Requires starting language acquisition *after* embodied grounding (the infant pathway). Hardest to implement; most faithful to the theory.
 
-4. **Embodied RL with language in the loop (planned next)** — Put a pre-trained LLM into the training loop as the policy, with perception input and action output. LLM's existing word-based concepts get reshaped by Taylor-style conditioning as it has to use them to succeed at embodied tasks. Keeps the LLM's knowledge but submits it to an embodied curriculum.
+4. **Embodied RL with language in the loop (planned next)** — Put a pre-trained LLM into the training loop as the policy, with perception input and action output. LLM's existing word-based concepts get reshaped by theory-style conditioning as it has to use them to succeed at embodied tasks. Keeps the LLM's knowledge but submits it to an embodied curriculum.
 
 ### Path 4 — rough sketch
 
@@ -493,8 +493,8 @@ This is the eventual payoff of the whole project. The agent alone is a toy arm t
 ### What needs to be true before we start Path 4
 - [x] v5 shows hidden1 can live on proprio's manifold (CKA ≈ 1.0)
 - [ ] v6 shows hidden1 encodes depth from motion (parallax sensitivity probe)
-- [ ] v6 shows size/shape constancy from invariant manipulation (Taylor Ch 6.19 probe)
+- [ ] v6 shows size/shape constancy from invariant manipulation (Source Ch 6.19 probe)
 - [ ] An evaluation protocol that can distinguish "LLM reading hidden1" from "LLM whose concepts are anchored to hidden1"
 
 ### Why not Path 3 yet
-Path 3 requires training a model from scratch with no language during the embodied phase, then introducing language as additional response tokens. This is closer to what Taylor's theory actually says should happen, and may be the right long-term direction — but it gives up everything an LLM already knows. Path 4 keeps the LLM's text-scale knowledge and submits it to an embodied curriculum. If Path 4 works partially, it tells us how much of Taylor's prediction is achievable without a full ground-up retraining. If Path 4 fails in specific ways (e.g., the LLM keeps hallucinating despite grounded perception), that failure mode itself is informative about whether Path 3 is actually necessary.
+Path 3 requires training a model from scratch with no language during the embodied phase, then introducing language as additional response tokens. This is closer to what the source theory actually says should happen, and may be the right long-term direction — but it gives up everything an LLM already knows. Path 4 keeps the LLM's text-scale knowledge and submits it to an embodied curriculum. If Path 4 works partially, it tells us how much of the theory's prediction is achievable without a full ground-up retraining. If Path 4 fails in specific ways (e.g., the LLM keeps hallucinating despite grounded perception), that failure mode itself is informative about whether Path 3 is actually necessary.

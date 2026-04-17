@@ -13,7 +13,7 @@ Consequences:
   - Critics train normally over the full observation space.
 
 This implements the "vision must align with proprioception, not overwrite it"
-reading of Taylor's interpenetration principle.
+reading of the interpenetration idea principle.
 """
 
 import pathlib
@@ -22,9 +22,9 @@ from stable_baselines3 import SAC
 from stable_baselines3.common.callbacks import EvalCallback
 from stable_baselines3.common.monitor import Monitor
 
-from taylor_sim.envs import TabletopReachEnv
-from taylor_sim.envs.flatten_wrapper import FlattenVisionWrapper
-from taylor_sim.agents.train_staged import (
+from alien_baby.envs import TabletopReachEnv
+from alien_baby.envs.flatten_wrapper import FlattenVisionWrapper
+from alien_baby.agents.train_staged import (
     MetricsCallback,
     _transfer_proprio_weights,
     _evaluate,

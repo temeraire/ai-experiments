@@ -1,0 +1,4 @@
+from alien_baby.envs.tabletop_env import TabletopReachEnv
+from alien_baby.envs.tabletop_gaze_env import TabletopGazeEnv
+from alien_baby.envs.tabletop_moving_env import TabletopMovingGazeEnv
+from alien_baby.envs.platform_creature_env import PlatformCreatureEnv

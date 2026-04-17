@@ -2,7 +2,7 @@
 Stage 1: Train proprioception-only SAC agent to reach objects by touch.
 Stage 2: Expand to include vision, continue training from Stage 1 checkpoint.
 
-This is the "Taylor" agent — developmental staging with interpenetration.
+This is the staged agent — developmental staging with interpenetration.
 """
 
 import os
@@ -12,7 +12,7 @@ from stable_baselines3 import SAC
 from stable_baselines3.common.callbacks import EvalCallback, BaseCallback
 from stable_baselines3.common.monitor import Monitor
 
-from taylor_sim.envs import TabletopReachEnv
+from alien_baby.envs import TabletopReachEnv
 
 RESULTS_DIR = pathlib.Path(__file__).parent.parent / "results"
 RESULTS_DIR.mkdir(exist_ok=True)
@@ -97,7 +97,7 @@ def train_stage2(stage1_path=None, total_timesteps=50_000, seed=42):
 
     Since SB3's SAC with MlpPolicy can't natively handle Dict obs, we
     flatten the observation (proprio + downsampled vision) into a single vector.
-    This is actually closer to Taylor's interpenetration idea — no separate
+    This is actually closer to the interpenetration idea idea — no separate
     "vision module."
     """
     print("=" * 60)
@@ -108,7 +108,7 @@ def train_stage2(stage1_path=None, total_timesteps=50_000, seed=42):
     eval_env = Monitor(TabletopReachEnv(vision=True, target_object=0))
 
     # Wrap to flatten Dict obs into single vector
-    from taylor_sim.envs.flatten_wrapper import FlattenVisionWrapper
+    from alien_baby.envs.flatten_wrapper import FlattenVisionWrapper
     env = FlattenVisionWrapper(env)
     eval_env = FlattenVisionWrapper(eval_env)
 
@@ -222,7 +222,7 @@ def _evaluate(model, env, n_episodes=20):
 
 
 if __name__ == "__main__":
-    print("Training Taylor (staged) agent...\n")
+    print("Training the source theorist (staged) agent...\n")
     model1, metrics1 = train_stage1(total_timesteps=50_000)
     model2, metrics2 = train_stage2(total_timesteps=50_000)
     print("\nDone! Staged agent trained.")

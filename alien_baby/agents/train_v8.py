@@ -21,9 +21,9 @@ from stable_baselines3.common.callbacks import (
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import SubprocVecEnv
 
-from taylor_sim.envs.platform_creature_env import PlatformCreatureEnv
-from taylor_sim.agents.train_staged import MetricsCallback, _evaluate
-from taylor_sim.agents.train_v5 import ConsistencySAC
+from alien_baby.envs.platform_creature_env import PlatformCreatureEnv
+from alien_baby.agents.train_staged import MetricsCallback, _evaluate
+from alien_baby.agents.train_v5 import ConsistencySAC
 
 RESULTS_DIR = pathlib.Path(__file__).parent.parent / "results"
 RESULTS_DIR.mkdir(exist_ok=True)
@@ -153,7 +153,7 @@ def train_followon_v8(
 
     # Transfer stage 1 weights
     stage1_model = SAC.load(stage1_path)
-    from taylor_sim.agents.train_staged import _transfer_proprio_weights
+    from alien_baby.agents.train_staged import _transfer_proprio_weights
     _transfer_proprio_weights(stage1_model, model, proprio_dim=PROPRIO_DIM_V8)
 
     if freeze_proprio:

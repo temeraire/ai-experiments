@@ -3,7 +3,7 @@ Tabletop reaching environment with configurable sensory channels.
 
 Based on the proven Gymnasium Reacher design: planar arm with Z-axis hinges.
 Supports toggling vision on/off for staged developmental training
-per Taylor's interpenetration theory.
+per the interpenetration idea theory.
 """
 
 import pathlib

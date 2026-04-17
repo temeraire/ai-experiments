@@ -26,7 +26,7 @@ Terms that show up in FINDINGS.md, the training scripts, and our conversations. 
 
 **Gradient step.** One application of backpropagation + optimizer step. Our runs do one gradient step per environment step, so 200k environment steps ≈ 200k gradient steps.
 
-**Checkpoint.** A saved copy of the trained model (weights + optimizer state). We can load it back later and keep training or just evaluate it. Our checkpoints live under `taylor_sim/results/` (e.g., `followon_v5_checkpoint.zip`).
+**Checkpoint.** A saved copy of the trained model (weights + optimizer state). We can load it back later and keep training or just evaluate it. Our checkpoints live under `alien_baby/results/` (e.g., `followon_v5_checkpoint.zip`).
 
 **Deterministic vs stochastic evaluation.** During training the actor samples actions from a distribution (stochastic) to explore. During evaluation we use `deterministic=True`, which just takes the distribution's mean — a stable, repeatable behavior.
 
@@ -72,7 +72,7 @@ Terms that show up in FINDINGS.md, the training scripts, and our conversations. 
 
 **CKA (Centered Kernel Alignment).** A similarity measure between two sets of activations from two different networks on the same inputs. CKA = 1 means "these two networks represent the input in essentially the same way (up to a linear reshuffling)." CKA = 0 means "totally unrelated representations." We use linear CKA; the math is `‖Xᵀ Y‖² / (‖Xᵀ X‖ · ‖Yᵀ Y‖)`. Why it matters here: if v5's hidden1 has high CKA with stage1_v3's hidden1, vision is living on proprio's manifold — *additive* interpenetration. Low CKA = vision has carved out its own manifold and ignored proprio's.
 
-**k-NN (k-nearest neighbors).** For each point, find the k closest other points (we used k=5, closeness measured in hidden1 space by Euclidean distance). Used here as a probe: if two observations are neighbors in hidden1 space, are their *actions* also similar? If yes, we have an equivalence class (different inputs → same action → same perception, in Taylor's sense).
+**k-NN (k-nearest neighbors).** For each point, find the k closest other points (we used k=5, closeness measured in hidden1 space by Euclidean distance). Used here as a probe: if two observations are neighbors in hidden1 space, are their *actions* also similar? If yes, we have an equivalence class (different inputs → same action → same perception, in the theory's sense).
 
 **Neighbor-consistency ratio.** Our equivalence-class metric: `mean(action-distance among hidden1 neighbors) / mean(action-distance among random pairs)`. Lower = tighter equivalence classes. Stage1_v3 came out at 0.07 (neighbors' actions are 14× more similar than random); v1 agents were ~0.45 (weak class structure).
 
@@ -108,11 +108,11 @@ Terms that show up in FINDINGS.md, the training scripts, and our conversations. 
 
 ---
 
-## Taylor's theoretical terms (for reference)
+## Source-theory terms (for reference)
 
-**Equivalence class.** Taylor's central construct. Many different sensory states (instances) that map to the same conditioned response. "The class *is* the perception." Our neighbor-consistency ratio is a proxy for class structure.
+**Equivalence class.** the theory's central construct. Many different sensory states (instances) that map to the same conditioned response. "The class *is* the perception." Our neighbor-consistency ratio is a proxy for class structure.
 
-**Π (Pi).** Taylor's notation for a *readiness state*: the set of conditioned responses an organism is currently prepared to execute. Perception in Taylor's theory is just the simultaneous pattern of Π.
+**Π (Pi).** the theory's notation for a *readiness state*: the set of conditioned responses an organism is currently prepared to execute. Perception in the source theory is just the simultaneous pattern of Π.
 
 **Interpenetration (Ch. 5).** "Properties of the perceptual field determined by one set are incorporated in the perceptual field determined by the other set." Our operational reading: vision's representation should inherit and extend proprio's, not overwrite it. v5's consistency loss is an explicit test of this reading.
 

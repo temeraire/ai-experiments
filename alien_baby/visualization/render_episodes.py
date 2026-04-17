@@ -13,8 +13,8 @@ import imageio
 from stable_baselines3 import SAC
 from stable_baselines3.common.monitor import Monitor
 
-from taylor_sim.envs import TabletopReachEnv
-from taylor_sim.envs.flatten_wrapper import FlattenVisionWrapper
+from alien_baby.envs import TabletopReachEnv
+from alien_baby.envs.flatten_wrapper import FlattenVisionWrapper
 
 RESULTS_DIR = pathlib.Path(__file__).parent.parent / "results"
 VIDEO_DIR = RESULTS_DIR / "videos"
