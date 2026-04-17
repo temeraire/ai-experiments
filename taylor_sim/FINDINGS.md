@@ -6,7 +6,9 @@ A simulated robotic arm in a physics engine (MuJoCo) that learns to reach and to
 
 We trained three versions of this arm, each with a different relationship between its senses:
 
-1. **The "Taylor" agent** (staged development): First learned to reach objects using only proprioception — like an infant in the dark, finding things by feel. Then we turned on vision and let it keep learning. Crucially, the visual information was fed into the *same neural pathways* that already handled proprioception. There was no separate "vision module." The network had to weave vision into its existing sense of touch and body position.
+1. **The "Taylor" agent** (staged development): First learned to reach objects using only proprioception — like an infant in the dark, finding things by feel. Then we turned on vision and let it keep learning. Crucially, the visual information was fed into the *same neural pathways* that already handled proprioception. There was no separate "vision module."
+
+   Concretely: Stage 1 is an MLP whose 10-dim input is `[3 joint angles, 3 joint velocities, 1 binary touch bit, 3 fingertip-to-target xyz offsets]`, feeding two hidden layers of 256 units. Stage 2 expands the input to 778 dims by appending a flattened 16×16 RGB pixel vector. The first hidden layer is now a 256×778 weight matrix; we copy Stage 1's learned weights into the first 10 input columns and zero the remaining 768. Each of the 256 hidden units is the *same physical neuron* that previously encoded a function of joint state and touch — over Stage 2 training, its 768 pixel weights grow from zero, so the unit's activation becomes a mixed function of "this joint configuration AND this pixel pattern." There is no separate vision layer that could be cleanly amputated. By contrast, the feature-fusion agent routes pixels through their own sub-MLP first, so early vision-only units exist that the staged design does not have.
 
 2. **The "all-at-once" agent**: Got both vision and proprioception from the start. Same network architecture as the Taylor agent, same total training time. The only difference is that it never had a proprioception-only phase.
 
@@ -111,6 +113,8 @@ The cost Taylor didn't anticipate: Deep interpenetration means noisy input from 
 
 - **The fusion baseline is imperfect**: We approximated separate encoders with a wider network, not a true dual-encoder architecture. A proper implementation with genuinely separate vision and proprioception pathways would be a stronger baseline.
 
+- **No sensory gating**: The agent's policy is a fixed function from a 778-dim input vector to actions; it has no attention, gain control, or modality-selection mechanism. So the "interpenetration is dangerous under noise" finding (Section 2, 40%+ noise dropping below pure proprio) reflects what happens *in the absence of any gating*. A biological organism — or a network with learnable per-channel gain or attention — could downweight a corrupted modality the way a person might close their eyes and rely on touch. A fairer test of the cost of interpenetration would give all three agents a learnable gain over the vision channel and re-run the noise sweep; the current result conflates "vision poisons proprio because they share pathways" with "the policy has no way to ignore vision."
+
 ---
 
 ## How to Reproduce
@@ -130,3 +134,218 @@ python -m taylor_sim.visualization.render_episodes
 ```
 
 Videos are saved to `taylor_sim/results/videos/`. The side-by-side comparison shows all three agents attempting the same reaching task.
+
+---
+
+## Follow-up experiments (v1 long-run, v2 follow-on, v3 blind proprio)
+
+After the initial writeup above, three follow-ups extended the experiment. All three added non-trivial information — including one finding that revises the headline v1 interpretation.
+
+### 1. Long-run v1 (200K/200K/400K steps)
+
+The original experiment ran 50K Stage-1 / 50K Stage-2 / 100K baselines. Re-running at 4× that budget changes the picture:
+
+| Agent | Clean reward | 100%-noise reward | Reward drop | Clean success |
+|---|---|---|---|---|
+| Staged | 14.5 | -22.7 | 37.2 | 100% |
+| All-at-once | 30.7 | -33.3 | 64.0 | 90% |
+| Fusion | 27.5 | -28.6 | 56.0 | 75% |
+
+**What changed:** with more training, the baselines caught up and passed staged on *clean* reward. The "graceful degradation" story (37.2 drop vs. 64/56) still holds — staged falls less under noise — but from a lower baseline. The all-at-once / fusion agents keep improving with training; staged stagnates because its downstream layers were reshaped by vision onto an increasingly fragile point in policy space.
+
+Stage 2's late-training regression is particularly pronounced: peak reward 18.9 at step 120K, but the *final* checkpoint (which the test battery reads) ended at 5.4. The long-run battery above uses that regressed final, which is part of why the clean-reward gap is so stark.
+
+### 2. v2 — "Follow-on" architecture (frozen Stage 1)
+
+The original staged agent lets SAC rewrite every actor weight during Stage 2, including the ones derived from Stage 1. Our headline v1 claim — "CKA = 0.033 means the proprioceptive representations were almost entirely rewritten when vision arrived" — was framed as the *success* of interpenetration. But a more careful reading of Taylor's principle (Ch. 5, "properties determined by one set are incorporated in the perceptual field determined by the other set") says that the later sense should *inherit* and *support* the earlier sense's structure, not overwrite it. Under that reading, CKA = 0.033 is not a triumph but a failure: the proprio pattern didn't survive.
+
+**v2** tests the alternative: freeze every actor weight derived from Stage 1 during Stage 2, and only let the new pixel-input weights train. Concretely:
+- All actor weights set `requires_grad=False` except the first hidden layer's weight.
+- On the first hidden layer's weight, a gradient mask zeros the columns corresponding to proprio inputs; only the pixel-input columns train.
+- Critics train normally over the full observation space.
+- This guarantees that with `pixels = 0`, the actor's output is bit-identical to Stage 1.
+
+**Result:** proprio weight drift after 200K steps of Stage 2 = exactly 0.0. Actions on `pixels = 0` match Stage 1 to float32 precision.
+
+| Test | v1 staged | v2 follow-on |
+|---|---|---|
+| Proprio weight drift | large (CKA 0.03) | **0.0** (exact) |
+| 100%-noise reward | -22.7 | **-2.9** |
+| 100%-noise success | 45% | **80%** |
+| Clean → full-noise reward drop | 37.2 | **17.4** |
+| Clean vision reward | 14.5 | 14.5 |
+| Vision-zeroed reward | (would differ from S1) | 17.3 |
+
+**Interpretation:** v2 confirms the "protect proprio" reading. When proprio cannot be corrupted by vision, noise-robustness improves dramatically (80% success under 100% vision noise vs. v1's 45%). But there's a cost: the frozen downstream network constrains vision's upside. Vision didn't beat Stage 1 on clean performance (14.5 vs. Stage 1's own ~17) — because every hidden-layer transformation vision can influence must route through Stage 1's learned representation geometry. Vision can only speak Stage 1's language.
+
+### 3. v3 — Blind proprio (vision made necessary)
+
+v2 worked but vision didn't add much on clean performance, partly because the task was solvable by proprio alone: the observation included a 3-dim `fingertip → target` offset that essentially handed the agent the target's location. **v3** strips that offset. Proprio is reduced to `[3 joint angles, 3 joint velocities, 1 touch bit]` — 7 dims instead of 10. The agent has no direct target-location signal from proprio.
+
+Stage 1 is retrained on this blind observation, then v2-style follow-on layers vision on top.
+
+**Test 1 — target-position probe (cross-validated Ridge on hidden1 activations predicting target x,y):**
+
+| Input | v2 (offset included) | v3 (blind) |
+|---|---|---|
+| Proprio-only | 1.00 | **-0.02** (zero) |
+| Pixels-only | 0.42 | 0.35 |
+| Full obs | 1.00 | 0.35 |
+
+The env change worked: proprio genuinely has no target-location signal anymore. Vision is now the only non-trivial source. Vision's R² stayed around 0.35 — the frozen architecture still caps how accurately vision can pin down the target, even when vision is necessary.
+
+**Test 2 — temporal shortening (episodes to contact):**
+
+| Condition | v2 | v3 |
+|---|---|---|
+| Stage 1 alone (no vision) | 16.8 | 62.4 |
+| Follow-on, clean vision | 16.8 | 33.2 |
+| Follow-on, vision zeroed | 27.4 | 70.5 |
+| Follow-on, vision random noise | 114.0 | 128.1 |
+
+In v3, clean vision nearly halves the time to contact (33 vs. 62). In v2 the speedup was present but subtle (17 vs. 27). When vision is necessary, its contribution is empirically visible. Random-noise vision quadruples episode length — the agent has *learned to trust* vision enough that corrupting it is worse than having no vision at all. That's Taylor's double-edged sword showing up.
+
+**Videos:** `taylor_sim/results/videos/comparison_v3_seed{0,1,2}.mp4` show the blind Stage 1 agent vs. the follow-on-with-vision agent on identical starting states. On hard seeds (0, 1) the blind agent gropes for 200 steps and hits truncation without finding the target; the vision agent finishes in ~40 steps. On easy seeds (2) both succeed quickly, vision faster.
+
+### Revised interpretation
+
+The initial v1 framing ("CKA = 0.033 is the signature of interpenetration") was mistaken. That low CKA measured the *destruction* of Stage 1's representation by Stage 2 training, not its incorporation into a richer representation. Under the Taylor-faithful reading — vision should be *added to* proprio without corrupting it — a successful experiment should show *high* CKA between Stage 1 and the final agent on proprio-only inputs.
+
+v2 instantiates that reading architecturally and produces the predicted noise robustness. v3 shows that when proprio is actually blind, vision steps up as an independent target-localizer, though only partially (R² = 0.35). The frozen downstream architecture of v2/v3 is too restrictive to let vision fully learn target localization — a v4 with an explicit cross-modal consistency loss, or a softer freeze (e.g., low LR on downstream layers rather than full freeze), is the natural next step.
+
+**What's supported empirically so far:**
+1. Developmental staging with proper weight protection (v2) produces real noise robustness, not just a curriculum artifact.
+2. Vision woven onto a blind proprio (v3) provides genuine independent confirmation — halving time-to-contact.
+3. Entangled senses carry a real cost under noise: agents that rely on vision perform worse under corrupted vision than agents that never learned to use it.
+
+**What remains uncertain:**
+1. Whether vision's target estimate can be driven to match proprio-level accuracy without explicit consistency loss (v3 shows partial, not full, independent localization).
+2. Whether the cross-modal identity alignment (same-object see/touch vs. diff-object see/touch) ever emerges under current architectures — our measurements remain near zero.
+3. Whether active looking (camera follows hand) and occlusion would produce the richer Taylor-style interpenetration the current task cannot force.
+
+---
+
+## v5 — Consistency-loss follow-on (2026-04-14)
+
+### Architecture
+Same frozen-proprio / trainable-pixel-columns architecture as v3, but the actor loss gains an auxiliary term:
+
+```
+L_actor = L_SAC + λ · MSE(hidden1(full obs), hidden1(pixels-zeroed obs))
+```
+
+with λ = 0.1. This pulls whatever vision contributes to hidden1 toward the hidden1 that proprio alone would produce. Vision can only *confirm* proprio's manifold, not carve its own. Gradient mask still zeroes proprio columns; `drift = 0.0` verified post-training.
+
+Re-uses `stage1_v3_checkpoint` as the frozen proprio base. 200k SAC steps, consistency_loss settled at 0.94 (from 2.4 at smoke-test).
+
+### Results (20-episode eval; CKA/equivalence over ~900 samples)
+
+| Metric | v3 follow-on | **v5 follow-on** | Interpretation |
+|---|---|---|---|
+| Clean-vision success | 19/20 (95%) | **20/20 (100%)** | Slight improvement |
+| 100%-noise success | 11/20 (55%) | **16/20 (80%)** | Large robustness gain |
+| CKA(hidden1, stage1_v3.hidden1) | 0.905 | **0.998** | v5 lives on proprio's manifold |
+| Neighbor-consistency ratio | 0.250 | 0.272 | Effectively tied |
+| Proprio-column drift | 0.0 | 0.0 | Freeze holds |
+
+### Interpretation
+
+**CKA = 0.998 is the headline.** v5's internal representation is indistinguishable from Stage 1's proprio representation under linear-alignment similarity. Vision is *additive* — it extends proprio's manifold rather than displacing it. This is Taylor's "properties of the perceptual field determined by one set are incorporated in the perceptual field determined by the other set" (Ch 5) rendered as a number: CKA of 0.998 with the earlier-established sense.
+
+**The noise-robustness jump (55% → 80% at 100% vision noise) is the downstream consequence.** By pinning vision's contribution to proprio's manifold, v5 never learns to *depend* on specific pixel patterns in a way that breaks when pixels get corrupted. When vision becomes uninformative, the network falls gracefully back to something close to the proprio-only behavior — because that's geometrically where it already was.
+
+**The equivalence-class ratio did not meaningfully improve** (0.272 vs 0.250). The consistency loss pulls representations toward proprio but doesn't explicitly tighten action-class structure. This is consistent with the memory-level feedback that generalization is the primary state — v3 already had strong class structure; v5 preserves it without sharpening it.
+
+**Reinterpreting v1 once more.** v1 "staged" had CKA = 0.033 between Stage 1 and Stage 2 on proprio inputs. v5 has CKA = 0.998. Same task, same algorithm, opposite architectural commitments — and a 30× difference in how the later sense relates to the earlier one. v1 was obliteration; v5 is genuine incorporation. The earlier framing of v1 as "strong interpenetration" was exactly backwards.
+
+### What this closes and what it opens
+
+**Closed:** Whether an explicit mechanism can enforce "vision must confirm proprio, by its own means" — yes, and with a single line of loss. The architectural requirement (protect proprio) composes with a representational requirement (stay on proprio's manifold) to produce both noise robustness and interpenetration in Taylor's sense.
+
+**Opens:** 
+1. Does v5's on-manifold vision support richer cross-modal transfer (e.g., seeing → touch-readiness) than v3? Our cross-modal identity alignment metric remains unaddressed.
+2. Is λ = 0.1 near-optimal or can vision do more with less constraint? A sweep could tell us.
+3. The eye is still a fixed overhead camera. Taylor's Ch 3–4 demands an eye that moves. v5 is the strongest test of the theory we can run without gaze; the next frontier requires moving the camera.
+
+---
+
+## v6 — Head-mounted gaze camera (2026-04-15)
+
+### Motivation (what Ch 6-7 added)
+Reading Taylor's Ch 6 (Expanding the Visual Field) and Ch 7 (Parallax) revised the plan. Ch 6 says the "expanding world" is a function of the moving observer — each motor cycle produces a predictable retinal image expansion that is conditioned to locomotor responses. Size/shape constancy (Ch 6.19) is inherited from invariant terminal manipulation. Ch 7 argues binocular fusion is response-conditioned, not structural: two retinal images fuse because they trigger the same reaching response, not because their retinal points geometrically match.
+
+The v5 setup — fixed overhead camera — cannot test any of this. v6 adds a pan/tilt head with its own 45° camera so the agent must orient its gaze to see.
+
+### Architecture
+- `tabletop_v6.xml`: head body at (0, -0.28, 0.15) behind/above the arm base. Two hinge joints: `head_pan` (±1.2 rad) and `head_tilt` (±0.8 rad). Head camera FOV 45°, default tilted 30° downward via xyaxes so `tilt=0` already sees the table center.
+- `TabletopGazeEnv`: 9-dim proprio (3 jpos + 3 jvel + 1 touch + 2 head angles), 5-dim action (3 arm torque + 2 head position commands, rescaled to joint ranges).
+- Reward unchanged — no reward for looking. Gaze must emerge from visual utility.
+- Stage 1: proprio-only SAC on 9D obs. Stage 2 (follow-on): v5 `ConsistencySAC` with `proprio_dim=9, λ=0.1`. Head camera pixels flattened + downsampled to 16×16×3. 200K steps each.
+
+### Results (using best EvalCallback checkpoint — see note below on late-training regression)
+
+| Metric | Stage 1 v6 | v6 follow-on | v5 follow-on (ref) |
+|---|---|---|---|
+| Clean success | 90% | **95%** | 100% |
+| 100%-noise success | N/A (no vision) | **35%** | 80% |
+| CKA(hidden1, stage1.hidden1) | — | **0.992** | 0.998 |
+| Neighbor-consistency ratio | — | 0.382 | 0.272 |
+| Proprio-column drift | — | 0.0 | 0.0 |
+
+**Gaze-specific metrics (v6 only):**
+- In-view fraction (target inside head cam FOV): 27.1% overall
+- In-view when near target (<0.08 distance): **31.3%**
+- In-view when far from target: **26.5%**
+- Near/far ratio: 1.18 (gaze is only 18% more likely to find the target when close)
+
+### What worked
+
+**Task performance preserved.** v6 follow-on reaches 95% clean success — effectively the same as v5. The 30° default downward tilt ensures the head camera sees a useful view even without active gaze control.
+
+**Interpenetration preserved.** CKA = 0.992 between v6 hidden1 and stage1 v6 hidden1 (matched samples, same proprio). The consistency loss is doing its job: vision through the gaze camera stays on proprio's manifold.
+
+**Vision is more load-bearing than in v5.** v5's success dropped 100% → 80% at full vision noise (drop of 20 points). v6 drops 95% → 35% (drop of 60 points). Makes sense: with a limited-FOV camera the agent has *less* redundant visual information, so when the one view it has becomes noise, performance collapses more sharply. This is consistent with Taylor's "over-determination" argument in Ch 7.1 — a single channel provides less slack than multiple redundant channels.
+
+### What didn't work
+
+**Gaze behavior barely emerged.** 31% in-view near vs 27% in-view far is a 4-point difference. By eye, inspecting rendered videos, the agent is not tracking its hand — the red target stays in frame mostly because the 45° FOV + 30° default tilt covers most of the reachable area. The agent's head *moves* (it's actuated and rewarded via task success) but the motion isn't purposeful gaze-following.
+
+**Root cause:** the constraint was too weak. With a 45° FOV and 30° default tilt, a large fraction of the reachable area is in the camera's default cone, so random or near-constant head poses already give useful vision. There's no strong gradient pushing the agent to track its hand.
+
+### Late-training regression (important)
+
+The final (200K-step) checkpoint succeeded on only 7/20 episodes. The EvalCallback-saved best model succeeded on 19-20/20. All results above are from the **best checkpoint**, not the final one. The consistency loss was still climbing at training end (0.55 mid-training → 0.85 late), suggesting the optimization went off-track in the last third.
+
+This is the same late-training regression pattern that damaged v1's Stage 2 long-run. The cause for v6 isn't pinned down — possibilities include lambda too high for the larger action space, or the policy chasing noise in the vision channel as entropy coefficient decayed. Follow-up runs with lower lambda or entropy annealing would be informative.
+
+### Interpretation
+
+v6 is a mixed result, and the mixture itself is informative:
+
+1. **Task-level: success.** The v5 architecture (frozen proprio + consistency loss) carries through to a gaze camera. Grounded perception doesn't require a god's-eye overhead view.
+
+2. **Representation-level: success.** CKA = 0.992 says vision-via-gaze still lives on proprio's manifold. The Taylor-faithful property of interpenetration persists across the shift from fixed to movable vision.
+
+3. **Gaze-behavior-level: failure.** The agent did not learn to point its head at what its hand was doing. This was the central motivating prediction of v6 (Taylor's "the child must look at what they hold") and it did not pan out — not because Taylor was wrong, but because the environment didn't make gaze *necessary*.
+
+### What v6 teaches us
+
+The architectural claim of v6 (gaze camera = needs gaze learning) was too weak. Vision is a useful channel, but *useful* does not mean *requires gaze*. For gaze to emerge, the world has to make it impossible to succeed without orienting. Two concrete changes would do this:
+
+- **Narrow FOV** (~20°): target often out of frame unless tracked.
+- **Moving target** or **occluding clutter**: forces continual re-orientation.
+- **Reduce default tilt** or **move the head further away**: make the reachable area subtend more of the possible camera cone.
+
+The deeper lesson: **emergent behavior requires environmental pressure, not just architectural capability.** We gave the agent the means to gaze but not the need. Taylor's theory is about conditioning under conditions that make a response *necessary*; we gave the means without the necessity, and the means stayed largely unused.
+
+### What's supported empirically through v6
+
+1. The v5 architecture (frozen proprio + consistency loss) generalizes to a movable camera with expanded action space — task performance and on-manifold vision both preserved.
+2. With a limited-FOV camera, vision becomes more load-bearing (bigger performance drop under vision noise), consistent with Taylor's "overdetermination" argument for multiple redundant channels.
+3. A gaze camera alone is not sufficient to produce emergent gaze-following behavior. The environmental pressure to orient has to be built in — either by narrowing the FOV, moving the target, or otherwise forcing the issue.
+
+### Open (next-step-worthy)
+
+1. Re-run v6 with narrower FOV (e.g. 20°) and see if gaze-touch correlation increases.
+2. Investigate the late-training regression: try lower λ, or entropy annealing, or stop early at the best eval.
+3. Extend to Path 4 (LLM in the loop) without fixing v6's gaze problem — vision grounding may be enough even if gaze behavior is underdetermined.

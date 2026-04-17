@@ -2,8 +2,9 @@
 Main experiment runner: trains all three agents and runs the test battery.
 
 Usage:
-    python -m taylor_sim.run_experiment              # full run
+    python -m taylor_sim.run_experiment              # full run (50K/50K/100K steps)
     python -m taylor_sim.run_experiment --quick       # quick test (5K steps)
+    python -m taylor_sim.run_experiment --long        # 4x training (200K/200K/400K steps)
     python -m taylor_sim.run_experiment --test-only   # just run tests on saved models
 """
 
@@ -19,13 +20,20 @@ RESULTS_DIR = pathlib.Path(__file__).parent / "results"
 def main():
     parser = argparse.ArgumentParser(description="Taylor Perception Simulation")
     parser.add_argument("--quick", action="store_true", help="Quick run (5K steps)")
+    parser.add_argument("--long", action="store_true", help="4x training run (200K/200K/400K steps)")
     parser.add_argument("--test-only", action="store_true", help="Skip training, run tests")
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
 
-    steps_stage1 = 5_000 if args.quick else 50_000
-    steps_stage2 = 5_000 if args.quick else 50_000
-    steps_baseline = 10_000 if args.quick else 100_000
+    if args.quick and args.long:
+        parser.error("--quick and --long are mutually exclusive")
+
+    if args.quick:
+        steps_stage1, steps_stage2, steps_baseline = 5_000, 5_000, 10_000
+    elif args.long:
+        steps_stage1, steps_stage2, steps_baseline = 200_000, 200_000, 400_000
+    else:
+        steps_stage1, steps_stage2, steps_baseline = 50_000, 50_000, 100_000
 
     if not args.test_only:
         print("=" * 60)

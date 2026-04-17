@@ -47,3 +47,6 @@ conversations/
 
 # Environment variables (contains API keys)
 .env
+
+# Taylor sim training artifacts (large, transient)
+taylor_sim/results/
