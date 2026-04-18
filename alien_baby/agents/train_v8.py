@@ -238,7 +238,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--stage", choices=["stage1", "followon", "both"], default="both")
     parser.add_argument("--stage1-steps", type=int, default=500_000)
-    parser.add_argument("--followon-steps", type=int, default=1_000_000)
+    parser.add_argument("--followon-steps", type=int, default=250_000,
+                        help="Default 250K per CLAUDE.md workflow: render video, then extend if promising.")
     parser.add_argument("--checkpoint-interval", type=int, default=50_000)
     parser.add_argument("--lambda-consistency", type=float, default=0.1)
     parser.add_argument("--freeze-proprio", action="store_true",

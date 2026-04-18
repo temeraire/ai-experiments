@@ -498,3 +498,66 @@ This is the eventual payoff of the whole project. The agent alone is a toy arm t
 
 ### Why not Path 3 yet
 Path 3 requires training a model from scratch with no language during the embodied phase, then introducing language as additional response tokens. This is closer to what the source theory actually says should happen, and may be the right long-term direction — but it gives up everything an LLM already knows. Path 4 keeps the LLM's text-scale knowledge and submits it to an embodied curriculum. If Path 4 works partially, it tells us how much of the theory's prediction is achievable without a full ground-up retraining. If Path 4 fails in specific ways (e.g., the LLM keeps hallucinating despite grounded perception), that failure mode itself is informative about whether Path 3 is actually necessary.
+
+---
+
+## v8 process changes: always-watch-first + cameras + FPV smoothing + blur-overlay
+
+### Motivation
+Two process problems surfaced watching v8 runs:
+1. We kick off long (1M-step) training runs without first verifying that cameras, physics, and reward plumbing are sane. Wasted wall-clock.
+2. The head_cam is rigidly bolted to the torso, so every flail shakes the camera. From the video we can't tell whether the creature is upright, falling, or what it's "looking at."
+
+Plus one expressive idea: narrate the agent's perceptual development by blurring the head-cam video early in training and sharpening it as training progresses. **Display-side only** — the agent's actual observation is not modified (that would be the experimenter imposing a curriculum, which conflicts with the "survival grounding / drive not comfort" principle).
+
+### Process rule (new)
+Before launching any training run longer than a smoke test: render one episode from whatever starting-point model we're about to train from (random init for stage 1, stage-1 checkpoint for follow-on). If the video looks broken — cameras wrong, creature spawning off-platform, physics exploding — fix it before training.
+
+### Training-length rule (new)
+Default follow-on length drops from 1M → 250K steps. After 250K, render from `followon_v8_best/best_model.zip` and decide whether to extend. `CheckpointCallback` continues to save every 50K so we can also render from 100K and 200K mid-run if we want to abort earlier. SAC caveat: the first ~50–100K steps of any SAC run typically look like random flailing even when configured correctly (replay buffer filling, entropy high) — don't judge before ~150K.
+
+### Plan
+
+- [ ] 1. Create git branch `feature/v8-cameras-and-smoothing`.
+- [ ] 2. **Pre-training sanity render** — add `alien_baby/visualization/sanity_render.py` that takes `--vision {true,false}` and renders one 150-step episode from a freshly-initialized SAC (no loaded weights). Used to inspect cameras/physics before any long run.
+- [ ] 3. **Ringside camera** — add one `<camera name="ringside" .../>` to `alien_baby/envs/platform_creature.xml`, low (~0.4m), just outside the platform edge, angled slightly up so the creature's posture reads against the horizon. Test: render a frame, confirm upright vs. tipped is visually unambiguous.
+- [ ] 4. **Head-cam temporal smoothing** — in `render_v8.py`, low-pass filter the head-cam frames experimenter-side (EMA over last N frames, e.g. α=0.3). Does not touch the environment or the agent's observation. Tunable alpha via CLI flag.
+- [ ] 5. **Blur-to-sharpen overlay** — in `render_v8.py`, apply a Gaussian blur to the head-cam panel whose σ decreases as the creature's behavior becomes more vision-dependent. Signal: **vision-ablation sensitivity** (not raw task success). At each checkpoint, measure how much the policy's action changes when the pixel columns of the observation are zeroed out — averaged over a fixed set of eval states. High sensitivity = vision is load-bearing → sharp. Low sensitivity = creature is still groping by proprio → blurry. Rationale: success alone is a bad proxy because the creature can solve the task by proprio-grope alone while vision does nothing; we'd then render a sharp-looking video of an agent that isn't actually using its eyes. Mapping details: linear from sensitivity to sharpness, smoothed over the last 3 checkpoint measurements to absorb eval noise, **non-monotonic** (if the creature regresses, the video un-sharpens — that's the phenomenon, not a bug). Display only; environment and observation unchanged.
+- [ ] 6. **Three-panel composite** — update `render_v8_episode()` to emit overhead | ringside | head_cam (with smoothing + blur applied to the head_cam panel) side-by-side. Keep existing two-panel rendering available via a flag for back-compat.
+- [ ] 7. **Lower default follow-on length** — change `train_v8.py` default `--followon-steps` from 1_000_000 to 250_000. Keep 1M reachable via flag for when a short run looks promising.
+- [ ] 8. **Smoke-test everything before any full run:** sanity render (no vision), sanity render (vision), render from an existing checkpoint with the three-panel + blur overlay. Verify ringside reads posture; verify head_cam is noticeably smoother; verify blur fades across checkpoints rendered at 50K, 150K, 250K.
+- [ ] 9. Review section.
+
+### What is NOT touched
+- `platform_creature_env.py` — the environment, observation space, and reward are unchanged. All three new features are display-side.
+- `train_v8.py` hyperparameters other than the default total_timesteps.
+- Existing v1–v7 code.
+
+### Resolved design decisions
+- Blur signal: vision-ablation sensitivity (Π-style — does zeroing pixels change the action?). Chosen over raw task success because success can rise while vision does nothing.
+- Mapping: linear, smoothed over last 3 checkpoints, non-monotonic.
+
+### Review (2026-04-18)
+
+**Branch:** `feature/v8-cameras-and-smoothing`
+
+**Files changed:**
+- `alien_baby/envs/platform_creature.xml` — added `<camera name="ringside" pos="0 -1.8 2.15" xyaxes="1 0 0 0 0.028 0.9996" fovy="50"/>`. Low south-side viewpoint that cleanly reads creature posture against platform edge + ground. Smoke render at `/tmp/ringside_test.png` confirmed.
+- `alien_baby/visualization/render_v8.py` — rewrote to support: (1) three-panel composite (overhead | ringside | head_cam) with `--panels 2|3`; (2) head-cam temporal EMA smoothing with `--smooth-alpha` (default 0.3); (3) blur-to-sharpen overlay with `--sharpness <float>` OR `--auto-sharpness`; (4) `measure_vision_ablation_sensitivity(model)` helper that returns mean L2 action difference under full vs pixel-zeroed observations.
+- `alien_baby/visualization/sanity_render.py` — new script. Renders one 150-step episode from a freshly-initialized SAC (`learning_starts=10**9` so it never updates) to verify cameras + physics before any long training run. `--vision` flag toggles observation mode.
+- `alien_baby/agents/train_v8.py` — default `--followon-steps` lowered from 1_000_000 → 250_000.
+
+**Files NOT changed:**
+- `platform_creature_env.py` — environment, observation, reward untouched. All new features are display-side.
+- Any v1–v7 code.
+
+**Verification:**
+- XML loads; MuJoCo lists all four cameras (`overhead`, `side`, `ringside`, `head_cam`).
+- Sanity render (blind, 120 steps): ✓ wrote `v8_sanity_blind_seed0.mp4`.
+- Sanity render (vision, 60 steps): ✓ wrote `v8_sanity_vision_seed0.mp4`.
+- `render_v8.py --auto-sharpness` on `followon_v8_best/best_model.zip`: computed sensitivity = 1.3075 → sharpness 1.00 (trained policy strongly depends on vision, so displayed sharp — correct behavior).
+- Manual `--sharpness 0.3` and `--sharpness 1.0` renders produced visibly distinct head-cam panels; ringside panel made upright-vs-tipped instantly readable.
+
+**Open follow-ups (not in this PR):**
+- Timelapse script that renders across a sequence of checkpoints with per-checkpoint ablation-sensitivity → smoothed sharpness. The primitive (`measure_vision_ablation_sensitivity`) is in place; wiring it into a `develop_v8.py` analogue is the next step.
+- Calibrate `--ablation-max`: 0.5 is a placeholder. Once we have a range of checkpoints with sensitivities from ~0 (early) to ~1+ (late), pick a value that makes the visual progression expressive.
