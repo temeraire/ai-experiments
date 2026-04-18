@@ -40,3 +40,41 @@ Before fixing bugs or adding features, always create a new git branch with a des
   ### If unsure
   Always err on the side of making the SMALLEST possible change. Ask "Will this fix affect any
   existing features?" If yes, explain and get approval first.
+
+## Training-run workflow (alien_baby / v8+)
+
+These rules apply to any RL training run under `alien_baby/`. They exist to avoid burning hours
+of compute on runs with broken cameras, broken physics, or misread signals.
+
+### Always watch a video before committing to a training run
+Before launching any training run longer than a smoke test (>50K steps), render one episode
+using whatever model the run will start from:
+- For stage 1: render from a freshly-initialized (untrained) model to confirm cameras,
+  physics, spawn position, and reward plumbing are sane.
+- For a follow-on stage: render from the stage-1 checkpoint that will seed it.
+Use `alien_baby/visualization/sanity_render.py`. If the video looks wrong, fix it before training.
+
+### Prefer short runs + checkpoint inspection over one long run
+Default follow-on length is 250K steps, not 1M. After 250K, render from
+`followon_*_best/best_model.zip` and decide whether to extend. `CheckpointCallback` saves every
+50K so mid-run renders at 100K and 200K are also cheap. Extend to 1M only when the 250K video
+is promising. A longer run that finds out at hour 2 that the cameras were wrong is a bad trade.
+
+### SAC caveat when judging early videos
+The first ~50–100K steps of any SAC run typically look like random flailing even when training
+is configured correctly (replay buffer filling, entropy still high). Don't judge a run before
+~150K steps.
+
+### Video rendering: experimenter's eye vs. agent's eye
+The creature's head_cam is the *agent's* observation — don't modify it in the environment for
+display purposes. Smoothing, blurring, or post-processing belongs in the rendering script
+(`render_v8.py` etc.), not in the env. Always render an overhead + a ringside (posture-reading)
+panel so it is obvious whether the creature is upright or tipping.
+
+### Success rate is not the same as "using vision"
+When building signals that should represent "the creature is learning to see," do not use
+eval task-success as the signal without checking that vision is actually load-bearing.
+The creature can solve the task by proprio-grope alone. Prefer signals like
+**vision-ablation sensitivity** — how much the policy's action changes when the pixel
+columns of the observation are zeroed. That directly measures "does vision matter to
+behavior?" which is what we actually care about (Π-style interpenetration).
