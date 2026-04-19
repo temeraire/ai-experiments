@@ -139,8 +139,9 @@
           <geom name="head_geom" type="sphere" size="0.04"
                 rgba="0.7 0.6 0.5 1" contype="0" conaffinity="0"/>
 
-          <!-- Head camera: 50 deg FOV, mostly horizontal with slight downward tilt so target + horizon both visible -->
-          <camera name="head_cam" pos="0 0.02 0" xyaxes="1 0 0 0 0.15 0.99" fovy="50"/>
+          <!-- Head camera: 25 deg FOV (narrow) — target usually off-frame, so
+               finding it requires turning the head. Gaze-pressure via FOV. -->
+          <camera name="head_cam" pos="0 0.02 0" xyaxes="1 0 0 0 0.15 0.99" fovy="25"/>
         </body>
       </body>
     </body>

@@ -195,9 +195,17 @@ class PlatformCreatureEnv(gym.Env):
         self.data.qpos[:] = self._init_qpos
         self.data.qvel[:] = self._init_qvel
 
-        # Randomize target position on platform
+        # Randomize target position on platform. Exclude a ±25° cone in front
+        # of AB's default head-cam view so the target won't already be visible
+        # at spawn; finding it visually requires turning the head.
         if self.np_random is not None:
-            angle = self.np_random.uniform(0, 2 * np.pi)
+            forward_cone = np.radians(25)  # matches head_cam fovy
+            while True:
+                angle = self.np_random.uniform(0, 2 * np.pi)
+                dev = abs(angle - np.pi / 2)
+                dev = min(dev, 2 * np.pi - dev)
+                if dev > forward_cone:
+                    break
             radius = self.np_random.uniform(0.2, 0.7)
             self.data.qpos[self._target_x_addr] = radius * np.cos(angle)
             self.data.qpos[self._target_y_addr] = radius * np.sin(angle)
