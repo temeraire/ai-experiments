@@ -16,7 +16,14 @@ Terms that show up in FINDINGS.md, the training scripts, and our conversations. 
 
 **Episode.** One trial: reset the environment, let the agent act for up to 200 timesteps or until it touches the target (whichever comes first). Our task gives +10 reward for touching the target.
 
-**Timestep / step.** One `env.step(action)` call — the physics simulator advances by a small amount.
+**Timestep / step.** One full decision cycle of the RL loop: (1) agent sees the observation, (2) picks an action, (3) env advances the physics, (4) returns the new observation + reward + done flag. In our env each step packs 5 internal MuJoCo physics substeps of 0.01 sim-seconds, so one step = **50 ms of simulated time**. The agent only *decides* every 50 ms, but physics is computed every 10 ms.
+
+So a 400-step stage-0 episode = 20 simulated seconds of creature-time. 200,000 steps of training ≈ 2.8 sim-hours of creature experience (~8 min wall-clock at ~400 FPS).
+
+Worth distinguishing:
+- **Step** ≠ **sim-timestep** — a sim-timestep is 0.01 s of physics; a step bundles 5 of those.
+- **Step** ≠ **episode** — an episode is a full reset-to-termination run (up to 400 steps now in stage 0).
+- **Step** ≠ **video frame** — videos render one frame per step, so timelines happen to align, but they're different things.
 
 **Rollout.** A sequence of timesteps, usually a full episode or a batch of episodes. "Roll out the policy" = run it in the environment and record what happens.
 
@@ -89,6 +96,8 @@ Terms that show up in FINDINGS.md, the training scripts, and our conversations. 
 ## The simulation stack
 
 **MuJoCo.** A fast, accurate rigid-body physics simulator. Handles the arm, the objects, contact forces, gravity. Bought by DeepMind in 2021 and open-sourced.
+
+**Center of mass (CoM).** The average position of all mass in a body, weighted by mass. A tall narrow object with mass up top (a standing pencil) has a *high* CoM and tips easily: small disturbances tilt it far enough that gravity acts *outside* the base of support and pulls it over. A squat object with mass near the ground (a bowling pin butt) has a *low* CoM and stays put. Relevant here because AB's chassis stability is essentially a CoM-vs-wheelbase geometry problem: tipping is stable iff the CoM ends up outside the wheel contact polygon.
 
 **Gymnasium.** The standard Python interface for RL environments (`env.reset()`, `env.step(action)`, etc.). Fork of OpenAI's old `gym`. Our `TabletopReachEnv` inherits from `gym.Env`.
 

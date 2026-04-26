@@ -30,13 +30,25 @@ RENDER_HEIGHT = 480
 RENDER_WIDTH = 480
 
 
-def sanity_render(vision=False, seed=0, steps=150):
+def sanity_render(vision=False, seed=0, steps=150, stage=1, checkpoint=None, v9=False,
+                  spawn_radius=None, name_suffix=""):
     VIDEO_DIR.mkdir(parents=True, exist_ok=True)
     tag = "vision" if vision else "blind"
-    out_path = VIDEO_DIR / f"v8_sanity_{tag}_seed{seed}.mp4"
+    ckpt_tag = "_trained" if checkpoint else ""
+    version_tag = "v9" if v9 else "v8"
+    out_path = VIDEO_DIR / (
+        f"{version_tag}_sanity_stage{stage}_{tag}{ckpt_tag}{name_suffix}_seed{seed}.mp4"
+    )
 
-    env = PlatformCreatureEnv(vision=vision)
-    model = SAC("MlpPolicy", env, learning_starts=10**9, verbose=0, device="cpu", seed=seed)
+    radius_override = (spawn_radius, spawn_radius) if spawn_radius is not None else None
+    env = PlatformCreatureEnv(
+        vision=vision, stage=stage, v9=v9,
+        target_radius_override=radius_override,
+    )
+    if checkpoint:
+        model = SAC.load(checkpoint, env=env, device="cpu")
+    else:
+        model = SAC("MlpPolicy", env, learning_starts=10**9, verbose=0, device="cpu", seed=seed)
     renderer = mujoco.Renderer(env.model, RENDER_HEIGHT, RENDER_WIDTH)
 
     obs, _ = env.reset(seed=seed)
@@ -48,6 +60,7 @@ def sanity_render(vision=False, seed=0, steps=150):
     last = None
     fell = False
     touched = False
+    ball_lost = False
     steps_taken = 0
     for step in range(steps):
         panels = []
@@ -64,6 +77,7 @@ def sanity_render(vision=False, seed=0, steps=150):
         if terminated:
             fell = info.get("fell", False)
             touched = info.get("touched", False)
+            ball_lost = info.get("ball_lost", False)
         if terminated or truncated:
             break
 
@@ -75,9 +89,12 @@ def sanity_render(vision=False, seed=0, steps=150):
     renderer.close()
     env.close()
 
-    outcome = "TOUCHED" if touched else ("FELL" if fell else "TIMEOUT")
+    if touched: outcome = "TOUCHED"
+    elif fell: outcome = "FELL"
+    elif ball_lost: outcome = "BALL_LOST"
+    else: outcome = "TIMEOUT"
     print(f"Sanity video: {out_path}")
-    print(f"  vision={vision}  seed={seed}  steps={steps_taken}  outcome={outcome}")
+    print(f"  stage={stage}  vision={vision}  seed={seed}  steps={steps_taken}  outcome={outcome}")
     return str(out_path)
 
 
@@ -87,5 +104,28 @@ if __name__ == "__main__":
                         help="Include head-cam pixels in the observation (vision mode)")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--steps", type=int, default=150)
+    parser.add_argument("--stage", type=int, default=1, choices=[0, 1],
+                        help="0 = locomotion-only scaffold, 1 = full v8 survival env")
+    parser.add_argument("--checkpoint", default=None,
+                        help="Path to a trained SAC checkpoint. If omitted, uses a fresh "
+                             "untrained SAC (random actions) for pre-training sanity.")
+    parser.add_argument("--v9", action="store_true",
+                        help="v9 env: moving target (free-joint ball, initial velocity, "
+                             "rolling friction decay, ball-lost termination).")
+    parser.add_argument("--spawn-radius", type=float, default=None,
+                        help="Override ball spawn radius in meters (plumbs "
+                             "target_radius_override to the env). Use to match a "
+                             "trained checkpoint's training distribution — e.g. 0.25 "
+                             "for a policy trained at warm-start radius 0.25.")
+    parser.add_argument("--episodes", type=int, default=1,
+                        help="Number of episodes to render (one video per seed, "
+                             "starting from --seed and incrementing).")
+    parser.add_argument("--suffix", default="",
+                        help="Optional tag appended to output filename.")
     args = parser.parse_args()
-    sanity_render(vision=args.vision, seed=args.seed, steps=args.steps)
+    for i in range(args.episodes):
+        sanity_render(
+            vision=args.vision, seed=args.seed + i, steps=args.steps,
+            stage=args.stage, checkpoint=args.checkpoint, v9=args.v9,
+            spawn_radius=args.spawn_radius, name_suffix=args.suffix,
+        )

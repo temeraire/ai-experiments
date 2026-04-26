@@ -66,7 +66,8 @@ def measure_vision_ablation_sensitivity(model, n_states=40, seed=0, max_steps=12
     is ignored (policy is still groping by proprio).
     """
     env = PlatformCreatureEnv(vision=True)
-    proprio_dim = env.observation_space.shape[0] - 16 * 16 * 3
+    from alien_baby.envs.platform_creature_env import CAM_HEIGHT, CAM_WIDTH
+    proprio_dim = env.observation_space.shape[0] - CAM_HEIGHT * CAM_WIDTH * 3
 
     obs_list = []
     obs, _ = env.reset(seed=seed)

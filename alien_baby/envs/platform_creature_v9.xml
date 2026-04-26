@@ -1,6 +1,6 @@
-<mujoco model="platform_creature_v8">
+<mujoco model="platform_creature_v9">
   <compiler angle="radian" inertiafromgeom="true"/>
-  <option gravity="0 0 -9.81" integrator="RK4" timestep="0.01"/>
+  <option gravity="0 0 -9.81" integrator="Euler" timestep="0.01" cone="elliptic"/>
 
   <default>
     <joint armature="0.1" damping="2" limited="true"/>
@@ -21,9 +21,14 @@
     <geom name="ground" type="plane" size="10 10 0.1" pos="0 0 0" rgba="0.4 0.35 0.3 1"
           material="MatGround" conaffinity="1" contype="1"/>
 
-    <!-- Platform: 2m x 2m, 2m above ground, 5cm thick -->
+    <!-- Platform: 2m x 2m, 2m above ground, 5cm thick. Low friction so the
+         ball rolls freely; AB's wheels are high-friction so they still grip
+         (MuJoCo takes max of the two contacting friction values).
+         Flat gray rgba (no checker texture) — simplified scene so vision
+         attends to the ball, not to a structured platform surface. -->
     <geom name="platform" type="box" size="1.0 1.0 0.025" pos="0 0 2.0"
-          rgba="0.7 0.7 0.65 1" material="MatPlatform" conaffinity="1" contype="1"/>
+          rgba="0.7 0.7 0.65 1" conaffinity="1" contype="1"
+          friction="0.1 0.001 0.001"/>
 
     <!-- Platform edge markers (visual only, thin lines at edges) -->
     <geom name="edge_N" type="capsule" fromto="-1.0 1.0 2.025 1.0 1.0 2.025" size="0.01"
@@ -35,16 +40,9 @@
     <geom name="edge_W" type="capsule" fromto="-1.0 -1.0 2.025 -1.0 1.0 2.025" size="0.01"
           rgba="0.9 0.2 0.2 0.8" contype="0" conaffinity="0"/>
 
-    <!-- Colored cardinal walls (visual referents; non-colliding).     -->
-    <!-- Red=+Y, Green=-Y, Blue=-X, Yellow=+X. 4m tall, at ±3m.        -->
-    <geom name="wall_N" type="box" size="3 0.05 2" pos="0 3 2"
-          rgba="0.9 0.15 0.15 1" contype="0" conaffinity="0"/>
-    <geom name="wall_S" type="box" size="3 0.05 2" pos="0 -3 2"
-          rgba="0.15 0.7 0.2 1" contype="0" conaffinity="0"/>
-    <geom name="wall_W" type="box" size="0.05 3 2" pos="-3 0 2"
-          rgba="0.15 0.3 0.9 1" contype="0" conaffinity="0"/>
-    <geom name="wall_E" type="box" size="0.05 3 2" pos="3 0 2"
-          rgba="0.95 0.85 0.15 1" contype="0" conaffinity="0"/>
+    <!-- Walls removed 2026-04-21: scratch run at 300K learned to attend to
+         walls instead of the ball (high sensitivity, 0/20 touches). Sparser
+         scene forces vision to key on the ball. -->
 
     <!-- ============================================================ -->
     <!-- THE CREATURE: torso sled + 2 arms + head                     -->
@@ -181,7 +179,8 @@
           <geom name="head_geom" type="sphere" size="0.04"
                 rgba="0.7 0.6 0.5 1" contype="0" conaffinity="0"/>
 
-          <!-- Face paint (visual only): makes heading obvious in renders. -->
+          <!-- Face paint (visual only): makes "which way AB is facing"
+               obvious in rendered videos. -->
           <geom name="face_white" type="sphere" size="0.041"
                 pos="0 0.01 0" rgba="0.9 0.9 0.85 1"
                 contype="0" conaffinity="0"/>
@@ -206,13 +205,20 @@
     <!-- ============================================================ -->
     <!-- TARGET OBJECT (ball on the platform)                         -->
     <!-- ============================================================ -->
-    <body name="target" pos="0.5 0.5 2.05">
-      <joint name="target_x" type="slide" axis="1 0 0" limited="true" range="-0.9 0.9"
-             ref="0.5" armature="0" damping="0.5" stiffness="0"/>
-      <joint name="target_y" type="slide" axis="0 1 0" limited="true" range="-0.9 0.9"
-             ref="0.5" armature="0" damping="0.5" stiffness="0"/>
+    <!-- v9 target: free body. Ball rolls on platform under gravity + friction.
+         Can be pushed, can fall off the edge. Initial velocity set in env reset.
+         Friction: high sliding (1.0) so it grips and rolls; low rolling (0.01)
+         so kinetic energy decays slowly — roughly halves every ~5 sim-seconds. -->
+    <body name="target" pos="0 0 2.10">
+      <!-- Explicit overrides: <default> damping=2 would stop the ball in one
+           step; armature=0.1 is 100x the ball's real rotational inertia,
+           preventing rolling. Velocity decay is applied directly in env
+           step() — cleaner than joint-level damping which would also kill
+           rotation. -->
+      <joint name="target_free" type="free" armature="0" damping="0"/>
       <geom name="target_geom" type="sphere" size="0.04"
-            rgba="1 0.2 0.2 1" contype="1" conaffinity="1" density="200"/>
+            rgba="1 0.2 0.2 1" contype="1" conaffinity="1" density="200"
+            friction="1.0 0.005 0.01"/>
     </body>
 
     <!-- Overhead camera (experimenter view) -->

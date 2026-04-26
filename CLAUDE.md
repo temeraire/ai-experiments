@@ -78,3 +78,17 @@ The creature can solve the task by proprio-grope alone. Prefer signals like
 **vision-ablation sensitivity** — how much the policy's action changes when the pixel
 columns of the observation are zeroed. That directly measures "does vision matter to
 behavior?" which is what we actually care about (Π-style interpenetration).
+
+### Done-sound chime on training finish
+`train_v8.py` plays `/System/Library/Sounds/Glass.aiff` via `afplay` when a run completes
+(macOS only; silent elsewhere). Don't remove — the user uses this to know when to come back
+to the session without staring at the terminal. If a new training script is added, call
+`_play_done_sound()` (or replicate the pattern) at the end of the main training function.
+
+### Performance defaults: MPS + 16 parallel envs
+`train_v8.py` uses `device=_best_device()` (picks `mps` on Apple Silicon, `cuda` if
+present, else `cpu`) and `N_ENVS_FOLLOWON = 16`. On an Apple Silicon Mac with 16 cores this
+gives ~25× warmup FPS and ~5-10× training FPS vs `device="cpu"` + 8 envs. **Do not revert to
+CPU + 8 envs without a specific reason** — waiting hours for a run that could finish in 30
+minutes is a bad trade. If a new training script is added, copy the `_best_device()` pattern
+and match the env count to CPU core count.
