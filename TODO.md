@@ -561,3 +561,90 @@ Default follow-on length drops from 1M → 250K steps. After 250K, render from `
 **Open follow-ups (not in this PR):**
 - Timelapse script that renders across a sequence of checkpoints with per-checkpoint ablation-sensitivity → smoothed sharpness. The primitive (`measure_vision_ablation_sensitivity`) is in place; wiring it into a `develop_v8.py` analogue is the next step.
 - Calibrate `--ablation-max`: 0.5 is a placeholder. Once we have a range of checkpoints with sensitivities from ~0 (early) to ~1+ (late), pick a value that makes the visual progression expressive.
+
+---
+
+## v9 reward reshape — kill ATTRACT bribery (Variant 3: last-mile only)
+
+### Motivation
+Overnight 1M-step run (`v9_yawpin_scratch_unfrozen`, 420K before MPS crash) sat flat at
+`ep_rew_mean ≈ 61`, `ep_len_mean = 300.0` across all 420 eval episodes. Zero touches, zero
+falls, zero ball-losses. Classic drive-reduction collapse: the reward landscape paid ~+0.175
+per step for proprio-grope (ATTRACT +0.225 − HUNGER −0.05 at ball-at-0.5m center-platform).
+ATTRACT is the bribery vehicle — proximity without contact is a positive reinforcer.
+
+### Fix (Variant 3: last-mile only)
+Gate ATTRACT to fire only inside hand-reach (<0.15m), so it provides fine-motor guidance in
+the approach but cannot be harvested from a stable grope pose. Keep V9_BALL_INITIAL_SPEED=0
+to isolate the reward reshape from dynamics changes. Keep entropy pinned at 0.1.
+
+### Plan
+- [ ] 1. Create git branch `feature/v9-reward-last-mile`.
+- [ ] 2. **`platform_creature_env.py`**: change `ATTRACT_MAX_DIST = 2.0` → `ATTRACT_MAX_DIST = 0.15`. One-line diff. At d=0 reward is 0.3; at d=0.15 it's 0; outside 0.15 it's 0. ATTRACT_SCALE and HUNGER_PENALTY unchanged.
+- [ ] 3. **Component logging in env**: add per-episode `hunger_sum`, `attract_sum`, `touch` to the info dict returned on terminal/truncated step. Accumulators reset in `reset()`, updated in `step()`. Terminal paths (fall/touch/ball-lost/truncate) all emit the sums.
+- [ ] 4. **Run-config dump in trainer**: `train_v8.py` — at start of `train_followon_v8`, write all args to `results/followon_v8_<tag>_config.json` so next time we don't have to grep logs for CLI flags.
+- [ ] 5. **Sanity check 1 — random policy**: script `alien_baby/tests/random_policy_probe_v9.py`. Roll a random policy for 100 episodes under the new reward. Log per-episode: `hunger_sum`, `attract_sum`, `touch` (0/1), `fell` (0/1), `ball_lost` (0/1), `ep_len`, `total_reward`. Report: fraction with touch, distribution of total_reward, confirm net reward is negative when idle at 0.5m.
+- [ ] 6. **Decision gate**: if touch fraction in (5) is 0%, invoke curriculum safeguard — temporarily set `_target_radius_lo = _target_radius_hi = 0.25` for the first 50K training steps, then anneal back to 0.5. Only if needed. (Implementation: add a `target_radius_override` arg to env; trainer callback schedules the anneal.)
+- [ ] 7. **Sanity render**: `sanity_render.py --vision` from a freshly-initialized model under the new env. Confirm cameras + spawn + physics still sane (per CLAUDE.md workflow rule).
+- [ ] 8. **Smoke train**: 50K-step run to confirm plumbing (reward components reach training logs, ep_lens start varying). Do not judge policy yet.
+- [ ] 9. **Real run**: 250K steps (not 1M — per CLAUDE.md workflow). ent_coef pinned at 0.1. Render from `followon_v9_*_best/best_model.zip`. Extend to 1M only if 250K video is promising.
+- [ ] 10. Review section.
+
+### Entropy strategy
+- This run: pinned at 0.1 (unchanged from last run). Don't change two things at once — the reward reshape is the experimental variable.
+- Next run (conditional on this one learning): once left/right symmetry emerges post-reward-fix, anneal entropy to 0.01 to crystallize engrams.
+
+### What is NOT touched
+- `platform_creature_v9.xml` — no physics changes.
+- v9 ball motion: `V9_BALL_INITIAL_SPEED = 0.0` stays. Static ball this run.
+- SAC hyperparameters: lr, buffer, batch, γ, τ, train_freq, gradient_steps unchanged.
+- `ATTRACT_SCALE = 0.3`, `HUNGER_PENALTY = -0.05`, `CONTACT_REWARD = 200`, `FALL_PENALTY = -500` — constants unchanged; only the ATTRACT distance window shrinks.
+- Stage 1 training path.
+
+### Decisions locked (per David, 2026-04-22)
+- Variant 3 (last-mile only). Variant 1 risks sparse-reward abyss; Variant 2 adds implementation surface area without clarity benefit.
+- Ball stays static. Fix reward landscape first; add dynamics later.
+- Component logging required — verify ATTRACT fires only in <0.15m and net-idle reward is negative.
+- Curriculum safeguard (radius 0.25 → 0.5) is conditional on Sanity Check 1 showing 0% touch rate, not upfront.
+- Entropy pinned at 0.1 through this run; anneal in a subsequent run once learning is visible.
+
+### Review
+_(to be filled in after implementation)_
+
+---
+
+## Mirror Wrapper (stage-1 lateralization-attractor breaker)
+
+### Motivation
+Stage-1 runs collapse into a one-sided turret mode (α=0.3 → left, α=0.5 → right). Env is mirror-symmetric, so a per-episode L/R coin-flip wrapper should let the policy generalize across bilateral symmetry and break the attractor.
+
+### Spec deviations from `Session Resume.md`
+The resume spec was a best-guess; audit of `platform_creature_env.py` + v9 XML surfaced three errors, all confirmed with David and corrected:
+1. **Obs indices.** Quat is 4 elements at `[14:18]`; angvel at `[21:24]` (spec said `[14:17]` / `[20:23]`).
+2. **Quat transform.** Sagittal mirror (x=0 plane) requires `(w,x,y,z) → (w,x,-y,-z)`. Spec's `(w,-x,y,-z)` is a *y*-plane reflection — inconsistent with the angvel rule it paired with.
+3. **Shoulder roll.** Both arms share `axis="1 0 0"` in the XML, so L/R mirror is swap-only — no sign flip.
+
+### Architecture
+`MirrorWrapper(gym.Wrapper)`, per-episode coin flip (default p=0.5). On heads: incoming action un-mirrored → env; env obs mirrored → policy. `info["mirrored"]` populated so Monitor/RewardComponentCallback can log `rollout/mirrored_frac`. `info["spawn_angle"]` / `info["spawn_left"]` flipped to perceived hemisphere so hemisphere-balance telemetry reflects what the policy saw.
+
+**Env state is NOT modified.** Combining state mirror + obs mirror cancels (obs is equivariant under state mirror, so `mirror_obs(obs(mirror(s))) == obs(s)`), defeating the augmentation. Obs/action mirror alone suffices because (a) env dynamics are mirror-symmetric and (b) v9 ball-spawn distribution is already mirror-invariant (angle ∈ `[0, π)` is closed under `θ → π-θ`).
+
+### Files changed
+- **New** `alien_baby/envs/mirror_wrapper.py` — module-level `mirror_action`, `mirror_obs`, and `MirrorWrapper` class.
+- **New** `alien_baby/tests/test_mirror_wrapper.py` — 10 tests: involution for action & obs (with and without vision), specific-value transforms, pixel column flip, shape preservation, force-mirror test hook, and a physics-level rollout-symmetry test.
+- `alien_baby/envs/platform_creature_env.py` — added `"mirrored": False` default to `_info()` so Monitor's info_keywords lookup works whether or not the wrapper is in the chain.
+- `alien_baby/agents/train_v8.py` — imports `MirrorWrapper`, adds `--mirror-augmentation` CLI flag, plumbs `mirror_augmentation` through `train_stage1_v8`, wraps the training env (eval env stays unwrapped so `best_model.zip` reflects raw-task performance), adds `"mirrored"` to `FOLLOWON_INFO_KEYWORDS` and `RewardComponentCallback`'s frac group.
+
+### Verification
+- 10/10 unit tests pass. `test_mirrored_rollout_matches_mirrored_plain_rollout` is the load-bearing one: stepping the wrapped env from the same seed with zero actions produces obs equal to `mirror_obs(plain obs)` at every step, proving the env truly respects the symmetry and the wrapper is a faithful symmetry transform.
+- Smoke test: `Monitor(MirrorWrapper(env))` chain steps cleanly over 12 random episodes; mirror rate 5/12, `mirrored` info key propagates through.
+
+### Launch command
+```
+python -m alien_baby.agents.train_v8 --stage stage1 --v9 \
+  --ent-coef 0.1 --stage1-radius 0.30,0.70 --pbrs-alpha 0.3 \
+  --mirror-augmentation
+```
+
+### Success gate (from Session Resume)
+`dist_reduction > 0.05` at 50K with bilateral symmetry (`rollout/touched_left_frac` and `rollout/touched_right_frac` both > 5% at the 25K gate).
