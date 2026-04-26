@@ -19,7 +19,9 @@ from stable_baselines3.common.callbacks import (
     BaseCallback, EvalCallback, CheckpointCallback, CallbackList,
 )
 from stable_baselines3.common.monitor import Monitor
-from stable_baselines3.common.vec_env import SubprocVecEnv
+from stable_baselines3.common.vec_env import (
+    SubprocVecEnv, VecNormalize, DummyVecEnv, sync_envs_normalization,
+)
 
 from alien_baby.envs.platform_creature_env import PlatformCreatureEnv
 from alien_baby.envs.mirror_wrapper import MirrorWrapper
@@ -46,7 +48,8 @@ def _best_device():
 
 FOLLOWON_INFO_KEYWORDS = (
     "hunger_sum", "attract_sum", "mean_dist", "touched", "fell", "ball_lost",
-    "spawn_angle", "spawn_left", "shaping_sum", "closure_sum", "mirrored",
+    "tilted", "spawn_angle", "spawn_left", "shaping_sum", "closure_sum",
+    "ctrl_cost_sum", "mirrored",
 )
 
 
@@ -150,11 +153,11 @@ class RewardComponentCallback(BaseCallback):
         if not buf:
             return True
         for key in ("hunger_sum", "attract_sum", "mean_dist", "shaping_sum",
-                    "closure_sum"):
+                    "closure_sum", "ctrl_cost_sum"):
             vals = [ep[key] for ep in buf if key in ep]
             if vals:
                 self.logger.record(f"rollout/{key}_mean", float(np.mean(vals)))
-        for key in ("touched", "fell", "ball_lost", "mirrored"):
+        for key in ("touched", "fell", "ball_lost", "tilted", "mirrored"):
             vals = [float(bool(ep[key])) for ep in buf if key in ep]
             if vals:
                 self.logger.record(f"rollout/{key}_frac", float(np.mean(vals)))
@@ -171,17 +174,43 @@ class RewardComponentCallback(BaseCallback):
         return True
 
 
-def _make_followon_env(v9=False, target_radius_override=None, pbrs_alpha=0.0):
+def _make_followon_env(v9=False, target_radius_override=None, pbrs_alpha=0.0,
+                       mirror_augmentation=False):
     def _make():
-        return Monitor(
-            PlatformCreatureEnv(
-                vision=True, v9=v9,
-                target_radius_override=target_radius_override,
-                pbrs_alpha=pbrs_alpha,
-            ),
-            info_keywords=FOLLOWON_INFO_KEYWORDS,
+        env = PlatformCreatureEnv(
+            vision=True, v9=v9,
+            target_radius_override=target_radius_override,
+            pbrs_alpha=pbrs_alpha,
         )
+        if mirror_augmentation:
+            env = MirrorWrapper(env)
+        return Monitor(env, info_keywords=FOLLOWON_INFO_KEYWORDS)
     return _make
+
+
+class VecNormalizeSaveCallback(BaseCallback):
+    """Save VecNormalize statistics alongside model checkpoints. SB3's
+    CheckpointCallback only persists the model; the running mean/std of the
+    obs/reward normalizer must be saved separately or eval at load time
+    sees denormalized observations."""
+
+    def __init__(self, vec_env, save_freq, save_dir, name_prefix, verbose=1):
+        super().__init__(verbose)
+        self.vec_env = vec_env
+        self.save_freq = int(save_freq)
+        self.save_dir = pathlib.Path(save_dir)
+        self.name_prefix = name_prefix
+
+    def _on_step(self) -> bool:
+        if self.n_calls % self.save_freq == 0:
+            self.save_dir.mkdir(parents=True, exist_ok=True)
+            path = self.save_dir / (
+                f"{self.name_prefix}_vecnorm_{self.num_timesteps}_steps.pkl"
+            )
+            self.vec_env.save(str(path))
+            if self.verbose:
+                print(f"[VecNormSave] {path.name}")
+        return True
 
 
 def _play_done_sound():
@@ -274,7 +303,7 @@ def train_stage1_v8(total_timesteps=500_000, seed=42, checkpoint_interval=50_000
             "MlpPolicy",
             env,
             learning_rate=3e-4,
-            buffer_size=200_000,
+            buffer_size=500_000,
             batch_size=256,
             tau=0.005,
             gamma=0.99,
@@ -371,6 +400,8 @@ def train_followon_v8(
     radius_anneal=None,
     followon_init_from=None,
     pbrs_alpha=0.0,
+    mirror_augmentation=False,
+    vec_normalize=False,
 ):
     freeze_label = "frozen" if freeze_proprio else "unfrozen"
     # Auto-tag output dirs so back-to-back frozen/unfrozen runs don't clobber.
@@ -404,6 +435,8 @@ def train_followon_v8(
         "radius_anneal": radius_anneal,
         "followon_init_from": followon_init_from,
         "pbrs_alpha": pbrs_alpha,
+        "mirror_augmentation": mirror_augmentation,
+        "vec_normalize": vec_normalize,
     }, indent=2))
     print(f"Config written to {config_path}")
     if target_radius_override is not None:
@@ -430,14 +463,48 @@ def train_followon_v8(
 
     env = SubprocVecEnv(
         [_make_followon_env(v9=v9, target_radius_override=vec_env_radius,
-                            pbrs_alpha=pbrs_alpha)
+                            pbrs_alpha=pbrs_alpha,
+                            mirror_augmentation=mirror_augmentation)
          for _ in range(N_ENVS_FOLLOWON)],
         start_method="spawn",
     )
-    eval_env = Monitor(PlatformCreatureEnv(
-        vision=True, v9=v9, target_radius_override=eval_env_radius,
-        pbrs_alpha=pbrs_alpha,
-    ))
+    if vec_normalize:
+        # If --followon-init-from is paired with a sibling vec_normalize.pkl,
+        # load existing stats; otherwise start fresh. Mismatch (init-from set
+        # but no pkl found) gets a loud warning since the policy was trained
+        # against normalized obs but will see nearly-raw obs until stats
+        # converge.
+        existing_vecnorm = None
+        if followon_init_from is not None:
+            candidate = pathlib.Path(followon_init_from).parent / "vec_normalize.pkl"
+            if candidate.exists():
+                existing_vecnorm = str(candidate)
+        if existing_vecnorm:
+            print(f"VecNormalize: loading stats from {existing_vecnorm}")
+            env = VecNormalize.load(existing_vecnorm, env)
+            env.training = True
+            env.norm_reward = True
+        else:
+            if followon_init_from is not None:
+                print(f"VecNormalize: WARNING — no vec_normalize.pkl alongside "
+                      f"{followon_init_from}; starting with fresh stats. "
+                      f"Loaded policy will see denormalized obs until stats "
+                      f"warm up (~1k env steps).")
+            env = VecNormalize(env, norm_obs=True, norm_reward=True, clip_obs=10.0)
+        # Eval env: VecNormalize'd with training=False. EvalCallback's
+        # sync_envs_normalization() copies stats from training env before
+        # each eval automatically.
+        eval_env_inner = DummyVecEnv([lambda: Monitor(PlatformCreatureEnv(
+            vision=True, v9=v9, target_radius_override=eval_env_radius,
+            pbrs_alpha=pbrs_alpha,
+        ))])
+        eval_env = VecNormalize(eval_env_inner, training=False,
+                                norm_reward=False, clip_obs=10.0)
+    else:
+        eval_env = Monitor(PlatformCreatureEnv(
+            vision=True, v9=v9, target_radius_override=eval_env_radius,
+            pbrs_alpha=pbrs_alpha,
+        ))
 
     if stage1_path is None:
         stage1_path = str(RESULTS_DIR / "stage1_v8_checkpoint")
@@ -469,7 +536,7 @@ def train_followon_v8(
             lambda_consistency=lambda_consistency,
             proprio_dim=PROPRIO_DIM_V8,
             learning_rate=1e-4,
-            buffer_size=200_000,
+            buffer_size=500_000,
             batch_size=256,
             tau=0.005,
             gamma=0.99,
@@ -528,6 +595,13 @@ def train_followon_v8(
             anneal_begin_step=radius_anneal["anneal_begin_step"],
             anneal_end_step=radius_anneal["anneal_end_step"],
         ))
+    if vec_normalize:
+        extra_cbs.append(VecNormalizeSaveCallback(
+            vec_env=env,
+            save_freq=max(checkpoint_interval // N_ENVS_FOLLOWON, 1),
+            save_dir=str(RESULTS_DIR / f"followon_v8{suffix}_checkpoints"),
+            name_prefix=f"followon_v8{suffix}",
+        ))
     # SB3 callbacks count `env.step()` calls, not env-steps. With N_ENVS parallel
     # envs each call = N_ENVS env-steps, so divide intended env-step frequencies
     # by N_ENVS_FOLLOWON so the callbacks fire at the intended env-step cadence.
@@ -560,24 +634,54 @@ def train_followon_v8(
     model.save(final_path)
     print(f"\nFollow-on v8 ({run_tag}) saved to {final_path}")
 
-    # Evaluate on a fresh single env (VecEnv has a different reset API)
-    final_eval_env = PlatformCreatureEnv(
-        vision=True, v9=v9, target_radius_override=target_radius_override,
-        pbrs_alpha=pbrs_alpha,
-    )
+    if vec_normalize:
+        vecnorm_final = RESULTS_DIR / f"followon_v8{suffix}_vec_normalize.pkl"
+        env.save(str(vecnorm_final))
+        print(f"VecNormalize stats saved to {vecnorm_final}")
+
+    # Final 20-episode eval. Under --vec-normalize, the model expects
+    # normalized obs; wrap in DummyVecEnv → VecNormalize, sync stats from
+    # the trained env, and use the vec API for the loop.
     successes = 0
     falls = 0
-    for i in range(20):
-        obs, _ = final_eval_env.reset(seed=i + 1000)
-        done = False
-        while not done:
-            action, _ = model.predict(obs, deterministic=True)
-            obs, reward, terminated, truncated, info = final_eval_env.step(action)
-            done = terminated or truncated
-        if info.get("touched"):
-            successes += 1
-        if info.get("fell"):
-            falls += 1
+    if vec_normalize:
+        final_eval_inner = DummyVecEnv([lambda: PlatformCreatureEnv(
+            vision=True, v9=v9, target_radius_override=target_radius_override,
+            pbrs_alpha=pbrs_alpha,
+        )])
+        final_eval_env = VecNormalize(final_eval_inner, training=False,
+                                      norm_reward=False, clip_obs=10.0)
+        sync_envs_normalization(env, final_eval_env)
+        for i in range(20):
+            final_eval_env.seed(i + 1000)
+            obs = final_eval_env.reset()
+            done = False
+            info = None
+            while not done:
+                action, _ = model.predict(obs, deterministic=True)
+                obs, reward, dones, infos = final_eval_env.step(action)
+                done = bool(dones[0])
+                info = infos[0]
+            if info.get("touched"):
+                successes += 1
+            if info.get("fell"):
+                falls += 1
+    else:
+        final_eval_env = PlatformCreatureEnv(
+            vision=True, v9=v9, target_radius_override=target_radius_override,
+            pbrs_alpha=pbrs_alpha,
+        )
+        for i in range(20):
+            obs, _ = final_eval_env.reset(seed=i + 1000)
+            done = False
+            while not done:
+                action, _ = model.predict(obs, deterministic=True)
+                obs, reward, terminated, truncated, info = final_eval_env.step(action)
+                done = terminated or truncated
+            if info.get("touched"):
+                successes += 1
+            if info.get("fell"):
+                falls += 1
 
     print(f"Follow-on v8: {successes}/20 touches, {falls}/20 falls")
 
@@ -671,12 +775,23 @@ if __name__ == "__main__":
                         help="Radius anneal: env-step count at which radius "
                              "reaches end. After this, radius is held at end.")
     parser.add_argument("--mirror-augmentation", action="store_true",
-                        help="Stage-1 only: wrap the training env with "
-                             "MirrorWrapper (per-episode L/R coin flip). "
-                             "Breaks the lateralization attractor by forcing "
-                             "the policy to generalize across the creature's "
-                             "bilateral symmetry. Eval env stays unwrapped so "
-                             "best_model.zip reflects raw-task performance.")
+                        help="Wrap the training env with MirrorWrapper "
+                             "(per-episode L/R coin flip). Applies to BOTH "
+                             "stage-1 and follow-on training envs (eval envs "
+                             "stay unwrapped so best_model.zip reflects "
+                             "raw-task performance). Breaks the lateralization "
+                             "attractor by forcing the policy to generalize "
+                             "across the creature's bilateral symmetry.")
+    parser.add_argument("--vec-normalize", action="store_true",
+                        help="Follow-on only: wrap the SubprocVecEnv with "
+                             "VecNormalize (running mean/std on obs and "
+                             "reward). Eliminates the proprio (~±10) vs "
+                             "pixel ([0,1]) scale mismatch that suppresses "
+                             "pixel-column gradients in the MlpPolicy first "
+                             "layer. Eval env is VecNormalize with "
+                             "training=False; stats synced from training env "
+                             "before each eval. vec_normalize.pkl saved "
+                             "alongside model checkpoints.")
     parser.add_argument("--stage1-anneal-max-radius-to", type=float, default=None,
                         help="Stage-1 only: target upper bound for a radius "
                              "anneal. Lower bound stays pinned at the initial "
@@ -800,4 +915,6 @@ if __name__ == "__main__":
             radius_anneal=radius_anneal,
             followon_init_from=args.followon_init_from,
             pbrs_alpha=args.pbrs_alpha,
+            mirror_augmentation=args.mirror_augmentation,
+            vec_normalize=args.vec_normalize,
         )

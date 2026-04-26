@@ -54,6 +54,20 @@ ATTRACT_MAX_DIST = 0.25
 # constructor kwarg `pbrs_alpha` (0.0 disables, 0.3 = default for experiments).
 PBRS_GAMMA = 0.99  # matches SAC's default discount
 
+# Standard MuJoCo locomotion practice: discourage high-frequency torque
+# oscillation by paying a per-step cost proportional to action magnitude.
+# Scale chosen so worst-case per-step cost (||a||² = 8 with full ±1 across
+# 8 dims) ≈ 0.008 — smaller than HUNGER_PENALTY but large enough to bias
+# toward low-frequency periodic solutions.
+CTRL_COST_SCALE = 0.001
+
+# Tilt-based health termination: cos(60°) = 0.5. Terminate when torso
+# z-axis tilts more than 60° from world up. The v8 body rarely actually
+# falls (`0/20` in PROJECT_STATUS), but degenerate tilted-but-not-fallen
+# states burn the rest of the truncation window with useless transitions.
+# Cutting them short keeps the replay buffer clean.
+TILT_COS_THRESHOLD = 0.5
+
 
 class PlatformCreatureEnv(gym.Env):
     """Creature on a platform. Fall off = death. Touch target = reward."""
@@ -210,6 +224,7 @@ class PlatformCreatureEnv(gym.Env):
         # the push toward staying near the ball.
         self._closure_bonus_scale = float(closure_bonus_scale)
         self._closure_sum = 0.0
+        self._ctrl_cost_sum = 0.0
 
     def _build_observation_space(self):
         proprio_dim = self._proprio_dim()
@@ -293,6 +308,13 @@ class PlatformCreatureEnv(gym.Env):
         torso_z = self.data.xpos[self._torso_id][2]
         return torso_z < PLATFORM_Z - 0.2
 
+    def _is_unhealthy_tilt(self):
+        """True if torso z-axis is tilted > 60° from world up. Quaternion
+        (w,x,y,z) at qpos[3:7]; body-z·world-z = 1 - 2·(x²+y²)."""
+        x, y = self.data.qpos[4], self.data.qpos[5]
+        cos_tilt = 1.0 - 2.0 * (x * x + y * y)
+        return cos_tilt < TILT_COS_THRESHOLD
+
     def _edge_distance(self):
         """How far the torso center is from the nearest edge."""
         tx, ty = self.data.xpos[self._torso_id][:2]
@@ -338,6 +360,7 @@ class PlatformCreatureEnv(gym.Env):
         self._dist_sum = 0.0
         self._shaping_sum = 0.0
         self._closure_sum = 0.0
+        self._ctrl_cost_sum = 0.0
         self.data.qpos[:] = self._init_qpos
         self.data.qvel[:] = self._init_qvel
 
@@ -422,7 +445,8 @@ class PlatformCreatureEnv(gym.Env):
         self._step_count += 1
 
         # Apply action
-        self.data.ctrl[:] = np.clip(action, -1.0, 1.0)
+        clipped_action = np.clip(action, -1.0, 1.0)
+        self.data.ctrl[:] = clipped_action
 
         # Step physics (5 substeps for stability)
         for _ in range(5):
@@ -456,6 +480,18 @@ class PlatformCreatureEnv(gym.Env):
                 fell=True, touched=False
             )
 
+        # Tilt-based health termination: cut degenerate tilted episodes short
+        # so they don't fill the replay buffer with useless transitions.
+        if self._is_unhealthy_tilt():
+            shaping = self._pbrs_shaping(curr_body_dist, is_terminal=True)
+            reward += shaping
+            self._shaping_sum += shaping
+            terminated = True
+            self._prev_body_dist = curr_body_dist
+            return obs, reward, terminated, truncated, self._info(
+                fell=False, touched=False, tilted=True
+            )
+
         # v9: ball-lost termination. If the ball has rolled off and dropped
         # below the platform top by more than V9_BALL_LOST_DZ, the critical
         # state is unresolvable and the episode ends with no touch reward.
@@ -475,6 +511,12 @@ class PlatformCreatureEnv(gym.Env):
         # Hunger: every step without food hurts
         reward += HUNGER_PENALTY
         self._hunger_sum += HUNGER_PENALTY
+
+        # Control cost: discourage jittery torque oscillation. Standard
+        # MuJoCo-locomotion-style action² penalty.
+        ctrl_cost = -CTRL_COST_SCALE * float(np.sum(clipped_action ** 2))
+        reward += ctrl_cost
+        self._ctrl_cost_sum += ctrl_cost
 
         # Closure bonus: per-step body→ball distance reduction, clipped at 0.
         # self._prev_body_dist still holds the previous step's distance (it
@@ -555,10 +597,12 @@ class PlatformCreatureEnv(gym.Env):
             "touched": False,
             "fell": False,
             "ball_lost": False,
+            "tilted": False,
             "spawn_angle": self._spawn_angle,
             "spawn_left": bool(self._spawn_angle > np.pi / 2),
             "shaping_sum": self._shaping_sum,
             "closure_sum": self._closure_sum,
+            "ctrl_cost_sum": self._ctrl_cost_sum,
             "mirrored": False,
         }
         info.update(extras)
