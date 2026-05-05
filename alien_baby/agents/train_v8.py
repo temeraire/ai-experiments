@@ -49,7 +49,7 @@ def _best_device():
 FOLLOWON_INFO_KEYWORDS = (
     "hunger_sum", "attract_sum", "mean_dist", "touched", "fell", "ball_lost",
     "tilted", "spawn_angle", "spawn_left", "shaping_sum", "closure_sum",
-    "ctrl_cost_sum", "mirrored",
+    "ctrl_cost_sum", "mirrored", "xor_decoy", "xor_decoy_touch",
 )
 
 
@@ -175,12 +175,16 @@ class RewardComponentCallback(BaseCallback):
 
 
 def _make_followon_env(v9=False, target_radius_override=None, pbrs_alpha=0.0,
-                       mirror_augmentation=False):
+                       mirror_augmentation=False, hand_only_contact=False,
+                       spawn_cone_deg=None, xor_color_random=False):
     def _make():
         env = PlatformCreatureEnv(
             vision=True, v9=v9,
             target_radius_override=target_radius_override,
             pbrs_alpha=pbrs_alpha,
+            hand_only_contact=hand_only_contact,
+            spawn_cone_deg=spawn_cone_deg,
+            xor_color_random=xor_color_random,
         )
         if mirror_augmentation:
             env = MirrorWrapper(env)
@@ -402,6 +406,10 @@ def train_followon_v8(
     pbrs_alpha=0.0,
     mirror_augmentation=False,
     vec_normalize=False,
+    cnn_encoder=False,
+    hand_only_contact=False,
+    spawn_cone_deg=None,
+    xor_color_random=False,
 ):
     freeze_label = "frozen" if freeze_proprio else "unfrozen"
     # Auto-tag output dirs so back-to-back frozen/unfrozen runs don't clobber.
@@ -437,6 +445,10 @@ def train_followon_v8(
         "pbrs_alpha": pbrs_alpha,
         "mirror_augmentation": mirror_augmentation,
         "vec_normalize": vec_normalize,
+        "cnn_encoder": cnn_encoder,
+        "hand_only_contact": hand_only_contact,
+        "spawn_cone_deg": spawn_cone_deg,
+        "xor_color_random": xor_color_random,
     }, indent=2))
     print(f"Config written to {config_path}")
     if target_radius_override is not None:
@@ -464,7 +476,10 @@ def train_followon_v8(
     env = SubprocVecEnv(
         [_make_followon_env(v9=v9, target_radius_override=vec_env_radius,
                             pbrs_alpha=pbrs_alpha,
-                            mirror_augmentation=mirror_augmentation)
+                            mirror_augmentation=mirror_augmentation,
+                            hand_only_contact=hand_only_contact,
+                            spawn_cone_deg=spawn_cone_deg,
+                            xor_color_random=xor_color_random)
          for _ in range(N_ENVS_FOLLOWON)],
         start_method="spawn",
     )
@@ -497,6 +512,9 @@ def train_followon_v8(
         eval_env_inner = DummyVecEnv([lambda: Monitor(PlatformCreatureEnv(
             vision=True, v9=v9, target_radius_override=eval_env_radius,
             pbrs_alpha=pbrs_alpha,
+            hand_only_contact=hand_only_contact,
+            spawn_cone_deg=spawn_cone_deg,
+            xor_color_random=xor_color_random,
         ))])
         eval_env = VecNormalize(eval_env_inner, training=False,
                                 norm_reward=False, clip_obs=10.0)
@@ -504,6 +522,9 @@ def train_followon_v8(
         eval_env = Monitor(PlatformCreatureEnv(
             vision=True, v9=v9, target_radius_override=eval_env_radius,
             pbrs_alpha=pbrs_alpha,
+            hand_only_contact=hand_only_contact,
+            spawn_cone_deg=spawn_cone_deg,
+            xor_color_random=xor_color_random,
         ))
 
     if stage1_path is None:
@@ -530,6 +551,15 @@ def train_followon_v8(
         print(f"Entropy coefficient: {ent_coef} "
               f"{'(carried from loaded model)' if ent_coef == 'auto' else '(PINNED — no decay)'}")
     else:
+        policy_kwargs = {}
+        if cnn_encoder:
+            from alien_baby.agents.cnn_extractor import HybridProprioCNN
+            policy_kwargs = {
+                "features_extractor_class": HybridProprioCNN,
+                "features_extractor_kwargs": {"proprio_dim": PROPRIO_DIM_V8},
+            }
+            print("CNN encoder ENABLED — DrQ-v2-style 4-conv on pixel slice, "
+                  "raw proprio passthrough, 50-dim pixel latent.")
         model = ConsistencySAC(
             "MlpPolicy",
             env,
@@ -547,6 +577,7 @@ def train_followon_v8(
             verbose=1,
             seed=seed,
             device=_best_device(),
+            policy_kwargs=policy_kwargs,
         )
         print(f"Entropy coefficient: {ent_coef} "
               f"{'(auto-tuned)' if ent_coef == 'auto' else '(PINNED — no decay)'}")
@@ -782,6 +813,27 @@ if __name__ == "__main__":
                              "raw-task performance). Breaks the lateralization "
                              "attractor by forcing the policy to generalize "
                              "across the creature's bilateral symmetry.")
+    parser.add_argument("--cnn-encoder", action="store_true",
+                        help="Follow-on only: replace the flat-MLP pixel "
+                             "treatment with a DrQ-v2-style 4-conv encoder "
+                             "(32x32x3 -> 50-dim latent), concatenated with "
+                             "raw proprio. GAP_ANALYSIS Rank 1. Currently "
+                             "incompatible with --freeze-proprio (the actor "
+                             "first-layer shape changes).")
+    parser.add_argument("--hand-only-contact", action="store_true",
+                        help="Idea A: only left/right hand-target contacts "
+                             "count as touched. Forces aiming the hand. "
+                             "Without this, torso/wheel contact is success.")
+    parser.add_argument("--spawn-cone-deg", type=float, default=None,
+                        help="Idea A: restrict ball spawn to a body-frame "
+                             "cone of this width (degrees), centered straight "
+                             "ahead. E.g. 90 = ±45° forward cone. None = use "
+                             "stage/v9 default (full hemisphere or annular).")
+    parser.add_argument("--xor-color-random", action="store_true",
+                        help="Idea B: 50/50 red-good / blue-bad ball. Red "
+                             "contact = +CONTACT_REWARD, blue contact = "
+                             "-CONTACT_REWARD. Vision is the only signal "
+                             "that discriminates.")
     parser.add_argument("--vec-normalize", action="store_true",
                         help="Follow-on only: wrap the SubprocVecEnv with "
                              "VecNormalize (running mean/std on obs and "
@@ -900,6 +952,14 @@ if __name__ == "__main__":
                 "anneal_begin_step": args.anneal_begin_step,
                 "anneal_end_step": args.anneal_end_step,
             }
+        if args.cnn_encoder and args.freeze_proprio:
+            parser.error(
+                "--cnn-encoder and --freeze-proprio are currently "
+                "incompatible: with the CNN extractor the actor first-layer "
+                "input dim becomes proprio_dim + pixel_latent_dim (79), not "
+                "the env obs dim (3101), so the freeze_proprio shape check "
+                "would fail. Reworking that path is out of scope for tonight."
+            )
         train_followon_v8(
             stage1_path=args.stage1_checkpoint,
             total_timesteps=args.followon_steps,
@@ -917,4 +977,8 @@ if __name__ == "__main__":
             pbrs_alpha=args.pbrs_alpha,
             mirror_augmentation=args.mirror_augmentation,
             vec_normalize=args.vec_normalize,
+            cnn_encoder=args.cnn_encoder,
+            hand_only_contact=args.hand_only_contact,
+            spawn_cone_deg=args.spawn_cone_deg,
+            xor_color_random=args.xor_color_random,
         )

@@ -648,3 +648,71 @@ python -m alien_baby.agents.train_v8 --stage stage1 --v9 \
 
 ### Success gate (from Session Resume)
 `dist_reduction > 0.05` at 50K with bilateral symmetry (`rollout/touched_left_frac` and `rollout/touched_right_frac` both > 5% at the 25K gate).
+
+---
+
+## 2026-05-05 — Overnight AB Testing Proposals (awaiting greenlight)
+
+**Branch:** `feature/phase0-plumbing` (Phase 0 plumbing landed in 8da92c8).
+**Status:** PROPOSAL. Per CLAUDE.md / SWEEP_PLAN, do not launch any training without explicit "go".
+
+### What I read tonight
+- `alien_baby/PROJECT_STATUS.md`, `docs/Experimental Plan.md`, `docs/GAP_ANALYSIS.md`, `docs/PRIOR_ART.md`, `docs/PRIOR_ART_NUMENTA.md`, `docs/SWEEP_PLAN.md`.
+- `numenta/taylor-vs-numenta-comparison.md` and key Numenta open-questions / evidence-LM docs.
+- `pinker-on-cognition-and-ai.txt` (Pinker on cognition and AI).
+
+### Diagnosis (in one sentence)
+Vision is not load-bearing because **blind forward-paddle resolves the critical state ~35% of the time** — the equivalence class is too inclusive (Taylor), the path is fixed not flexible (Pinker), the column has no movement→sensation→update cycle that requires vision (Numenta). Architecture (CNN encoder) is necessary but not sufficient. **Pressure is sufficient.**
+
+### New testing ideas (additive to SWEEP_PLAN, grounded in tonight's reads)
+
+**A. Hand-only contact + lateralized spawn ("aim the hand")** — Restrict contact to hand geom; force ball to ±90° random θ at radius ≥ 0.20 m. Aiming a hand requires knowing where the ball is → vision becomes instrumental. ~1 hr to wire + 250K. Falsifiable: if touch_rate stays at random-policy floor, vision can't be loaded; if it climbs > 30%, vision is finally instrumental.
+
+**B. Multi-ball XOR (red = reward, blue = penalty)** — Pure visual category; proprio cannot distinguish. The cleanest possible operationalization of Π. (SWEEP_PLAN's 2C, but I'd promote to first-tier alongside CNN encoder.)
+
+**C. Two-column probe (Numenta-style measurement)** — Train π_vision (proprio masked) and π_proprio (vision masked) in parallel. At eval, compare actions on shared scenes. L2 distance is a *direct* measure of modality contribution — sharper than vision-ablation sensitivity (which only measures marginal effect of vision *given* the joint policy). Separates *capability* from *use*.
+
+**D. Proprio-noise stress test** — Inject Gaussian σ=1.5 noise into proprio while leaving vision clean. Forces vision to compensate. Eval-only on existing best checkpoint = 5 min diagnostic for "is vision available even if not used?"
+
+**E. Pursuit task** — Ball drifts away unless gazed at (lies in head_cam frustum → velocity = 0). Gazing freezes the prey. Forces head-tracking. Different from SWEEP_PLAN 2A (random-velocity ball, blind paddle still wins by luck).
+
+**F. Stage 1.5 (gentle middle stage)** — From PROJECT_STATUS §4: small platform, no fall penalty, wider target cone. Let proprio finish adapting before vision arrives.
+
+**G. CNN encoder on Phase 0 baseline** — = SWEEP_PLAN 1B. GAP_ANALYSIS Rank 1. Not new but should run.
+
+**H. Pinker "goal fixed, path flexible" test** — Conditional reward via a 1-bit context flag in proprio (red-good vs blue-good). Does the policy genuinely change paths when the flag flips, or always do the same paddle? Direct Pinker-test for whether AB qualifies as intelligent in his sense.
+
+### Proposed overnight schedule (~6–8 hr)
+Ordered by expected info gain per hour. Each step has automated kill criterion (zero touches at 100K).
+
+| # | Step | Time | What it tells us |
+|---|---|---|---|
+| 0 | **Sanity render** Phase 0 best (per CLAUDE.md rule) | 5 min | Don't burn 8 hr on broken plumbing |
+| 1 | **Phase 0 baseline validation** — 250K from best, fixes applied, expect ≥ 7/20 | 30 min | Plumbing didn't regress |
+| 2 | **G** — CNN encoder follow-on, 250K | 1 hr | Does Rank-1 architectural fix unlock vision? |
+| 3 | **D** — proprio-noise eval on Phase 0 best (no training) | 5 min | Quick diagnostic |
+| 4 | **A** — hand-only contact + 90° spawn cone, 250K | 30 min | Does shrinking the equivalence class force vision? |
+| 5 | **B** — multi-ball XOR with CNN, 250K | 30 min | Cleanest Taylor Π test |
+| 6 | **E** — pursuit task with CNN, 250K | 30 min | Does gaze become instrumental? |
+| 7 | **C** — two-column training, 250K each | 1 hr | Direct modality-sufficiency measurement |
+| 8 | Auto-render best of each + write `OVERNIGHT_RESULTS.md` | 15 min | Morning reading material |
+
+**Code that needs writing first (~3 hr):**
+- Minimal sweep runner (`alien_baby/sweeps/run_overnight.py`, ~150 lines)
+- Idea A env mod (~20 lines)
+- Idea B env mod (~30 lines)
+- Idea C masking wrapper + comparison eval (~80 lines)
+- Idea D eval-time noise injection (~10 lines)
+- Idea E env mod (~25 lines)
+- Custom CNN feature extractor (DrQ-v2 4-conv → 50d → concat with proprio, ~100 lines)
+
+### Decisions I need from you before launching anything
+1. **Scope:** SWEEP_PLAN's Wave 1 as written (3 seeds × 3 experiments = 9 runs, ~4.5 hr, more rigorous, less novel) vs. my A–H selection (1 seed each, ~5 hr, more novel, less rigorous) vs. **hybrid** I'd recommend (CNN encoder × 1 seed + A + B + D + auto-render, ~3 hr, best info/hour).
+2. **CNN encoder:** stock SB3 `CnnPolicy` (mismatched to our hybrid obs) or custom DrQ-v2-style (correct, ~100 lines)?
+3. **Branch:** new `feature/overnight-sweep-2026-05-05` or commit to `feature/phase0-plumbing`?
+4. **Permission level:** `--dangerously-skip-permissions` for full unattended overnight, or stay attended?
+
+I won't write any code or launch any training until you say go.
+
+### Review
+_(empty — fill after overnight completes)_

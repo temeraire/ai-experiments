@@ -76,12 +76,30 @@ class PlatformCreatureEnv(gym.Env):
 
     def __init__(self, vision=False, render_mode=None, stage=1, v9=False,
                  target_radius_override=None, pbrs_alpha=0.0,
-                 closure_bonus_scale=0.0):
+                 closure_bonus_scale=0.0,
+                 hand_only_contact=False, spawn_cone_deg=None,
+                 xor_color_random=False):
         super().__init__()
         self.vision = vision
         self.render_mode = render_mode
         self.stage = stage
         self.v9 = v9
+        # Idea A: only hand-target contacts count as "touched". Default off
+        # preserves existing behavior (any creature geom counts).
+        self._hand_only_contact = bool(hand_only_contact)
+        # Idea A: restrict ball spawn to a body-frame cone of width
+        # `spawn_cone_deg` centered straight ahead. None = no override (use
+        # whatever the stage/v9 default is). 180.0 = full front hemisphere
+        # (matches v9's default). 90.0 = ±45° forward cone — forces the
+        # creature to *aim* the hand to make contact.
+        self._spawn_cone_deg = (None if spawn_cone_deg is None
+                                else float(spawn_cone_deg))
+        # Idea B: 50/50 red-good / blue-bad. Blue contact = -CONTACT_REWARD
+        # and terminate. Red contact = +CONTACT_REWARD and terminate. Pure
+        # visual category — proprio cannot distinguish.
+        self._xor_color_random = bool(xor_color_random)
+        self._is_decoy = False
+        self._target_geom_rgba_addr = None  # set later if XOR enabled
 
         # v9 = moving target: ball has free joint, initial velocity, can roll
         # off the platform. Taylor-style pressure to make vision load-bearing.
@@ -192,6 +210,9 @@ class PlatformCreatureEnv(gym.Env):
         mujoco.mj_forward(self.model, self.data)
         self._init_qpos = self.data.qpos.copy()
         self._init_qvel = self.data.qvel.copy()
+        # Cache the original target rgba so we can restore it across resets
+        # when xor_color_random toggles colors.
+        self._target_rgba_default = self.model.geom_rgba[self._target_geom].copy()
 
         # Action: 6 arm torques + 2 head position commands
         self.action_space = spaces.Box(
@@ -296,11 +317,18 @@ class PlatformCreatureEnv(gym.Env):
         return creature_geoms
 
     def _check_target_contact(self):
+        # When hand_only_contact is enabled, only left/right hand geoms count
+        # as creature-side contact. Forces aiming — torso lumbering over the
+        # ball no longer pays. The set is computed once.
+        if self._hand_only_contact:
+            allowed = {self._left_hand_geom, self._right_hand_geom}
+        else:
+            allowed = self._creature_geoms
         for i in range(self.data.ncon):
             contact = self.data.contact[i]
             g1, g2 = contact.geom1, contact.geom2
-            if (g1 in self._creature_geoms and g2 == self._target_geom) or \
-               (g2 in self._creature_geoms and g1 == self._target_geom):
+            if (g1 in allowed and g2 == self._target_geom) or \
+               (g2 in allowed and g1 == self._target_geom):
                 return True
         return False
 
@@ -376,7 +404,22 @@ class PlatformCreatureEnv(gym.Env):
                 # (forward paddle insufficient, arm-steering required).
                 # Keeps both head and arm vision-mappings useful, prevents
                 # the over-specialization collapse seen in v9.1-pure-lateral.
-                angle = self.np_random.uniform(0, np.pi)
+                if self._spawn_cone_deg is not None:
+                    # Idea A: narrow body-frame spawn cone, centered straight
+                    # ahead (body-frame angle π/2). spawn_cone_deg = full
+                    # cone width; e.g. 90° = ±45° around fwd direction.
+                    half = np.radians(self._spawn_cone_deg) / 2.0
+                    angle = self.np_random.uniform(np.pi / 2 - half,
+                                                    np.pi / 2 + half)
+                else:
+                    angle = self.np_random.uniform(0, np.pi)
+            elif self._spawn_cone_deg is not None:
+                # Idea A: spawn ball within ±cone/2 of straight ahead. Forces
+                # the creature to *aim* — vision becomes instrumental for
+                # hand placement when paired with hand_only_contact.
+                half = np.radians(self._spawn_cone_deg) / 2.0
+                angle = self.np_random.uniform(np.pi / 2 - half,
+                                                np.pi / 2 + half)
             elif self._use_forward_cone:
                 forward_cone = np.radians(25)  # matches head_cam fovy
                 while True:
@@ -435,6 +478,23 @@ class PlatformCreatureEnv(gym.Env):
             else:
                 self.data.qpos[self._target_x_addr] = radius * np.cos(angle)
                 self.data.qpos[self._target_y_addr] = radius * np.sin(angle)
+
+        # Idea B: 50/50 red-good / blue-bad. Color is the only signal
+        # discriminating the two; proprio cannot tell. Vision must learn it
+        # to avoid the -CONTACT_REWARD penalty on blue contact.
+        if self._xor_color_random and self.np_random is not None:
+            self._is_decoy = bool(self.np_random.random() < 0.5)
+            if self._is_decoy:
+                # Distinct blue. Alpha matches default (1.0).
+                self.model.geom_rgba[self._target_geom] = (
+                    np.array([0.15, 0.30, 0.90, 1.0], dtype=np.float32)
+                )
+            else:
+                self.model.geom_rgba[self._target_geom] = self._target_rgba_default
+        else:
+            self._is_decoy = False
+            # Restore default in case prior episode set it to blue.
+            self.model.geom_rgba[self._target_geom] = self._target_rgba_default
 
         mujoco.mj_forward(self.model, self.data)
         self._prev_dist = self._nearest_hand_dist()
@@ -546,17 +606,27 @@ class PlatformCreatureEnv(gym.Env):
         self._dist_sum += curr_dist
         self._prev_dist = curr_dist
 
-        # Contact: eat the target, episode ends
+        # Contact: eat the target, episode ends. Idea B: in XOR mode, blue
+        # contact pays -CONTACT_REWARD (touched=False so the run is recorded
+        # as a wrong-action, not a success).
         if self._check_target_contact():
-            reward += CONTACT_REWARD
-            self._touched = True
+            if self._xor_color_random and self._is_decoy:
+                reward += -CONTACT_REWARD
+                self._touched = False
+                xor_decoy_touch = True
+            else:
+                reward += CONTACT_REWARD
+                self._touched = True
+                xor_decoy_touch = False
             terminated = True
             shaping = self._pbrs_shaping(curr_body_dist, is_terminal=True)
             reward += shaping
             self._shaping_sum += shaping
             self._prev_body_dist = curr_body_dist
             return obs, reward, terminated, truncated, self._info(
-                fell=False, touched=True, edge_dist=edge_dist
+                fell=False, touched=self._touched, edge_dist=edge_dist,
+                xor_decoy_touch=xor_decoy_touch,
+                xor_decoy=self._is_decoy,
             )
 
         # Truncate if max steps
@@ -604,6 +674,8 @@ class PlatformCreatureEnv(gym.Env):
             "closure_sum": self._closure_sum,
             "ctrl_cost_sum": self._ctrl_cost_sum,
             "mirrored": False,
+            "xor_decoy": self._is_decoy,
+            "xor_decoy_touch": False,
         }
         info.update(extras)
         return info
