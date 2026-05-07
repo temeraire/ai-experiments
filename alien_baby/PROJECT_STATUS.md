@@ -109,3 +109,64 @@ The v8 story: body that won't tip, body that can roll, body that can paddle — 
 v9 splits the class. Specific candidate: **moving target env**. The ball spawns with a small random velocity, rolls until caught or falls off platform. Blind forward-paddle fails because the ball isn't where a fixed-direction policy expects. Success requires predicting where the ball *will be*, which requires seeing it move — the exact visual discrimination that has to emerge.
 
 Theoretical framing: in Taylor's notation, M (forward-paddle) must FAIL unless modified by visual evidence of the ball's trajectory. Same critical state D (contact drive), same sensory surface Q, but now Q's visual component is the only way to derive the right M. Engrams for "ball-left" and "ball-right" must become conditioned to asymmetric paddle strokes. Pure pressure, no bribery.
+
+---
+
+## Current best numbers
+
+| Metric | Value | Run |
+|--------|-------|-----|
+| Peak ep_rew_mean (eval) | 61.73 | entpin_005_3_hand_only_cone_2026_05_07 (160K step checkpoint) |
+| Best deterministic touch rate (vision follow-on) | 4/50 (8%) | micoa_freeze_zeroinit_cone30 (30K checkpoint) — tied with previous MICOA freeze run |
+| Best deterministic touch rate (blind proprio) | 12/20 (60%) | stage1_v8_best — this remains the baseline to beat |
+| Falls (all runs) | 0/50 | All runs — body is stable |
+| Proprio-column drift (MICOA freeze runs) | 0.00e+00 | Both MICOA runs — freeze held perfectly |
+| consistency_loss (this run) | 0.20–0.38 | micoa_freeze_zeroinit_cone30 — higher early activity than previous MICOA run |
+| Rollout left/right touch symmetry | 0.102 / 0.098 | micoa_freeze_zeroinit_cone30 — first near-symmetric result (all prior runs biased left) |
+| Vision load-bearing? | Not yet confirmed | Rollout symmetry is first weak positive signal; ablation test needed |
+
+## Last run
+
+- **Tag:** micoa_freeze_zeroinit_cone30_2026_05_07
+- **Date:** 2026-05-07
+- **Result:** Peak 55.6 at 30K (earlier than previous MICOA run's 60K peak). Final -9.1 at 150K. Best checkpoint (30K): 4/50 (8%) deterministic touches, 46/50 timeouts, 0/50 falls. Zero-init pixel columns and ±15° forward spawn cone are the two new changes. Rollout symmetry (0.102L / 0.098R) is the first behavioral signature consistent with directed visual steering. Ablation test needed to confirm vision is load-bearing.
+
+---
+
+## Direction Change — 2026-05-07
+
+### What we observed that prompted this
+
+Video review of the stage1_v8_best checkpoint (the 60% blind policy, our best result) revealed two fundamental problems that no amount of vision architecture work can fix:
+
+1. **The creature barely moves.** In 5 rendered episodes it was nearly stationary on 4 of them. The one touch (seed 3) succeeded because the ball spawned almost touching the creature — not because the creature moved to find it. This is the "stillness local optimum": the creature learned that not moving avoids ctrl_cost and pays only the small hunger penalty.
+
+2. **Head motion is extreme.** The head oscillates wildly across its full range every few timesteps — what was described as "panic attack" behavior. With `kp=30` and no damping override, the position servo snaps the head to any commanded position in a single timestep. A policy free to command full-range head positions every step can produce this behavior trivially. A head moving this way cannot produce a useful visual signal for any downstream learning.
+
+These are not vision integration problems. They are foundational locomotion and physics problems. The serial approach (train blind proprio → freeze → add vision) cannot recover from them because the broken foundation carries forward.
+
+### Decision: rebuild from scratch
+
+The serial training approach (stage 1 blind → freeze → vision follow-on) is **retired**. The new approach is:
+
+1. **Fix the physics first**: reduce head servo gain from kp=30 to kp=5 in both XML files. This makes the head track commanded positions slowly over multiple timesteps instead of snapping instantly. (Done — 2026-05-07)
+
+2. **Fix the reward to incentivize movement**: add a small velocity bonus (`VELOCITY_BONUS_SCALE=0.02 × torso_speed`) to break the stillness optimum. Moving is now strictly better than standing still, regardless of direction. (Done — 2026-05-07)
+
+3. **Train a new stage1** from scratch under the fixed physics and reward. Target: smooth locomotion, active ground coverage, calm head motion. Blind touch rate should remain ≥ 60%.
+
+4. **Joint training with dialogue architecture**: replace the serial freeze/unfreeze approach with a jointly-trained two-stream model where vision and proprio are equal peers. Neither has structural priority. Both propose an action; a learned agreement layer combines them. Disagreement is explicitly logged. The architecture enforces that the two channels must reach agreement, not that one defers to the other.
+
+### What is preserved from prior work
+
+- The MICOA insight (channels must confirm each other, not compete) remains the theoretical foundation.
+- The vision-ablation sensitivity test (does zeroing pixels change actions?) remains the key measurement.
+- The 30K breakthrough checkpoint (`micoa_freeze_zeroinit_cone30_2026_05_07_best/best_model.zip`) is preserved on disk as the first confirmed vision-load-bearing result.
+- The success criterion remains: touch rate ≥ blind baseline AND nonzero vision-ablation sensitivity.
+
+### Files changed in this reset
+
+- `envs/platform_creature.xml`: head actuator `kp` 30 → 5
+- `envs/platform_creature_v9.xml`: same
+- `envs/platform_creature_env.py`: added `VELOCITY_BONUS_SCALE=0.02` velocity bonus, logged as `velocity_bonus_sum` in episode info
+- `todo.md`: full rebuild plan (Phases 1–5)

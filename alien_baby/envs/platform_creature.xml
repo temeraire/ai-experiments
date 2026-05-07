@@ -240,11 +240,14 @@
            ctrllimited="true" ctrlrange="-1 1" gear="15"/>
     <motor name="right_elbow_motor" joint="right_elbow"
            ctrllimited="true" ctrlrange="-1 1" gear="10"/>
-    <!-- Head: position-controlled, responsive -->
+    <!-- Head: position-controlled, slow and deliberate (kp=5 vs prior 30).
+         Lower gain means the head tracks commanded positions over several
+         timesteps rather than snapping instantly — eliminates the rapid
+         full-range thrashing seen under trained policies. -->
     <position name="head_pan_motor" joint="head_pan"
-              ctrllimited="true" ctrlrange="-1.5 1.5" kp="30"/>
+              ctrllimited="true" ctrlrange="-1.5 1.5" kp="5"/>
     <position name="head_tilt_motor" joint="head_tilt"
-              ctrllimited="true" ctrlrange="-0.8 0.8" kp="30"/>
+              ctrllimited="true" ctrlrange="-0.8 0.8" kp="5"/>
   </actuator>
 
   <sensor>

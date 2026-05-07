@@ -61,6 +61,14 @@ PBRS_GAMMA = 0.99  # matches SAC's default discount
 # toward low-frequency periodic solutions.
 CTRL_COST_SCALE = 0.001
 
+# Small reward for torso speed regardless of direction. Breaks the stillness
+# local optimum: a stationary creature pays only hunger; a moving creature
+# recovers some of that cost just by being in motion. Scale chosen so
+# worst-case (max observed speed ~0.21 m/s) earns ~0.004/step — small enough
+# that the creature cannot satisfy hunger by spinning in place, large enough
+# to make "move at all" strictly better than "stand still."
+VELOCITY_BONUS_SCALE = 0.02
+
 # Tilt-based health termination: cos(60°) = 0.5. Terminate when torso
 # z-axis tilts more than 60° from world up. The v8 body rarely actually
 # falls (`0/20` in PROJECT_STATUS), but degenerate tilted-but-not-fallen
@@ -78,7 +86,7 @@ class PlatformCreatureEnv(gym.Env):
                  target_radius_override=None, pbrs_alpha=0.0,
                  closure_bonus_scale=0.0,
                  hand_only_contact=False, spawn_cone_deg=None,
-                 xor_color_random=False):
+                 xor_color_random=False, max_steps_override=None):
         super().__init__()
         self.vision = vision
         self.render_mode = render_mode
@@ -151,6 +159,9 @@ class PlatformCreatureEnv(gym.Env):
             lo, hi = target_radius_override
             self._target_radius_lo = float(lo)
             self._target_radius_hi = float(hi)
+
+        if max_steps_override is not None:
+            self._max_steps = int(max_steps_override)
 
         self.data = mujoco.MjData(self.model)
 
@@ -246,6 +257,7 @@ class PlatformCreatureEnv(gym.Env):
         self._closure_bonus_scale = float(closure_bonus_scale)
         self._closure_sum = 0.0
         self._ctrl_cost_sum = 0.0
+        self._velocity_bonus_sum = 0.0
 
     def _build_observation_space(self):
         proprio_dim = self._proprio_dim()
@@ -389,6 +401,7 @@ class PlatformCreatureEnv(gym.Env):
         self._shaping_sum = 0.0
         self._closure_sum = 0.0
         self._ctrl_cost_sum = 0.0
+        self._velocity_bonus_sum = 0.0
         self.data.qpos[:] = self._init_qpos
         self.data.qvel[:] = self._init_qvel
 
@@ -578,6 +591,15 @@ class PlatformCreatureEnv(gym.Env):
         reward += ctrl_cost
         self._ctrl_cost_sum += ctrl_cost
 
+        # Velocity bonus: small reward for any torso movement. Breaks the
+        # stillness local optimum where the creature discovers that not moving
+        # avoids ctrl_cost and pays only hunger. Scale is small enough that
+        # the creature cannot satisfy hunger by spinning in place.
+        torso_speed = float(np.linalg.norm(self.data.qvel[0:3]))
+        velocity_bonus = VELOCITY_BONUS_SCALE * torso_speed
+        reward += velocity_bonus
+        self._velocity_bonus_sum += velocity_bonus
+
         # Closure bonus: per-step body→ball distance reduction, clipped at 0.
         # self._prev_body_dist still holds the previous step's distance (it
         # won't be updated until the end of this step, after PBRS shaping).
@@ -676,6 +698,7 @@ class PlatformCreatureEnv(gym.Env):
             "mirrored": False,
             "xor_decoy": self._is_decoy,
             "xor_decoy_touch": False,
+            "velocity_bonus_sum": self._velocity_bonus_sum,
         }
         info.update(extras)
         return info
