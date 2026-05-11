@@ -31,7 +31,9 @@ RESULTS_DIR = pathlib.Path(__file__).parent.parent / "results"
 
 
 def make_env(rank, seed, strength_scale, spawn_cone_deg, max_steps, n_substeps,
-             vision=False, approach_reward_scale=2.0, velocity_bonus_scale=0.05):
+             vision=False, approach_reward_scale=2.0, velocity_bonus_scale=0.05,
+             fixed_ball_positions=None, random_start_orientation=False,
+             memory_obs=False):
     def _init():
         env = MimoCrawlerEnv(
             vision=vision,
@@ -41,6 +43,9 @@ def make_env(rank, seed, strength_scale, spawn_cone_deg, max_steps, n_substeps,
             n_substeps=n_substeps,
             approach_reward_scale=approach_reward_scale,
             velocity_bonus_scale=velocity_bonus_scale,
+            fixed_ball_positions=fixed_ball_positions,
+            random_start_orientation=random_start_orientation,
+            memory_obs=memory_obs,
         )
         env = Monitor(env)
         env.reset(seed=seed + rank)
@@ -72,7 +77,10 @@ def train(args):
         make_env(i, args.seed, args.strength_scale, args.spawn_cone_deg,
                  args.max_steps, args.n_substeps, vision=args.vision,
                  approach_reward_scale=args.approach_reward_scale,
-                 velocity_bonus_scale=args.velocity_bonus_scale)
+                 velocity_bonus_scale=args.velocity_bonus_scale,
+                 fixed_ball_positions=args.fixed_ball_positions,
+                 random_start_orientation=args.random_start_orientation,
+                 memory_obs=args.memory_obs)
         for i in range(args.n_envs)
     ])
     train_env = VecNormalize(train_env, norm_obs=True, norm_reward=True, clip_obs=10.0)
@@ -82,7 +90,10 @@ def train(args):
         make_env(0, args.seed + 1000, args.strength_scale, args.spawn_cone_deg,
                  args.max_steps, args.n_substeps, vision=args.vision,
                  approach_reward_scale=args.approach_reward_scale,
-                 velocity_bonus_scale=args.velocity_bonus_scale)
+                 velocity_bonus_scale=args.velocity_bonus_scale,
+                 fixed_ball_positions=args.fixed_ball_positions,
+                 random_start_orientation=args.random_start_orientation,
+                 memory_obs=args.memory_obs)
     ])
     eval_env = VecNormalize(eval_env, norm_obs=True, norm_reward=False, clip_obs=10.0,
                              training=False)
@@ -217,10 +228,28 @@ if __name__ == "__main__":
     parser.add_argument("--target-entropy", default="auto",
                         help="SAC target entropy for auto ent_coef. "
                              "'auto' = -dim(action). Float overrides (e.g. -10.0).")
+    parser.add_argument("--fixed-ball-positions", default=None,
+                        help="Phase C: comma-separated x,y pairs separated by semicolons. "
+                             "Example: '0.7,0.0' for one fixed ball, "
+                             "'0.7,0.0;0.0,0.7' for two. Overrides random spawn.")
+    parser.add_argument("--random-start-orientation", action="store_true",
+                        help="Phase C: rotate prone quaternion around world Z by a random "
+                             "angle per reset. Creature spawns facing a random direction.")
+    parser.add_argument("--memory-obs", action="store_true",
+                        help="Phase C: append 2 binary flags (touched_ball1, touched_ball2) "
+                             "to the proprio observation. Lets a stateless policy condition "
+                             "on its own past contacts within an episode.")
     args = parser.parse_args()
     # Convert numeric strings to float
     if args.ent_coef != "auto":
         args.ent_coef = float(args.ent_coef)
     if args.target_entropy != "auto":
         args.target_entropy = float(args.target_entropy)
+    # Parse fixed-ball-positions string into list of (x, y) tuples
+    if args.fixed_ball_positions:
+        balls = []
+        for chunk in args.fixed_ball_positions.split(";"):
+            x, y = chunk.split(",")
+            balls.append((float(x), float(y)))
+        args.fixed_ball_positions = balls
     train(args)

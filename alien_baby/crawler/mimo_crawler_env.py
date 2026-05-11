@@ -78,7 +78,10 @@ class MimoCrawlerEnv(gym.Env):
                  spawn_radius=None, spawn_cone_deg=DEFAULT_SPAWN_CONE_DEG,
                  strength_scale=1.0, n_substeps=4, render_mode=None,
                  approach_reward_scale=APPROACH_REWARD_SCALE,
-                 velocity_bonus_scale=VELOCITY_BONUS_SCALE):
+                 velocity_bonus_scale=VELOCITY_BONUS_SCALE,
+                 fixed_ball_positions=None,
+                 random_start_orientation=False,
+                 memory_obs=False):
         super().__init__()
         self.vision = vision
         self.max_steps = max_steps
@@ -89,11 +92,20 @@ class MimoCrawlerEnv(gym.Env):
         self.velocity_bonus_scale = velocity_bonus_scale
         self.n_substeps = n_substeps   # physics steps per policy step
         self.render_mode = render_mode
+        # Phase C: fixed ball positions + variable starting orientation
+        # fixed_ball_positions: None (random spawn), or list of 1 or 2 (x, y) tuples
+        # random_start_orientation: if True, prone quat rotated by random Z-angle
+        # memory_obs: if True, append 2 binary flags (touched_ball1, touched_ball2) to proprio.
+        #   Lets a stateless policy condition on its own past contacts.
+        self.fixed_ball_positions = fixed_ball_positions
+        self.random_start_orientation = random_start_orientation
+        self.memory_obs = memory_obs
 
         self.model = mujoco.MjModel.from_xml_path(str(XML_PATH))
         self.data  = mujoco.MjData(self.model)
 
-        n_obs = PROPRIO_DIM + (VISION_DIM if vision else 0)
+        memory_dim = 2 if memory_obs else 0
+        n_obs = PROPRIO_DIM + memory_dim + (VISION_DIM if vision else 0)
         self.observation_space = spaces.Box(
             low=-np.inf, high=np.inf, shape=(n_obs,), dtype=np.float32
         )
@@ -108,7 +120,13 @@ class MimoCrawlerEnv(gym.Env):
         self._target_geom_id = mujoco.mj_name2id(
             self.model, mujoco.mjtObj.mjOBJ_GEOM, "target_geom"
         )
-        # MIMo body geom ids (anything not world/platform/rails/target)
+        # Second ball (Phase C): present in XML but may be hidden off-platform
+        # when only one ball is active. We always look up both ids so contact
+        # checking works regardless of mode.
+        self._target2_geom_id = mujoco.mj_name2id(
+            self.model, mujoco.mjtObj.mjOBJ_GEOM, "target2_geom"
+        )
+        # MIMo body geom ids (anything not world/platform/rails/targets)
         self._mimo_body_ids = self._get_mimo_body_ids()
 
         # Cache joint qpos/dof addresses for fast obs
@@ -141,29 +159,71 @@ class MimoCrawlerEnv(gym.Env):
         super().reset(seed=seed)
         mujoco.mj_resetData(self.model, self.data)
 
-        # Place MIMo prone (face down) on platform, spine pointing +Y
+        # Place MIMo prone (face down) on platform.
+        # Default _PRONE_QUAT puts spine along world +Y. If random_start_orientation,
+        # rotate that quat around world Z by a random angle so the creature faces a
+        # random world direction at spawn.
         root_qadr = self.model.jnt_qposadr[self._root_joint_id]
         root_dadr = self.model.jnt_dofadr[self._root_joint_id]
         self.data.qpos[root_qadr:root_qadr + 3] = [0.0, 0.0, _PRONE_Z]
-        self.data.qpos[root_qadr + 3:root_qadr + 7] = _PRONE_QUAT
+        if self.random_start_orientation:
+            yaw = self.np_random.uniform(-np.pi, np.pi)
+            qz = np.array([np.cos(yaw / 2), 0.0, 0.0, np.sin(yaw / 2)])  # rot about +Z
+            # Quaternion multiplication qz * _PRONE_QUAT
+            w0, x0, y0, z0 = qz
+            w1, x1, y1, z1 = _PRONE_QUAT
+            q = np.array([
+                w0 * w1 - x0 * x1 - y0 * y1 - z0 * z1,
+                w0 * x1 + x0 * w1 + y0 * z1 - z0 * y1,
+                w0 * y1 - x0 * z1 + y0 * w1 + z0 * x1,
+                w0 * z1 + x0 * y1 - y0 * x1 + z0 * w1,
+            ])
+            self.data.qpos[root_qadr + 3:root_qadr + 7] = q
+        else:
+            self.data.qpos[root_qadr + 3:root_qadr + 7] = _PRONE_QUAT
         # Small random joint noise so episodes differ
         for adr in self._jpos_adr:
             self.data.qpos[adr] += self.np_random.uniform(-0.05, 0.05)
 
-        # Spawn ball in forward hemisphere
-        angle_rad = np.deg2rad(self.spawn_cone_deg / 2)
-        theta = self.np_random.uniform(-angle_rad, angle_rad)
-        r     = self.np_random.uniform(*self.spawn_radius)
-        bx, by = r * np.sin(theta), r * np.cos(theta)
+        # Place balls. If fixed_ball_positions is set, override random spawn.
+        # If only 1 fixed position, ball2 is parked far off-platform.
+        # If 2 fixed positions, both balls are active.
+        # If None, default: ball1 random in spawn cone, ball2 parked off-platform.
+        tgt1_jid  = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_JOINT, "target_free")
+        tgt1_qadr = self.model.jnt_qposadr[tgt1_jid]
+        tgt2_jid  = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_JOINT, "target2_free")
+        tgt2_qadr = self.model.jnt_qposadr[tgt2_jid]
 
-        tgt_jid  = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_JOINT, "target_free")
-        tgt_qadr = self.model.jnt_qposadr[tgt_jid]
-        self.data.qpos[tgt_qadr:tgt_qadr + 3] = [bx, by, PLATFORM_TOP_Z + 0.053]
-        self.data.qpos[tgt_qadr + 3:tgt_qadr + 7] = [1, 0, 0, 0]
+        if self.fixed_ball_positions:
+            b1x, b1y = self.fixed_ball_positions[0]
+            self.data.qpos[tgt1_qadr:tgt1_qadr + 3] = [b1x, b1y, PLATFORM_TOP_Z + 0.053]
+            self.data.qpos[tgt1_qadr + 3:tgt1_qadr + 7] = [1, 0, 0, 0]
+            if len(self.fixed_ball_positions) >= 2:
+                b2x, b2y = self.fixed_ball_positions[1]
+                self.data.qpos[tgt2_qadr:tgt2_qadr + 3] = [b2x, b2y, PLATFORM_TOP_Z + 0.053]
+                self._ball2_active = True
+            else:
+                # Park ball2 well outside platform
+                self.data.qpos[tgt2_qadr:tgt2_qadr + 3] = [10.0, 10.0, 0.0]
+                self._ball2_active = False
+            self.data.qpos[tgt2_qadr + 3:tgt2_qadr + 7] = [1, 0, 0, 0]
+        else:
+            # Original random spawn behavior for ball 1
+            angle_rad = np.deg2rad(self.spawn_cone_deg / 2)
+            theta = self.np_random.uniform(-angle_rad, angle_rad)
+            r     = self.np_random.uniform(*self.spawn_radius)
+            bx, by = r * np.sin(theta), r * np.cos(theta)
+            self.data.qpos[tgt1_qadr:tgt1_qadr + 3] = [bx, by, PLATFORM_TOP_Z + 0.053]
+            self.data.qpos[tgt1_qadr + 3:tgt1_qadr + 7] = [1, 0, 0, 0]
+            self.data.qpos[tgt2_qadr:tgt2_qadr + 3] = [10.0, 10.0, 0.0]
+            self.data.qpos[tgt2_qadr + 3:tgt2_qadr + 7] = [1, 0, 0, 0]
+            self._ball2_active = False
 
         mujoco.mj_forward(self.model, self.data)
         self._step = 0
         self._contact_rewarded = False
+        self._ball1_touched = False
+        self._ball2_touched = False
         self._prev_ball_dist = self._ball_dist()
         return self._get_obs(), {}
 
@@ -183,7 +243,7 @@ class MimoCrawlerEnv(gym.Env):
             self.data.qvel[root_dadr:root_dadr + 2]  # vx, vy
         ))
 
-        contacted = self._check_ball_contact()
+        ball1_hit, ball2_hit = self._check_ball_contact()
 
         curr_dist = self._ball_dist()
         approach  = self._prev_ball_dist - curr_dist   # positive = got closer
@@ -193,13 +253,31 @@ class MimoCrawlerEnv(gym.Env):
         terminated = False
         truncated  = self._step >= self.max_steps
 
-        if contacted and not self._contact_rewarded:
+        # Per-ball first-touch rewards
+        if ball1_hit and not self._ball1_touched:
             reward += CONTACT_REWARD
-            self._contact_rewarded = True
-            terminated = True
+            self._ball1_touched = True
+        if self._ball2_active and ball2_hit and not self._ball2_touched:
+            reward += CONTACT_REWARD
+            self._ball2_touched = True
+
+        # Termination rule:
+        #   - Single-ball mode (ball2 inactive): terminate on first ball1 touch (legacy behavior)
+        #   - Two-ball mode (ball2 active): terminate only when BOTH balls touched
+        if self._ball2_active:
+            if self._ball1_touched and self._ball2_touched:
+                terminated = True
+        else:
+            if self._ball1_touched:
+                terminated = True
+
+        # Keep the old `_contact_rewarded` flag for backward compat
+        self._contact_rewarded = self._ball1_touched
 
         return obs, reward, terminated, truncated, {
-            "touched": self._contact_rewarded,
+            "touched": self._ball1_touched,
+            "touched_ball1": self._ball1_touched,
+            "touched_ball2": self._ball2_touched,
             "step": self._step,
             "strength_scale": self.strength_scale,
         }
@@ -216,18 +294,27 @@ class MimoCrawlerEnv(gym.Env):
 
     # ------------------------------------------------------------------
     def _check_ball_contact(self):
+        """Returns (ball1_hit, ball2_hit) bools for this physics step."""
+        ball1_hit = False
+        ball2_hit = False
         for i in range(self.data.ncon):
-            c  = self.data.contact[i]
+            c = self.data.contact[i]
             g1, g2 = c.geom1, c.geom2
-            if g1 == self._target_geom_id or g2 == self._target_geom_id:
-                other = g2 if g1 == self._target_geom_id else g1
-                if other in self._mimo_body_ids:
-                    return True
-        return False
+            for target_id, flag_name in [(self._target_geom_id, "b1"),
+                                          (self._target2_geom_id, "b2")]:
+                if g1 == target_id or g2 == target_id:
+                    other = g2 if g1 == target_id else g1
+                    if other in self._mimo_body_ids:
+                        if flag_name == "b1":
+                            ball1_hit = True
+                        else:
+                            ball2_hit = True
+        return ball1_hit, ball2_hit
 
     def _get_mimo_body_ids(self):
-        """All geom ids that belong to MIMo (not world/platform/rails/target)."""
-        world_geoms = {"ground", "platform", "rail_N", "rail_S", "rail_E", "rail_W", "target_geom"}
+        """All geom ids that belong to MIMo (not world/platform/rails/targets)."""
+        world_geoms = {"ground", "platform", "rail_N", "rail_S", "rail_E", "rail_W",
+                       "target_geom", "target2_geom"}
         ids = set()
         for i in range(self.model.ngeom):
             name = mujoco.mj_id2name(self.model, mujoco.mjtObj.mjOBJ_GEOM, i)
@@ -261,7 +348,14 @@ class MimoCrawlerEnv(gym.Env):
             jvel,       # 25
             vest_acc,   # 3
             vest_gyro,  # 3
-        ])  # = 69... wait: 3+4+6+25+25+3+3 = 69, not 63. Let me fix PROPRIO_DIM.
+        ])  # = 69
+
+        if self.memory_obs:
+            mem = np.array([
+                1.0 if getattr(self, "_ball1_touched", False) else 0.0,
+                1.0 if getattr(self, "_ball2_touched", False) else 0.0,
+            ], dtype=np.float32)
+            proprio = np.concatenate([proprio, mem])
 
         if not self.vision:
             return proprio
