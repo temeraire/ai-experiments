@@ -33,7 +33,7 @@ RESULTS_DIR = pathlib.Path(__file__).parent.parent / "results"
 def make_env(rank, seed, strength_scale, spawn_cone_deg, max_steps, n_substeps,
              vision=False, approach_reward_scale=2.0, velocity_bonus_scale=0.05,
              fixed_ball_positions=None, random_start_orientation=False,
-             memory_obs=False):
+             memory_obs=False, stereo=True):
     def _init():
         env = MimoCrawlerEnv(
             vision=vision,
@@ -46,6 +46,7 @@ def make_env(rank, seed, strength_scale, spawn_cone_deg, max_steps, n_substeps,
             fixed_ball_positions=fixed_ball_positions,
             random_start_orientation=random_start_orientation,
             memory_obs=memory_obs,
+            stereo=stereo,
         )
         env = Monitor(env)
         env.reset(seed=seed + rank)
@@ -80,7 +81,8 @@ def train(args):
                  velocity_bonus_scale=args.velocity_bonus_scale,
                  fixed_ball_positions=args.fixed_ball_positions,
                  random_start_orientation=args.random_start_orientation,
-                 memory_obs=args.memory_obs)
+                 memory_obs=args.memory_obs,
+                 stereo=not args.mono)
         for i in range(args.n_envs)
     ])
     train_env = VecNormalize(train_env, norm_obs=True, norm_reward=True, clip_obs=10.0)
@@ -93,7 +95,8 @@ def train(args):
                  velocity_bonus_scale=args.velocity_bonus_scale,
                  fixed_ball_positions=args.fixed_ball_positions,
                  random_start_orientation=args.random_start_orientation,
-                 memory_obs=args.memory_obs)
+                 memory_obs=args.memory_obs,
+                 stereo=not args.mono)
     ])
     eval_env = VecNormalize(eval_env, norm_obs=True, norm_reward=False, clip_obs=10.0,
                              training=False)
@@ -239,6 +242,10 @@ if __name__ == "__main__":
                         help="Phase C: append 2 binary flags (touched_ball1, touched_ball2) "
                              "to the proprio observation. Lets a stateless policy condition "
                              "on its own past contacts within an episode.")
+    parser.add_argument("--mono", action="store_true",
+                        help="Use a single forward camera (left_eye) instead of stereo. "
+                             "Halves the pixel observation dimension. The XML still shows "
+                             "two visible eyes — only the camera input is mono.")
     args = parser.parse_args()
     # Convert numeric strings to float
     if args.ent_coef != "auto":

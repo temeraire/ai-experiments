@@ -45,7 +45,10 @@ CAM_H = 32
 CAM_W = 32
 
 PROPRIO_DIM = 69  # 3 pos + 4 quat + 6 vel + 25 jpos + 25 jvel + 3 acc + 3 gyro
-VISION_DIM  = CAM_H * CAM_W * 3 * 2  # stereo: left + right, each (H, W, 3)
+VISION_DIM_STEREO = CAM_H * CAM_W * 3 * 2  # stereo: left + right, each (H, W, 3)
+VISION_DIM_MONO   = CAM_H * CAM_W * 3      # single camera, (H, W, 3)
+# Legacy alias used by older callers; assumes stereo for backward compat.
+VISION_DIM = VISION_DIM_STEREO
 
 # 25 actuated joints in actuator order
 ACTUATED_JOINTS = [
@@ -81,7 +84,8 @@ class MimoCrawlerEnv(gym.Env):
                  velocity_bonus_scale=VELOCITY_BONUS_SCALE,
                  fixed_ball_positions=None,
                  random_start_orientation=False,
-                 memory_obs=False):
+                 memory_obs=False,
+                 stereo=True):
         super().__init__()
         self.vision = vision
         self.max_steps = max_steps
@@ -97,15 +101,23 @@ class MimoCrawlerEnv(gym.Env):
         # random_start_orientation: if True, prone quat rotated by random Z-angle
         # memory_obs: if True, append 2 binary flags (touched_ball1, touched_ball2) to proprio.
         #   Lets a stateless policy condition on its own past contacts.
+        # stereo: if True (default), use both eye cameras and emit 2× pixel obs.
+        #   if False, use only left_eye (mono vision). The visual eye geoms in the
+        #   XML still show two eyes — only the camera input is mono.
         self.fixed_ball_positions = fixed_ball_positions
         self.random_start_orientation = random_start_orientation
         self.memory_obs = memory_obs
+        self.stereo = stereo
 
         self.model = mujoco.MjModel.from_xml_path(str(XML_PATH))
         self.data  = mujoco.MjData(self.model)
 
         memory_dim = 2 if memory_obs else 0
-        n_obs = PROPRIO_DIM + memory_dim + (VISION_DIM if vision else 0)
+        if vision:
+            vis_dim = VISION_DIM_STEREO if stereo else VISION_DIM_MONO
+        else:
+            vis_dim = 0
+        n_obs = PROPRIO_DIM + memory_dim + vis_dim
         self.observation_space = spaces.Box(
             low=-np.inf, high=np.inf, shape=(n_obs,), dtype=np.float32
         )
@@ -361,10 +373,13 @@ class MimoCrawlerEnv(gym.Env):
             return proprio
 
         self._cam_renderer.update_scene(self.data, camera="left_eye")
-        left_img  = self._cam_renderer.render().copy().astype(np.float32) / 255.0
+        left_img = self._cam_renderer.render().copy().astype(np.float32) / 255.0
+
+        if not self.stereo:
+            return np.concatenate([proprio, left_img.ravel()])
+
         self._cam_renderer.update_scene(self.data, camera="right_eye")
         right_img = self._cam_renderer.render().copy().astype(np.float32) / 255.0
-
         return np.concatenate([proprio, left_img.ravel(), right_img.ravel()])
 
     # ------------------------------------------------------------------
