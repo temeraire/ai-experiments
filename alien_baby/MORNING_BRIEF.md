@@ -88,26 +88,97 @@ The std=0.00 at 150K and 250K is diagnostic: every one of 20 deterministic episo
 
 Pre-committed rule fired: launching Phase B (dialogue architecture) per the no-hyperparameter-chase discipline.
 
-## Phase B status (live)
+## Phase B — killed at 112K (gate collapsed; trajectory looked like Phase A in slow motion)
 
-Started 07:55. Running 300K steps with the **same no-bribery substrate** but with the **dialogue architecture** (two-stream actor + learned gate + consistency loss). At 24K steps:
-- gate_mean = 0.023 (97.7% weight on vision)
-- disagreement_mean = 0.099
-- consistency_loss = 0.016
-- fps ~158 (full run estimated ~50 min)
+Full entry in `FINDINGS.md`. Headlines:
 
-Expected completion ~08:45. Then full analysis (render + ablation + frames).
+- Gate w collapsed from 0.49 (random init) → 0.005 within 40K steps → 0.07 by kill at 112K
+- 99%+ weight on vision throughout. Proprio stream effectively disabled.
+- Disagreement and consistency_loss BOTH grew over time (0.09 → 0.42, and 0.01 → 0.31) — the opposite of what the consistency objective should produce. The system was *anti*-converging.
+- ep_rew_mean stuck around −65 (≈ 14% one-ball touch). First eval at 60K matched Phase A's 50K eval (−85.04). 
+- Diagnostic: μ_vision was about half the magnitude of μ_proprio. With gate weighting vision at 95%+, the deterministic action was the small μ_vision — too small to produce locomotion.
+- Architectural conclusion: the dialogue's symmetric-peer design is not symmetric in practice because the gradient flow with gate ≈ 0 starves the proprio stream while the consistency loss is too weak to compensate.
 
-The early gate value is the first thing to verify when results land: if the gate stays high-on-vision AND vision-ablation is large at the end, the dialogue architecture works as designed. If the gate stays high-on-vision but ablation is small at the end, the gate learned to weight vision *because the vision stream's actions happen to be quieter/smaller* (degenerate gate collapse), not because vision is informative. Those are very different outcomes.
+## Phase C and Phase C2 — fixed ball positions tested (user's two-balls-define-a-line idea)
 
-## What's at the end of this file (when done)
+Two follow-up experiments testing whether random spawn was the load-bearing failure:
 
-- Phase B's evaluation history
-- Phase B's vision-ablation result
-- Phase B frame analysis
-- Verdict and recommendation
-- Session-summary copy-paste block
+- **Phase C** (killed 56K): two fixed balls at (0.7, 0.0) and (0.0, 0.7), random starting orientation, blind proprio, no bribery. First eval @50K: **−100.00 ± 0.00**.
+- **Phase C2** (killed 56K): same as Phase C + **memory_obs** appended to proprio (two binary flags: touched_ball1, touched_ball2). Lets a stateless SAC condition on its own past contacts. First eval @50K: **−100.00 ± 0.00**.
+
+Both produced the identical deterministic-collapse signature as Phase A. The user's two-ball + memory idea is theoretically sound but not testable in this configuration: the prerequisite "agent reliably moves at all" was never satisfied. Both fixed positions and memory require a working locomotor base.
+
+## The result of the overnight session, in one sentence
+
+In the no-bribery + sparse-contact-reward setting on the MIMo crawler, **SAC fails to develop locomotion at all** — the deterministic policy collapses to zero-action across every substrate variant we tried (random spawn, fixed positions, with memory, without memory, dialogue architecture, flat-concat CNN). The earlier 85% blind result relied on a small velocity bonus to maintain the locomotor base; removing that bribery component is sufficient to break everything downstream.
+
+## The dependency graph this clarifies
+
+```
+body works → can move → can encounter things → can remember encounters
+                                                       ↓
+                                            can build spatial maps
+                                                       ↓
+                                            can integrate vision
+```
+
+The session showed the chain breaks at link 2 ("can move") under no-bribery conditions. Memory flags (link 4) and fixed structure (link 6) cannot compensate for an absent locomotion base. We've now empirically confirmed what the dependency graph predicts: prerequisites can't be skipped.
+
+## Open question for next session — what counts as "enabling" vs "bribery"?
+
+The user articulated tonight that **velocity_bonus is closer to enabling than bribery** — it tells the creature "moving is better than not moving" but not WHICH direction. Restoring a *small* velocity bonus (say 0.01–0.02, vs the 0.05 of the prior 85% blind run vs 0.0 in tonight's runs) is the cleanest next experiment. Combined with fixed ball positions and memory flags, this should finally produce the locomotor base needed for the user's spatial-structure hypothesis to be testable on its own merits.
+
+## Files written tonight
+
+| File | Purpose |
+|------|---------|
+| `crawler/dialogue_policy.py` | Two-stream actor + gate + consistency loss |
+| `crawler/train_dialogue.py` | DialogueSAC subclass with consistency loss in train() |
+| `crawler/mimo_crawler_env.py` | Substrate: 360° spawn, no-bribery defaults, fixed_ball_positions, random_start_orientation, memory_obs, second target ball |
+| `crawler/mimo_crawler.xml` | Second ball (blue) + 15° downward camera tilt |
+| `crawler/train_crawler.py` | CLI plumbing for all of the above |
+| `crawler/launch_phase_b.sh` | Pre-configured Phase B launcher (used) |
+| `visualization/extract_frames.py` | Frame extraction (even + burst modes); Claude reads PNGs directly |
+| `visualization/vision_ablation.py` | L2-action-delta-when-pixels-zeroed measurement |
+| `visualization/analyze_run.py` | One-command run analysis (evals + render + frames + ablation) |
+| `FINDINGS.md` | Three new entries (Phase A, Phase B, Phase C/C2) |
+| `MORNING_BRIEF.md` | This file |
+
+## What's still pending
+
+- THEORY_LOG.md entry summarizing the session in MICOA / pressure-not-bribery terms. Will write next.
+- Decision on next experiment: I'd recommend Phase D = the same Phase C2 config but with `velocity_bonus_scale=0.02` (small enabling, not bribery), to test whether locomotion + fixed structure + memory together produce learning.
 
 ---
 
-(Live status updated as Phase B completes...)
+## Session summary (copy-paste friendly)
+
+---
+SESSION SUMMARY 2026-05-10/11
+Topic: MIMo crawler — testing no-bribery substrate, dialogue arch, fixed-ball hypothesis
+
+Key decisions:
+- Built diagnostic infrastructure first (extract_frames.py reads PNGs for me; vision_ablation.py canonicalizes the "is vision load-bearing" test)
+- Verified the substrate visually before launching (15° camera tilt added after I saw arms occluding the ball)
+- Ran Phase A as the no-bribery control with existing CNN architecture
+- Built dialogue architecture from May 7 retirement memo
+- Ran Phase B on Phase A's substrate (killed early when gate collapse + slow-motion plateau was clear)
+- User proposed fixed-ball-positions hypothesis ("random spawn destroys learnability")
+- Built two-ball env with random orientation (Phase C) and added memory observation flags (Phase C2)
+- Both Phase C and C2 collapsed identically to Phase A's deterministic eval pattern
+
+Key findings:
+- Removing bribery (velocity bonus + approach reward) breaks SAC locomotion entirely
+- Three different substrate variants (random spawn, fixed positions, memory flags) all hit the same deterministic-zero-action attractor
+- Dialogue architecture's gate collapses onto whichever stream has smaller-magnitude actions, regardless of which is informative
+- The user's two-ball insight is sound but requires a working locomotor base as prerequisite
+- The dependency-graph principle is empirically confirmed: prerequisites can't be skipped
+
+Files changed: see "Files written tonight" above; ~2700 lines added across two feature-branch commits (5d0e957, 92807a9, 92de844, b3245a3) plus FINDINGS.md and MORNING_BRIEF.md updates
+
+Next steps:
+- Phase D: restore small velocity_bonus_scale=0.02 (user's "enabling, not bribery") + fixed balls + memory + random orientation
+- If Phase D produces locomotion + memory-conditional behavior, vision can be layered on top
+- Consider recurrent policy (LSTM) for a cleaner test of within-episode memory
+- Open theoretical question: is observation engineering (adding memory flags) on the bribery side or the substrate side?
+---

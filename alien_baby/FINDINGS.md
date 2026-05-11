@@ -694,3 +694,69 @@ Note: the 3 render timeouts are misleading because sanity_render doesn't use max
 
 **Theory signals:** The Behavioral Prediction Framework predicts that an agent with a viable internal model of where contact is achievable should outperform random walk on the 360° spawn distribution (random walk on a 2m × 2m platform with a 5cm ball over 2000 steps should produce ~30-50% touch by ballistic coverage alone). The deterministic 0% touch rate is far below the random-walk baseline, indicating the policy has not built a predictive model — it has been driven by the SAC update dynamics into a state of literal inaction. This is a stronger violation of the framework's prediction than any prior run, because no prior run had a substrate that supported random walk baseline at this level. The Pattern Learning Framework predicts that the visual representation should respond to recurring patterns in the camera feed (the ball as a stable red structure, the guardrail walls as a recurring spatial feature). The 0.0226 ablation delta shows no such pattern has developed — the visual pathway is not just unused for control, it is structurally inert. Both frameworks are challenged in the same direction: when bribery is removed, the flat-concatenation architecture produces a less capable policy, not a more grounded one. The architecture, not the substrate, is the load-bearing failure.
 
+---
+
+## 2026-05-11 — Phase B: Dialogue architecture on no-bribery substrate (mimo_dialogue_v1)
+
+**What we ran:** A 300K-step training run with the same no-bribery substrate as Phase A (360° spawn, 2000-step episodes, guardrails, camera tilt, no velocity bonus, no approach reward) but with the **dialogue architecture** from the May 7 retirement memo: a two-stream actor where proprio (69 dims) and vision (stereo CNN → 64-dim latent) each produce independent action proposals (μ_p, μ_v), a learned scalar gate w combines them as a = w·μ_p + (1−w)·μ_v, and a consistency loss λ · ||μ_p − μ_v||² (λ = 0.05) is added to the actor objective to pressure the two streams toward agreement. Same SAC hyperparameters as Phase A: lr=1e-4, ent_coef=0.2 fixed, buffer 100K, learning_starts 10K. The run was killed at 112K when the trajectory made the outcome predictable.
+
+**Numbers (rollout, no completed eval at kill time):**
+- ep_rew_mean trajectory: −100 (8K) → −66.5 (16K) → −56.3 (24K, peak) → −66.6 (32K) → −73 (40K) → −65.3 (48K) → −70.1 (56K) → −63.6 (58K) → −67.6 (66K) → −70.8 (74K) → ~−65 throughout the rest
+- Gate trajectory: started at 0.49 (random), collapsed to 0.0047 by 40K, slowly recovered to 0.07 by kill at 112K
+- Disagreement (||μ_p − μ_v||) trajectory: 0.090 (16K) → 0.099 (24K) → 0.105 (32K) → 0.112 (40K) → 0.178 (48K) → 0.196 (56K) → 0.222 (60K) → 0.271 (66K) → 0.415 (74K) → ~0.42 (steady)
+- Consistency_loss trajectory: 0.013 (16K) → 0.020 (40K) → 0.055 (48K) → 0.086 (60K) → 0.123 (66K) → 0.285 (74K) → 0.31 (steady)
+- μ_proprio_mean ≈ 0.19; μ_vision_mean ≈ 0.085 (vision actions roughly half the magnitude of proprio actions throughout)
+- First eval at 60K: episode_reward = −85.03 ± 65.26 (≈ same as Phase A 50K eval)
+- Steps completed before kill: 112,000
+
+**What we learned:** The dialogue architecture, as configured, degenerated into a *monologue*: the gate w collapsed to near zero (0.005 at its low) within 40K steps, meaning the policy effectively ran the vision stream alone with the proprio stream's contributions multiplied by ~0. The asymmetry is structural in the gradient flow: with w ≈ 0, the SAC actor loss flows primarily to μ_v (because the combined action a ≈ μ_v), so μ_v gets a strong reward gradient. The proprio stream μ_p receives essentially no SAC gradient — only the smaller consistency-loss pressure. As μ_v drifts toward Q-value-maximizing actions, μ_p slowly lags behind via the consistency term, but it cannot keep up. Disagreement and consistency_loss grow together (0.09 → 0.42 and 0.013 → 0.31 respectively over 100K steps), exactly the opposite of what the consistency objective was supposed to produce. By the kill, the gate began ticking back up (0.005 → 0.07), suggesting a long-run equilibrium might emerge where proprio re-enters, but at the cost of compute we judged not worth investing given the trajectory looked like Phase A in slow motion.
+
+**Vision-stream magnitude problem:** A separate diagnostic from the disagreement trajectory: throughout training, μ_vision_mean (~0.08) was about half the magnitude of μ_proprio_mean (~0.19). With the gate weighting vision at ≥ 93%, the actual combined action magnitude was dominated by these smaller vision actions. The deterministic policy therefore output unusually small actions — which, on a 25-DOF MIMo body, are not enough to produce locomotion. The combination "gate ≈ 0, μ_v is small" produces a deterministic policy that barely moves. This is consistent with the rollout reward plateauing at −65 (~14% one-ball touch rate) and explains why the eval at 60K was identical to Phase A's eval at 50K.
+
+**Is vision load-bearing?** Unconfirmed — and architecturally misleading. The ablation test (zeroing pixels and measuring action delta) would likely report large delta because zeroing the inputs to a network with gate ≈ 0 makes μ_v change dramatically, and the policy IS combined ≈ μ_v. So the ablation would say "vision is load-bearing," but only in the degenerate sense that the architecture made vision structurally load-bearing by zeroing out the proprio stream. This is not the MICOA outcome — there is no confirmation, only dependence. A genuine load-bearing vision pathway would have w in some intermediate range (say 0.3–0.7) with disagreement decreasing over training (vision and proprio converging on the same answer). What we got was the opposite: w collapsing and disagreement growing.
+
+**Next question:** Why does the gate collapse? Two hypotheses: (1) μ_p has noisier outputs early in training because proprio actions correspond to "complex motor coordination," while μ_v is simply CNN-derived and outputs small values around zero. SAC favors lower-variance action distributions early because they produce more consistent (and slightly higher) Q-values, so the gate learns to suppress μ_p. (2) The consistency loss with the gate's product structure has an asymptotic instability — the gradient on the gate scales with (μ_p − μ_v) in a way that pushes w toward 0 or 1 rather than maintaining a balance. Either way, the symmetric-peers design of the dialogue architecture is not symmetric in practice. A fix worth considering: forbid the gate from going below some floor like 0.2 (force partial proprio contribution).
+
+**Theory signals:** The MICOA hypothesis predicts that vision and proprio converge on the same answer through training, with disagreement shrinking. The observed disagreement growing (0.09 → 0.42) is direct refutation of MICOA convergence under this architecture. The dialogue framing is structurally correct (two streams, explicit gate, consistency objective) but the implementation produces anti-convergence. The Pattern Learning Framework predicts a stable visual pattern should develop; the consistency_loss growing throughout (it would shrink if a stable joint pattern formed) is direct refutation. Both frameworks predict the same direction: the architecture is not producing the integration it was designed for.
+
+---
+
+## 2026-05-11 — Phase C / C2: Fixed-ball-position substrate (mimo_phase_c_*)
+
+**What we ran:** Two experiments testing whether the random-spawn distribution is the load-bearing failure rather than the architecture. The user's insight: random spawn means every episode is a fresh problem with no stable spatial structure for the agent to model. With *fixed* ball positions, the world has a stable structure the agent can learn to navigate to. Two variants tested:
+
+- **Phase C**: Two fixed balls at (0.7, 0.0) and (0.0, 0.7), random starting orientation per episode (creature spawns prone facing a random yaw), blind proprio (no vision), no bribery, 2000-step episodes, episode terminates only when both balls touched. Killed at 56K after first eval.
+- **Phase C2**: Same as Phase C, plus **memory_obs** appended to the observation: two binary flags (`touched_ball1`, `touched_ball2`) get concatenated to proprio at every step, letting a stateless SAC policy condition on its own past contacts within an episode. Killed at 56K after first eval.
+
+**Numbers:**
+
+| Run | Step | ep_rew_mean | Eval @50K |
+|-----|------|------------:|----------:|
+| Phase C  | 8K  | −50    | (run too short for eval landing) |
+| Phase C  | 16K | −50    | |
+| Phase C  | 24K | **−16.7** ← peak | |
+| Phase C  | 32K | −25    | |
+| Phase C  | 40K | −40    | |
+| Phase C  | 50K | (eval) | **−100.00 ± 0.00** |
+| Phase C2 | 8K  | −50    | |
+| Phase C2 | 16K | −75    | |
+| Phase C2 | 24K | −50    | |
+| Phase C2 | 32K | −50    | |
+| Phase C2 | 40K | −60    | |
+| Phase C2 | 48K | −66.7  | |
+| Phase C2 | 50K | (eval) | **−100.00 ± 0.00** |
+
+Both runs collapsed to identical deterministic-eval failure: every one of 20 episodes returned exactly −100.00, meaning zero contacts and zero variance — the deterministic policy outputs near-zero actions and the creature does not move during eval. Same total-zero attractor as Phase A.
+
+**What we learned:** Fixed ball positions alone do not rescue the substrate. Adding within-episode memory flags also does not rescue it. The deeper failure is upstream: under no-bribery conditions with sparse contact reward, SAC's deterministic policy collapses to zero-action regardless of whether the spatial structure is learnable or whether memory of past contacts is available. The collapse happens because the policy receives no consistent gradient signal for locomotion — non-zero actions occasionally produce contact reward (during stochastic exploration with ent_coef=0.2), but they also produce step_cost and proprio chaos when the body tips over. SAC averages over this uncertainty by going to zero. Both fixed positions and memory require a working locomotor base to be useful, and the no-bribery setup doesn't produce one. The user's two-ball + memory hypothesis is therefore not refuted — it is not testable in this configuration, because the prerequisite (the agent reliably moves at all) was never satisfied.
+
+**The dependency graph this reveals:** body works → can move → can encounter things → can remember encounters → can use memory + stable structure to map. We confirmed empirically that the chain breaks at link 2 ("can move") in the no-bribery setting. Memory flags (link 4) and fixed structure (link 6) are downstream-of-locomotion features and cannot compensate for an absent locomotion base.
+
+**Is vision load-bearing?** Not applicable; both Phase C and C2 are blind proprio.
+
+**Stochastic vs deterministic gap, revisited:** In all three failed runs (A, C, C2), the same pattern: stochastic rollout shows touch rates of 10–30% (ep_rew_mean around −20 to −70), but deterministic eval shows zero contacts (mean reward −100, std 0). The exploration noise from ent_coef=0.2 is the only thing producing contacts during training; the policy mean has not learned to produce contacts on its own. This is the structural diagnostic: SAC + no-bribery + sparse contact reward + MIMo body has *not* in 250K-300K steps developed a locomotion policy whose mean produces motion. Whatever motion happens in rollouts is the noise, not the policy.
+
+**Next question:** Does adding back a *small* velocity bonus (say 0.01–0.02, vs the 0.05 of the prior 85% blind run, vs 0.0 in Phases A/C/C2) restore locomotion without resurrecting the bribery-driven failure modes? The user's framing distinguishes "enabling locomotion" (substrate, fair) from "paying for a specific behavior" (bribery, not fair). A small velocity bonus is closer to the first — it tells the creature "moving is better than not moving" but not WHICH direction to move. Combined with fixed ball positions and memory flags, this might finally produce the locomotor base needed for the spatial-structure hypothesis to be testable.
+
+**Theory signals:** The Behavioral Prediction Framework's prediction that an agent should outperform random walk on a learnable task is violated in all three runs. The agent does not produce random walk — it produces *no walk*. This is a stronger failure than the framework anticipates. The agent has not built any internal model, predictive or otherwise; it has gone to a null policy. The Pattern Learning Framework expected stable representations to form around recurring features of the environment. With fixed ball positions, the world *has* the stable structure required, but the policy never reaches a state where it could differentially respond to those features. Both frameworks predict that with the substrate fixed in this way, *something* should be learnable; the result that *nothing* is learnable is informative — it tells us the prerequisite layer (motor activity that produces consequences) is not in place. The dependency-graph principle (body → motion → encounter → memory → map) maps onto Taylor's developmental progression: you cannot build perceptual equivalence classes for objects you have never encountered, and you cannot encounter objects without a working motor system that produces encounters.
+
