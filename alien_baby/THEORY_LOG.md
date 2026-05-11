@@ -669,3 +669,200 @@ Before the ablation test: the project had five failed runs, a working 60% blind 
 After the ablation test: the project has its first positive vision result. The MICOA architecture (freeze + zero-init + forward cone) produced — at the 30K checkpoint — a policy that uses its camera on every step. The challenge is now a second-order one: the camera is being used, but not yet in a directionally correct way.
 
 This is the right kind of progress. It does not close the project. It opens a richer set of questions that were previously inaccessible because the most basic condition (vision being used at all) had not been met.
+
+---
+
+## 2026-05-07 — Stage1 Headfix: Locomotion Baseline Reset
+
+### Why stage1_v8_best was retired
+
+The old stage1_v8_best checkpoint scored 60% deterministic touch rate across 20 episodes and zero falls. Those numbers looked solid on paper. Video review shattered that reading. In 5 rendered episodes the creature was nearly stationary on 4 of them — seed 3 touched because the ball spawned adjacent to the creature, not because the creature moved toward it. Additionally, the head oscillated across its full angular range every few timesteps, a behavior produced by the kp=30 servo gain snapping to any commanded position in a single step. The visual signal from a head moving like that is a chaotically uncorrelated sequence of frames that no downstream network could extract stable structure from.
+
+The theoretical implication is blunt: every MICOA vision experiment that followed stage1_v8_best was built on a foundation that didn't locomote and produced an unusable visual signal. The 60% touch rate was a statistical artifact of spawn radius geometry. The serial approach — train blind proprio first, then freeze and add vision — inherits the blind policy's behavior. If the blind policy learned "stay still and let the ball come to you," no follow-on architecture can rescue that.
+
+### What the new run's numbers say about locomotion quality
+
+The stage1_headfix_velbonus_2026_05_07 run shows three improvements over the old baseline that go beyond the raw touch rate.
+
+First, the training trajectory was stable. The previous stage1 runs showed early peaks followed by catastrophic collapse. This run sustained rewards in the 90–135 range for most of 200K–500K steps with a peak of 176.9, suggesting the creature is not oscillating between good and bad local optima in the way that plagued prior runs.
+
+Second, mean_dist_mean of 0.417 and ep_len_mean of 151 steps indicate the creature is covering ground. The old stage1_v8_best did not report mean_dist_mean — this is the first run in the project where we have positive evidence of ground coverage.
+
+Third, the fast contact at seed 3 (step 39) would be nearly impossible for a stationary creature. The ball would need to spawn within a very small radius for step-39 contact to occur without movement. This is the strongest single datum suggesting real locomotion has emerged.
+
+The 45% deterministic touch rate falls short of the 60% old baseline by raw number, but the old baseline is now understood to be invalid. Whether 45% from a moving creature is sufficient to resume vision work requires video confirmation.
+
+### Is 45% "real" locomotion or still luck?
+
+This is the open question the project currently sits on. There are two distinct scenarios that are both consistent with 45% touches and the numbers reported.
+
+Scenario one: the velocity bonus broke the stillness optimum and the creature now actively paddles toward likely ball positions. Under this scenario, the 45% reflects a learned spatial strategy — the creature knows, through proprio feedback and reward shaping, that forward movement leads to contact, and it moves forward reliably. Seed 3's step-39 contact is the strongest evidence for this scenario.
+
+Scenario two: the velocity bonus created movement but not steering. The creature now moves in one direction consistently (possibly forward, possibly randomly varying), and 45% of ball spawn positions happen to lie within its path. Under this scenario, 45% is still spawn-luck, just from a moving rather than stationary creature. The right-side rollout touch fraction of 1.0 versus 0.569 left-side fraction is a flag for this scenario — a truly locomotion-competent creature should not have this asymmetry unless there is a systematic structural reason for it.
+
+Video review is the discriminating test. A creature executing scenario one will visibly move toward the ball. A creature executing scenario two will move in a direction and either contact the ball if it is in the way or time out if it is not, regardless of where the ball is.
+
+### What this means for the MICOA roadmap
+
+The MICOA roadmap, as established in earlier entries, specifies that vision follow-on cannot resume until the blind proprio policy shows, on video: active ground coverage, calm head motion, and touch rate that reflects movement rather than spawning.
+
+This run is a necessary reset, not a sufficient one. The physics fixes (kp=5, velocity bonus) address the root causes of the two failures identified in video review. The training numbers are encouraging. But the decision gate is the video, not the numbers.
+
+Until a human reviews the 5 rendered episodes at `alien_baby/results/videos/v8_sanity_stage1_blind_trained_headfix_velbonus_best_seed{0-4}.mp4` and confirms calm head motion and active locomotion, the MICOA roadmap is on hold. If the videos confirm the behavioral prerequisites, the next step is a joint dialogue-architecture follow-on from this checkpoint — the two-stream (proprio + vision, equal peers, explicit agreement loss) design proposed after the video-review direction change earlier today. If the videos reveal persistent stillness or head thrashing, the physics parameters need further adjustment before any vision work begins.
+
+### The theoretical bottleneck this run addresses
+
+All previous MICOA vision experiments failed because the substrate they were building on was broken. The freeze held, the consistency loss fired, the ablation showed sensitivity — but the creature the vision system was trying to steer couldn't reliably move. The theoretical claim "vision must confirm proprio" requires that proprio has something worth confirming. A stationary creature's proprio signal ("I am not moving") is technically valid, but it is not the kind of directional locomotion signal that vision can usefully extend. For MICOA confirmation to work in the locomotion setting, proprio must encode movement-toward-target, and vision must learn to extend that movement toward targets proprio cannot identify directionally. The headfix and velocity bonus are the prerequisites for that encoding to be possible.
+
+The outstanding theoretical question remains the one posed after the MICOA blind baseline result: can MICOA-aligned confirmation be established when proprio is a body-movement signal rather than an arm-position signal? The tabletop experiments had proprio directly encoding fingertip-to-target distance. v8 proprio cannot know ball position. Vision must provide directional information that proprio cannot confirm. This asymmetry — vision informing, proprio executing, but proprio unable to validate vision's directional estimate — is the distinctive challenge of the locomotion setting that the tabletop setting could not expose.
+
+A locomotion-competent stage1 baseline is the first prerequisite for testing whether that challenge can be solved. This run is the attempt to establish that baseline. Video review will determine whether it succeeded.
+
+---
+
+## 2026-05-07 — Stage1 v2: New Locomotion Baseline Established (stage1_headfix_velbonus2_cone180_600steps_2026_05_07)
+
+### Why 85% is qualitatively different from the old 60%
+
+The old stage1_v8_best benchmark of 60% was achieved with a narrow spawn cone, short episodes, and — as video revealed — a nearly stationary creature whose success depended on the ball spawning within arm's reach. Touching 12 out of 20 balls under those conditions required almost no locomotion. That baseline was declared invalid.
+
+This run's 85% was achieved under three more demanding conditions simultaneously. The spawn cone was 180 degrees, meaning the ball appeared anywhere in the creature's front hemisphere — it was not possible to succeed by sitting still and waiting for the ball to appear nearby. The episode budget was doubled to 600 steps, which means the creature had more time but also faced more demanding ball positions that required sustained travel rather than a brief nudge. The velocity bonus was 2.5 times stronger than in the v1 run, creating a persistent gradient away from the stillness local optimum that plagued every prior stage-1 attempt.
+
+Achieving 85% against that broader challenge requires real locomotion. A creature that paddles in one fixed direction and relies on spawn luck would not achieve 85% across a full 180-degree front hemisphere. The mean episode length of 198 steps — well short of the 600-step ceiling — shows the creature is finding the ball actively rather than timing out. The three timeouts in 20 episodes represent the hard tail of the spawn distribution, not a systematic locomotion failure.
+
+The most important single datum: 5 consecutive new best-checkpoints appeared early in training. This is the signature of a policy that is genuinely learning and compounding its improvement, not oscillating around a lucky initial state. The 85% best-checkpoint result is the peak of a learning curve, not a noise spike.
+
+### What this means for the MICOA roadmap
+
+The MICOA roadmap was put on hold pending video confirmation that the v1 headfix run (45% deterministic) showed active locomotion and a calm head. That decision was correct — the project cannot build a vision architecture on a locomotion substrate it hasn't verified. The v2 run strengthens the case for video confirmation: if the videos show the creature actively searching across the 180-degree cone (including seeds where the ball is far away), the MICOA roadmap prerequisites are met and vision follow-on can resume.
+
+More specifically, the v2 result changes what the MICOA roadmap is protecting. Every prior MICOA experiment — five runs from the old stage1_v8_best — was trying to add vision to a creature that sat still. The theoretical diagnosis was that proprio didn't have anything worth confirming: a creature that doesn't move provides a locomotion signal ("I am not moving") that vision cannot usefully extend into directional steering. This run changes that diagnosis. If the creature is genuinely covering ground and finding balls across the 180-degree front hemisphere, then proprio encodes something valuable: active locomotion, varying speeds, asymmetric paddle strokes that correlate with eventual ball contact. That is a locomotion signal vision can potentially extend. "I am moving at speed X in direction Y, and contact occurs when I'm oriented toward the ball" is a predictable relationship that vision, by adding ball-direction information, could enhance. The old stage1_v8_best offered no such relationship.
+
+The implication is concrete: a follow-on run seeded from this v2 checkpoint, using the MICOA architecture (frozen proprio, zero-init pixel columns, consistency loss), is testing a different and more favorable hypothesis than all prior MICOA runs. The substrate is locomotion-competent. The question is now whether vision can contribute directional steering on top of an already-functional locomotion engine, rather than whether vision can rescue a creature that doesn't move.
+
+### What the prerequisites for vision follow-on now are
+
+Two prerequisites remain before vision follow-on resumes, and neither has been waived.
+
+The first is human video review. A human must watch the rendered episodes and confirm three things: the creature's head moves slowly and deliberately (not oscillating across full range), the creature covers ground during each episode (not stationary), and contacts are the result of movement toward the ball (not spawn adjacency). This is the same decision gate as for the v1 run. The v2 numbers are more encouraging, but numbers have fooled this project before — the 60% stage1_v8_best numbers looked solid until video revealed they were meaningless.
+
+The second is the directional asymmetry question. The v2 rollout shows touched_left = 0.549 and touched_right = 0.347 — the creature makes about 58% more left contacts than right contacts during stochastic training. This asymmetry could mean the creature has a preferred direction (paddles more easily to the left), or it could be a spawn artifact from the 180-degree cone distribution if the ball spawning is not perfectly symmetric. It does not invalidate the 85% result, but it is worth noting for video review: if the creature is strongly left-biased in its movement, the 85% touch rate under cone180 may be partly explained by the ball frequently spawning on the left side. A video-confirmed right-side contact would be reassuring.
+
+These prerequisites exist not to delay the project but to protect it from repeating the mistake of the MICOA experiments built on stage1_v8_best. One bad foundation cost the project the entire MICOA experimental series. Verifying the foundation before building is cheap insurance.
+
+### What is ruled in and ruled out by this result
+
+This run rules in one thing clearly: the combined parameter set (kp=5 head servo, VELOCITY_BONUS_SCALE=0.05, cone180, 600 steps) produces a locomotion policy that achieves 85% deterministic touch rate with zero falls across 20 episodes. That combination works for stage-1 locomotion training.
+
+It rules out the hypothesis that the velocity bonus at 0.02 was sufficient to fully break the stillness local optimum at scale. The v1 run achieved 45%, which was an improvement but not a breakthrough. The 2.5x increase to 0.05 moved the needle from 45% to 85% — a nonlinear improvement that suggests the 0.02 bonus was pushing in the right direction but not strongly enough to consistently dominate the stillness incentive across all spawn positions.
+
+It does not rule out or confirm anything about vision. This is a blind proprio run. The vision question is entirely deferred to the follow-on.
+
+### Framework assessment for this run
+
+**Behavioral Prediction Framework:** The 85% rate under cone180 is consistent with the framework's prediction that a creature develops internal models of where contact is likely to occur and moves to produce that contact. A 180-degree spawn distribution forces the creature to either have a generalizable search strategy or fail on the half of spawns that land outside its default direction. The fact that only 3/20 timed out suggests the creature is doing something more than pointing straight ahead and hoping. However, confirming this interpretation requires seeing the creature turn toward off-center balls — which only video can show.
+
+**Pattern Learning Framework:** The 5 consecutive new bests in early training are consistent with the framework's prediction that the agent learns stable distributed patterns that generalize: each improvement represents a more robust locomotion pattern that succeeds across more ball positions, not a one-off win. The consistent 0 falls across all 20 deterministic episodes reinforces this — a fragile or noisy policy would produce occasional tipping, but none occurred. The pattern for "locomote stably" appears to have solidified fully.
+
+### The outstanding theoretical question this baseline opens
+
+The project's central unresolved question — whether MICOA-aligned confirmation can work when proprio is a body-movement signal rather than an arm-position signal — has not been answered by this run. It has been made testable. For the first time, the substrate has the locomotion competence that the question requires. Whether proprio's movement encoding is rich enough for vision to extend into directional steering is the question the follow-on will test.
+
+The specific form of that question, given this v2 result: the creature already achieves 85% blind. Vision follow-on must achieve more than 85% — or achieve 85% with confirmed nonzero vision-ablation sensitivity — to represent a genuine improvement. A follow-on that achieves 85% through proprio alone (vision ignored) is indistinguishable from the blind baseline by touch rate alone. The ablation test remains the decisive measurement.
+
+---
+
+## 2026-05-11 — Overnight session: No-bribery substrate, dialogue arch, fixed-ball test
+
+### What changed since the last theory entry
+
+Three new experiments tonight, all on the MIMo crawler, all designed to test where the previous failure modes were located in the dependency graph from body → motion → contact → memory → spatial structure → vision. The summary of what was tested and what we learned, in MICOA / pressure-not-bribery terms:
+
+**Phase A** (mimo_substrate_A, 250K): no-bribery substrate (no velocity bonus, no approach reward) + 360° spawn + 2000-step episodes + guardrails + 15° camera tilt + existing flat-concatenation StereoCrawlerCNN architecture. The question being tested: does removing bribery and broadening the spawn distribution make vision become load-bearing without changing the architecture?
+
+**Phase B** (mimo_dialogue_v1, killed 112K): same substrate as Phase A but with the dialogue architecture from the May 7 retirement memo — two-stream actor (proprio + vision), learned scalar gate w, consistency loss λ · ||μ_p − μ_v||² with λ=0.05. The question: does the structural change to a symmetric peer architecture with explicit agreement pressure produce MICOA-aligned integration?
+
+**Phase C / C2** (mimo_phase_c, killed 56K each): no bribery, but two fixed ball positions at (0.7, 0.0) and (0.0, 0.7), random starting orientation per episode, blind proprio. C2 also added memory_obs: two binary flags (touched_ball1, touched_ball2) appended to proprio so the stateless SAC can condition on its own past contacts. The question (proposed by the human researcher mid-session): does stable spatial structure — a world the agent can build a model of, rather than a fresh random problem each episode — produce learnability that random spawn doesn't?
+
+### Numerical reality
+
+All three experiments produced essentially the same diagnostic signature: the deterministic eval mean reward equaled −100.00 with standard deviation 0.00 (or very close), meaning every one of 20 evaluation episodes returned exactly the no-action baseline (2000 steps × −0.05 step cost). Stochastic rollouts showed some contacts (ep_rew_mean around −20 to −70, corresponding to ~10–30% one-ball touch rate), but those contacts disappeared the moment exploration noise was removed. The deterministic policy mean was approximately zero, the creature did not move in eval, and no policy variant produced a learnable improvement.
+
+Phase B's gate trajectory is the most informative new datum: w collapsed from random init (~0.5) to ≈ 0.005 within 40K steps, then slowly recovered to 0.07 by the 112K kill. Disagreement between the streams grew from 0.09 to 0.42 over the same window. Consistency_loss grew from 0.01 to 0.31. This is direct refutation of MICOA convergence under the dialogue-architecture-as-implemented: the streams diverged rather than agreeing, and the gate excluded one stream rather than blending them. The architecture is structurally correct (two streams, explicit gate, agreement objective) but the implementation has an asymmetric gradient flow — with gate ≈ 0, the SAC actor loss flows almost entirely to μ_v, while μ_p receives only the (smaller) consistency-loss gradient. μ_v drifts toward whatever Q-maximizes; μ_p is pulled along by consistency but cannot keep up; the gate sees the resulting disagreement and further suppresses the lagging stream. A self-reinforcing collapse.
+
+### The pressure-not-bribery line, sharpened
+
+This session forced a more precise articulation of the pressure-not-bribery principle than the project has had before. The human researcher articulated the distinction explicitly: enabling a capacity (the body being able to move, the camera being aimed correctly, memory architecture for storing past events) is substrate, not bribery. Paying for a specific behavior (move forward gets +reward, look at ball gets +reward, approach ball gets +reward) is bribery. The two are categorically different even though both involve the experimenter adjusting things.
+
+Under this articulation, the runs we did tonight tested whether the substrate alone (without any bribery) is sufficient. The answer is unambiguously no for SAC + MIMo crawler with sparse contact reward: the agent never reaches a state where the substrate features could pay off, because SAC's deterministic policy collapses to zero-action when the only reward signal is sparse contact that the policy hasn't yet figured out how to produce reliably. The contact reward isn't dense enough to bootstrap locomotion, and without locomotion, the agent never produces the contacts that would teach it locomotion. The chicken-and-egg.
+
+The earlier 85% blind baseline result avoided this trap by including a velocity_bonus_scale=0.05. That bonus, in the new framing, is on the bribery side of the line — it pays for a specific behavior (any motion). It is what kept the policy out of the zero-action attractor. Without it, the no-bribery setup loses the locomotor base entirely.
+
+The cleaner re-articulation, then: a small velocity bonus is not bribery in the same sense an approach reward is. An approach reward pays for movement *toward a specific target* — it encodes the answer to the question we are asking the agent to learn. A velocity bonus pays only for *not being still* — it tells the agent that the zero-action attractor is suboptimal but does not say where to go. Under this reading, velocity_bonus belongs to the "enabling" category (closer to providing energy to a body that needs to move) rather than the "bribery" category (closer to giving the agent the answer). This is the line of reasoning that the next experiment (Phase D, not yet run) is designed to follow up.
+
+### The two-balls-define-a-line hypothesis
+
+The human researcher's most important contribution to the theoretical framing this session was the observation that random ball spawn destroys learnability in a deeper sense than just making the task hard. With random spawn, the spatial structure of the world is *re-randomized* every episode, so nothing the agent encounters about the world's structure can transfer between episodes. The agent gets contact rewards but those rewards do not aggregate into a model of *the world* — they aggregate into a stimulus-response habit ("twitch and sometimes you bump into something"). With fixed ball positions, by contrast, there is a stable spatial structure that the agent could in principle build a representation of. After many episodes the agent could learn that contact is achievable at specific world-coordinate locations, and the policy can be conditioned on its own position estimate to navigate to them.
+
+The two-ball variant adds the further insight that two stable landmarks define a coordinate system. Once the agent has touched both balls in the same episode, it has implicitly identified a line segment in the world, with its own (path-integrated) position registered against that line. Future episodes can then use this learned reference frame to navigate efficiently: touch one ball to register, then beeline to the other.
+
+This is a real cognitive proposal. It maps onto place cells (hippocampal cells that fire at specific world positions), grid cells (cells that fire on a hexagonal grid relative to learned landmarks), and the Numenta thousand-brains framework's emphasis on reference-frame learning. The proposal is that the right experimental substrate for testing reference-frame development is not "random task, see if it generalizes" but "stable world, see if a map forms."
+
+The empirical result (Phase C, Phase C2) is that the proposal is not refuted but is also not yet testable in the current setup. The agent never reaches the state of reliably touching even one ball under no-bribery conditions, so it never gets the data points that would seed a map. Fixed positions and memory flags are downstream-of-locomotion features. They cannot pay off in an agent that does not move.
+
+### Updated dependency graph
+
+The session has clarified the project's effective dependency graph in a way that earlier failures had only hinted at:
+
+```
+body works (physics, mass, joints)
+        ↓
+can move (a policy whose mean produces locomotion)
+        ↓
+can encounter things (stochastic motion produces contact)
+        ↓
+can remember encounters (within-episode memory, weight memory)
+        ↓
+can build a spatial map (stable world structure + memory + locomotion)
+        ↓
+can use vision distally (CNN learns object/location associations)
+        ↓
+can integrate vision with proprio (MICOA confirmation)
+```
+
+The new finding tonight is that **the chain breaks at link 2 under sparse-contact-only reward**. Every previous failure mode the project has documented (entropy collapse, gate collapse, consistency loss diverging, vision silent) is downstream of this break. You cannot test gate behavior in a policy that does not move. You cannot test memory in a policy that does not encounter. You cannot test vision integration in a creature that does not produce visual evidence.
+
+This is not a methodological criticism of the prior runs — those runs included velocity_bonus and so kept the chain intact at link 2. The criticism is that the prior runs *also* included a behavior-specific component (approach reward, FOV reward, velocity bonus tuned to 0.05) and we could not tell which components were necessary for the locomotor base and which were unnecessary bribery for the downstream question. Tonight's runs separate those concerns: with all of them removed, the chain breaks at link 2. The implication is that *some* enabling signal at link 2 is necessary, and the design question becomes how to provide it without contaminating the test of links 5–7.
+
+### Updated "what is ruled out" / "what is not yet ruled out"
+
+| Hypothesis | Status before tonight | Status after tonight |
+|---|---|---|
+| No-bribery substrate alone makes vision load-bearing under flat-concat architecture | Open | **Refuted** (Phase A: 0% deterministic, ablation 0.0226) |
+| Dialogue architecture (gate + consistency loss) escapes flat-concat's failure modes on the same substrate | Open | **Refuted under the as-implemented λ=0.05 with no gate floor** (Phase B gate collapse) |
+| Random ball spawn is the load-bearing failure (rather than the architecture) | Live | **Not testable in current configuration**; the upstream locomotion failure preempts the test (Phase C, C2) |
+| Memory of past contacts solves the two-ball task | Live | **Not testable**; same upstream issue (Phase C2) |
+| Some non-zero velocity bonus is required to maintain the locomotor base under SAC + sparse contact reward | Implicit | **Confirmed by absence** (every run with velocity_bonus_scale=0.0 collapsed at the policy mean) |
+
+| Hypothesis | Next test |
+|---|---|
+| velocity_bonus_scale=0.02 (small, enabling) + fixed balls + memory + random orientation produces learnable behavior | Phase D — same env as C2 with velocity_bonus_scale=0.02 |
+| Once locomotion is stable, the dialogue architecture with a gate-floor of 0.2 (prevents collapse) produces MICOA-aligned integration | Phase E — dialogue arch + gate floor + locomotor-enabling substrate |
+| A recurrent (LSTM) policy on the Phase D substrate develops the two-ball spatial map | Phase F — LSTM-augmented SAC or PPO + LSTM on Phase D's setup |
+
+### Frameworks: what each one says after tonight
+
+**Behavioral Prediction Framework** (the creature should build internal models that let it act in advance of contact): the deterministic-zero-action collapse across A, C, C2 is the strongest violation the project has seen. The framework predicts the agent should at least produce *some* motion in its mean policy, even if that motion is poorly directed. The observed result is that the mean policy produces *no* motion. This is a stronger failure than the framework anticipates, and it tells us the framework's prediction is conditional on a locomotor base existing. With no base, there is no policy mean to be predictive — there is only exploration noise. The framework needs to be re-stated to account for the prerequisite: an agent with a working motor system that produces consequences will build internal models of those consequences. If the motor system is not working, no models will form.
+
+**Pattern Learning Framework** (the agent's internal representations should respond to recurring features of the environment with stable distributed patterns): tonight's runs included environments with extreme regularity (fixed ball positions, fixed platform, fixed guardrails) and the agent still did not develop stable patterns that could be used for control. This is informative because it means the environmental regularity is not sufficient — the agent must also be in a state where regularity *produces consequences* that can be learned from. With no locomotion, the agent does not produce the consequences that would let the pattern learning occur. Same prerequisite issue as the behavioral prediction framework.
+
+**MICOA** (multiple inputs confirming one another, not competing): Phase B's gate-collapse result is direct evidence that the implementation of MICOA-style architectures must contend with gradient-flow asymmetry. The clean theoretical statement ("two channels that must agree") becomes, in practice, "two channels with a gating mechanism that creates a feedback loop where the channel with smaller actions gets weighted more, which starves the other channel, which then diverges, which the gate then suppresses further." The next implementation should include either a gate floor or a different weighting scheme entirely (e.g., simple averaging with stop-gradient on the gate during early training) to break this feedback loop.
+
+### The central question, restated
+
+Before tonight, the central question was: "Can MICOA-aligned vision integration be achieved on a locomotion body where proprio cannot directly encode target direction?" This question presumed a working locomotor base.
+
+After tonight, the more precise central question is: **"What is the minimum enabling signal that maintains the locomotor base without becoming behavior-specific bribery, so that the substrate-level tests (fixed structure, memory, vision integration) can be conducted on top of it?"** The principled answer (a small velocity bonus, justified as energy-cost rather than direction-specific shaping) is the design hypothesis for the next experimental cycle. If that hypothesis is right, the project regains its ability to test the substrate questions on a foundation that doesn't collapse. If it is wrong — if even a small velocity bonus still corrupts the test — then the project needs to consider whether SAC + MIMo + sparse-contact-reward is fundamentally the wrong combination for this experimental program, and whether a different algorithm (PPO with HER, or a model-based learner like Dreamer) is required.
+
+The session does not close the project. It clarifies the dependency graph and re-locates the open question.
+
