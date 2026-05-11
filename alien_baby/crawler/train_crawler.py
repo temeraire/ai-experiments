@@ -16,7 +16,7 @@ import pathlib
 import datetime
 import numpy as np
 
-from stable_baselines3 import SAC
+from stable_baselines3 import SAC, HerReplayBuffer
 from stable_baselines3.common.vec_env import SubprocVecEnv, DummyVecEnv, VecNormalize
 from stable_baselines3.common.callbacks import (
     EvalCallback, CheckpointCallback, CallbackList
@@ -24,6 +24,7 @@ from stable_baselines3.common.callbacks import (
 from stable_baselines3.common.monitor import Monitor
 
 from alien_baby.crawler.mimo_crawler_env import MimoCrawlerEnv
+from alien_baby.crawler.her_wrapper import HERCrawlerWrapper
 from alien_baby.crawler.crawler_cnn_extractor import StereoCrawlerCNN, PIXEL_LATENT_DIM
 from alien_baby.crawler.mimo_crawler_env import PROPRIO_DIM
 
@@ -33,9 +34,9 @@ RESULTS_DIR = pathlib.Path(__file__).parent.parent / "results"
 def make_env(rank, seed, strength_scale, spawn_cone_deg, max_steps, n_substeps,
              vision=False, approach_reward_scale=2.0, velocity_bonus_scale=0.05,
              fixed_ball_positions=None, random_start_orientation=False,
-             memory_obs=False, stereo=True):
+             memory_obs=False, stereo=True, her=False):
     def _init():
-        env = MimoCrawlerEnv(
+        env_kwargs = dict(
             vision=vision,
             strength_scale=strength_scale,
             spawn_cone_deg=spawn_cone_deg,
@@ -48,6 +49,12 @@ def make_env(rank, seed, strength_scale, spawn_cone_deg, max_steps, n_substeps,
             memory_obs=memory_obs,
             stereo=stereo,
         )
+        if her:
+            # HERCrawlerWrapper instantiates MimoCrawlerEnv internally and adds
+            # the goal-conditioned Dict observation.
+            env = HERCrawlerWrapper(**env_kwargs)
+        else:
+            env = MimoCrawlerEnv(**env_kwargs)
         env = Monitor(env)
         env.reset(seed=seed + rank)
         return env
@@ -82,10 +89,17 @@ def train(args):
                  fixed_ball_positions=args.fixed_ball_positions,
                  random_start_orientation=args.random_start_orientation,
                  memory_obs=args.memory_obs,
-                 stereo=not args.mono)
+                 stereo=not args.mono,
+                 her=args.her)
         for i in range(args.n_envs)
     ])
-    train_env = VecNormalize(train_env, norm_obs=True, norm_reward=True, clip_obs=10.0)
+    # VecNormalize with Dict obs (HER) requires norm_obs_keys instead of norm_obs.
+    # We normalize the "observation" key only; goals are left in world coords.
+    if args.her:
+        train_env = VecNormalize(train_env, norm_obs_keys=["observation"],
+                                 norm_reward=True, clip_obs=10.0)
+    else:
+        train_env = VecNormalize(train_env, norm_obs=True, norm_reward=True, clip_obs=10.0)
 
     # Eval env (single, deterministic)
     eval_env = DummyVecEnv([
@@ -96,10 +110,15 @@ def train(args):
                  fixed_ball_positions=args.fixed_ball_positions,
                  random_start_orientation=args.random_start_orientation,
                  memory_obs=args.memory_obs,
-                 stereo=not args.mono)
+                 stereo=not args.mono,
+                 her=args.her)
     ])
-    eval_env = VecNormalize(eval_env, norm_obs=True, norm_reward=False, clip_obs=10.0,
-                             training=False)
+    if args.her:
+        eval_env = VecNormalize(eval_env, norm_obs_keys=["observation"],
+                                norm_reward=False, clip_obs=10.0, training=False)
+    else:
+        eval_env = VecNormalize(eval_env, norm_obs=True, norm_reward=False,
+                                clip_obs=10.0, training=False)
 
     if args.init_from:
         print(f"  Loading checkpoint: {args.init_from}")
@@ -128,9 +147,7 @@ def train(args):
         else:
             policy_kwargs = dict(net_arch=[256, 256])
 
-        model = SAC(
-            "MlpPolicy",
-            train_env,
+        sac_kwargs = dict(
             learning_rate=args.learning_rate,
             buffer_size=args.buffer_size,
             learning_starts=args.learning_starts,
@@ -144,6 +161,18 @@ def train(args):
             seed=args.seed,
             device="mps" if args.mps else "cpu",
         )
+
+        if args.her:
+            # HER: dict obs → MultiInputPolicy; relabel failed transitions
+            # using the "future" strategy from Andrychowicz et al. 2017.
+            sac_kwargs["replay_buffer_class"]  = HerReplayBuffer
+            sac_kwargs["replay_buffer_kwargs"] = dict(
+                n_sampled_goal=4,
+                goal_selection_strategy="future",
+            )
+            model = SAC("MultiInputPolicy", train_env, **sac_kwargs)
+        else:
+            model = SAC("MlpPolicy", train_env, **sac_kwargs)
 
     callbacks = CallbackList([
         CheckpointCallback(
@@ -246,6 +275,11 @@ if __name__ == "__main__":
                         help="Use a single forward camera (left_eye) instead of stereo. "
                              "Halves the pixel observation dimension. The XML still shows "
                              "two visible eyes — only the camera input is mono.")
+    parser.add_argument("--her", action="store_true",
+                        help="Use Hindsight Experience Replay. Wraps the env to expose "
+                             "goal-conditioned observations and switches SAC to use "
+                             "HerReplayBuffer + MultiInputPolicy. Requires "
+                             "--fixed-ball-positions (HER needs stable goals).")
     args = parser.parse_args()
     # Convert numeric strings to float
     if args.ent_coef != "auto":
