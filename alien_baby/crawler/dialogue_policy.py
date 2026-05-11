@@ -195,7 +195,8 @@ class DialogueActor(Actor):
         out: Dict[str, float] = {}
         if self._last_gate is not None:
             out["dialogue/gate_mean"] = self._last_gate.mean().item()
-            out["dialogue/gate_std"]  = self._last_gate.std().item()
+            if self._last_gate.numel() > 1:
+                out["dialogue/gate_std"] = self._last_gate.std().item()
         if self._last_mu_p is not None and self._last_mu_v is not None:
             disagreement = (self._last_mu_p - self._last_mu_v).abs().mean().item()
             out["dialogue/disagreement_mean"] = disagreement
