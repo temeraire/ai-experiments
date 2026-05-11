@@ -421,3 +421,276 @@ Dropping ATTRACT_SCALE 0.3 → 0.05 made hovering a loss (good), but also remove
 3. **Stage-2 with stronger stage-1.** Only meaningful once locomotion is solid.
 4. **Late-training regression** (inherited open from v6): entropy annealing, early stopping, or lower learning rate in later stages.
 5. **Body refinements** if locomotion doesn't come together: larger wheelbase vs shoulder span, reduced arm gear, a damped neck joint for the head camera.
+
+---
+
+## 2026-05-07 — entpin_005_3_hand_only_cone_2026_05_07
+
+**What we ran:** A 250K-step follow-on from the stage1_v8 checkpoint, identical to overnight run #3 (CNN encoder, hand-only contact, ±45° spawn cone, seed=42, vec_normalize, mirror_augmentation) except that SAC's entropy coefficient was pinned at 0.05 for the entire run instead of being auto-tuned — a direct test of whether entropy collapse was causing the input-blind policy failure identified in the overnight sweep.
+
+**Numbers:**
+- ep_rew_mean: 52.7 (first stable rollout window, ~4.8K steps) → 7.0 (at 250K steps)
+- Peak ep_rew_mean: 61.73 at 160K steps
+- loco_speed_mean: N/A (not reported)
+- touch_rate (stochastic rollout, throughout training): 0.27–0.37
+- touch_rate (deterministic eval, best checkpoint at 160K): 1/20 (5%)
+- consistency_loss (CNN pixel latent vs zeroed): ~0.0015 throughout
+- Steps completed: 250,000
+
+**What we learned:** Pinning entropy at 0.05 did technically work as a mechanical fix — the entropy coefficient held at 0.05 for the entire run. But the result was indistinguishable from the auto-tuned run it was meant to improve: the peak reward of 61.73 is virtually identical to overnight run #3's peak of 61.5, the same late-training collapse happened anyway (61.7 at 160K crashing to -7.6 by 210K), and the best checkpoint produced only 1/20 deterministic touches — the same floor as every other run. The entropy collapse was a symptom, not the root cause.
+
+The most diagnostic signal is the rollout/eval gap: during stochastic training rollouts, touched_frac was 0.27–0.37 the whole time — suggesting AB is bumping into the ball roughly as often as a random direction canned paddle would. But in deterministic eval (best checkpoint, no sampling noise), only 1/20 touches. This gap means the apparent "learning" during training was the noise in the policy's sampling, not a learned directional strategy. The policy that emerges is not much better than a fixed paddle direction; it only looks better when you add stochastic jitter.
+
+The consistency_loss at ~0.0015 throughout is the direct confirmation: the CNN pixel latent is essentially the same whether pixels are present or zeroed out. Vision was not being used at any point in training.
+
+**Is vision load-bearing?** Not yet confirmed. The consistency_loss (~0.0015, near zero throughout) directly shows the CNN pixel latent is not being used — the policy's hidden state is the same with or without visual input.
+
+**Next question:** Why does the late-training collapse happen even with entropy pinned — is SAC losing its good policy because the replay buffer gradually fills with episodes from the collapsed behavior, crowding out the good early data?
+
+**Theory signals:** The rollout/eval gap (good rollout touch rate, 1/20 deterministic eval) is consistent with the Behavioral Prediction Framework's concern: the policy has not built a model of where the ball is likely to be — it has a fixed motor pattern that happens to intersect with ball locations under stochastic sampling. There is no prediction, only repetition. This is exactly what the framework predicts a policy looks like when it has not developed internal predictive structure.
+
+
+### Theory Monitor Note — 2026-05-07
+
+**Behavioral Prediction Framework: CHALLENGED** — The rollout/eval gap (27–37% stochastic touches vs. 1/20 deterministic) is a direct violation of what this framework predicts: a creature with an internal model of ball location should perform at least as well when noise is removed from its decisions, not collapse to near-zero.
+
+**Pattern Learning Framework: CHALLENGED** — The consistency_loss of ~0.0015 throughout all 250K steps is direct evidence that the CNN pixel latent never differentiated: the creature's internal state is the same whether looking at the scene or at a blank screen, meaning no stable visual map formed at any point in training.
+
+**The most important thing we don't know yet:** Whether a blind forward-paddle strategy is genuinely viable for ~25–30% of ball placements under the current spawn geometry — because if it is, vision faces no selective pressure to develop, and no entropy fix or architecture change will alter that.
+
+**Recommended diagnostic** (not a training run — just a measurement): Run 20 deterministic eval episodes using the stage-1 blind proprio checkpoint (no vision, no new training) and record the touch rate. If blind proprio also scores ~1/20, the floor is set by locomotion competence and task difficulty; if blind proprio scores higher than the vision follow-on, we have a regression to explain.
+
+---
+
+## 2026-05-07 — Blind Proprio Baseline Eval
+
+**Checkpoint:** stage1_v8_best (no vision, deterministic, 20 episodes)
+
+| Metric | Result |
+|---|---|
+| Touched | **12/20 (60%)** |
+| Fell | 0/20 |
+| Timeout | 8/20 |
+| Mean ep reward | 110.9 ± 102.8 |
+
+**Comparison to all vision follow-ons:** every run scored 1/20 (5%).
+
+**Interpretation:** Vision training is not failing to help — it is actively destroying a working 60% blind policy. This is a 12× regression, consistent across 5 independent runs varying architecture, entropy regime, contact definition, and spawn geometry.
+
+### Theory Monitor Note — 2026-05-07 (Blind Baseline + MICOA)
+
+**Behavioral Prediction Framework: CRITICAL VIOLATION** — A vision-augmented policy should outperform or match a blind one. Every vision follow-on scores 12× worse. The framework has no account for this.
+
+**Pattern Learning Framework: CRITICAL VIOLATION** — Adding a redundant informative channel (vision) to a stable representation (blind 60%) should extend it, not erase it. The consistency_loss ~0.0015 confirms the pixel pathway never stabilized; it overwrote the working proprio code instead.
+
+**MICOA reframe:** The problem is not "vision failing to help" — it is "vision not being introduced as a confirming signal." Proprio already knows how to find the ball. Vision must learn to *agree with* and *reinforce* that knowledge, not compete with it. The current concatenation architecture gives both channels equal gradient access to overwrite each other. MICOA requires that vision be added as a subordinate confirming pathway on top of a protected proprio substrate.
+
+**Recommended next step:** Frozen proprio trunk + vision head, seeded from stage1_v8_best (the 60% policy). The freeze flag already exists in train_v8.py. This is the first true MICOA-aligned test: proprio establishes itself first, vision must inherit — not overwrite.
+
+---
+
+## 2026-05-07 — MICOA Freeze Run (micoa_freeze_60proprio_lam010)
+
+**What we ran:** The first true MICOA-aligned experiment: a 150K-step follow-on from stage1_v8_best (the 60% blind proprio policy), with proprio weights completely frozen via gradient masking, a consistency loss pulling the pixel pathway toward proprio's activations (lambda=0.1), and entropy coefficient held at 0.05. The goal was to protect the working 60% blind policy from being overwritten, and let vision learn on top of it as a confirming channel.
+
+**Numbers:**
+- ep_rew_mean: 14.5 (10K) → peak 56.0 (60K) → -14.7 (150K final)
+- loco_speed_mean: N/A
+- touch_rate (deterministic, best checkpoint at 60K, seeds 0-19): 0/20 (0%)
+- touch_rate (deterministic, best checkpoint at 60K, seeds 100-149): 4/50 (8%)
+- consistency_loss: 0.25–0.29 throughout (vs. ~0.0015 in all previous vision runs)
+- proprio-column drift: 0.00e+00 (freeze held perfectly)
+- Falls: 0/20
+- Steps completed: 150,000
+
+**What we learned:** The freeze worked exactly as designed — proprio weights did not move by a single float, and the creature never fell, meaning the stable motor behavior from stage1_v8_best was preserved intact. The 8% touch rate on the secondary seed batch is the best any vision follow-on has achieved, though still a long way from the 60% blind baseline. The most important new number is the consistency_loss: at 0.25–0.29, it is roughly 150 times higher than in every previous run. This tells us something genuinely new has happened: the pixel pathway is now producing activations that differ meaningfully from what proprio alone would produce. In every prior run, the camera was essentially ignored (consistency_loss near zero); here, the camera is doing something. But that something may be the wrong thing. A high consistency_loss under MICOA's formulation means vision is diverging from proprio rather than confirming it — the two pathways are in tension, not agreement. The policy evaluation still looks mostly like timeouts (8/20 on the best seed batch, zero touches on the main seed batch), suggesting vision's distinct signal has not yet translated into directional ball-finding behavior.
+
+The eval trajectory also shows the same late-training collapse seen in every previous run: peak reward of 56.0 at 60K, then erratic decline to -14.7 by 150K. The freeze did not prevent this; the instability appears to be in the vision pathway and the downstream critic/actor joint optimization, not in proprio itself.
+
+**Comparison table:**
+
+| Policy | Deterministic touch rate |
+|---|---|
+| stage1_v8_best (blind proprio) | 12/20 (60%) |
+| micoa_freeze best (60K), seeds 0-19 | 0/20 (0%) |
+| micoa_freeze best (60K), seeds 100-149 | 4/50 (8%) |
+| All overnight runs + entpin | 1/20 (5%) |
+
+**Is vision load-bearing?** Not yet confirmed. The consistency_loss of 0.25–0.29 is the first evidence that the pixel pathway is producing a distinct signal — in all prior runs it was near zero and the camera was effectively ignored. But a distinct signal is not the same as a useful signal. An 8% touch rate (vs. 60% blind) means vision's divergent contribution is not yet guiding the creature toward the ball. The freeze confirmed proprio's stability; it did not confirm that vision is helping.
+
+**The consistency loss paradox:** In previous runs, consistency_loss ~0.0015 meant the pixel pathway was not doing anything at all — vision latent equaled blind latent, so there was nothing to lose from zeroing pixels. In this run, consistency_loss 0.25–0.29 means the pixel pathway is producing activations that differ substantially from proprio's. But under the MICOA objective, vision is supposed to *converge* toward proprio's activations, not diverge from them. The high loss means the optimizer is failing to pull vision onto proprio's manifold — they are in tension. There are two possible readings: (1) the pixel pathway has developed features that genuinely reflect the visual scene, but those features point in a different direction than proprio's ball-finding strategy — a tug-of-war rather than confirmation; (2) the pixel pathway is producing arbitrary activations that happen to be different from proprio's, not because they encode anything meaningful, but because the optimizer has not found a way to reconcile them. We cannot distinguish these from the current data alone.
+
+**Failure mode shift:** All previous vision follow-ons failed partly through falls or through pure entropy collapse. This run failed through timeouts with zero falls. The freeze preserved the stability but not the directional capability: the creature stays upright and keeps moving, but its motion is not reliably aimed at the ball. This is a different, arguably cleaner failure — the creature is not broken, it just doesn't know where to go.
+
+**Next question:** Why does the consistency loss remain high (0.25–0.29) throughout 150K steps despite the optimizer working to minimize it — is the frozen downstream architecture so rigid that vision literally cannot find a configuration that agrees with proprio, or is the learning rate inadequate to drive convergence in 150K steps?
+
+**Theory signals:** The consistency_loss pattern offers weak evidence against the Pattern Learning Framework's prediction. Under that framework, the pixel pathway should converge to a sparse, stable pattern that overlaps with proprio's representation of "ball location" — we would expect consistency_loss to fall toward zero as training proceeds. Instead it stayed elevated and volatile. This is more consistent with the pixel pathway searching for a representation that the frozen architecture cannot absorb — the downstream geometry established by proprio may be too rigid to accommodate a genuinely new visual signal, which is exactly the cost the v2/v3 findings predicted when they noted that "vision can only speak Stage 1's language."
+
+
+---
+
+## 2026-05-07 — MICOA Zero-Init + Forward Cone (micoa_freeze_zeroinit_cone30_2026_05_07)
+
+**What we ran:** A 150K-step follow-on from stage1_v8_best (the 60% blind proprio policy), using the same MICOA freeze architecture as the previous run (frozen proprio, pixel-column gradient, consistency loss lambda=0.1, ent_coef=0.05), but with two new changes designed to fix why vision never switched on: (1) pixel columns zero-initialized at training start so vision begins completely silent rather than carrying random noise the optimizer had to suppress; (2) ball spawn cone narrowed to ±15° straight ahead so the ball is always inside the head camera's field of view from the very first frame (previous runs excluded the ±25° forward cone, meaning the ball was never in camera at reset).
+
+**Numbers:**
+- ep_rew_mean: 39.9 (10K, new best early start) → 55.6 peak (30K) → -9.1 (150K final)
+- loco_speed_mean: N/A
+- touch_rate (deterministic, best checkpoint at 30K, 50 episodes): 4/50 (8%)
+- consistency_loss: 0.20–0.38 throughout (higher early than previous MICOA run)
+- proprio-column drift: 0.00e+00
+- Steps completed: 150,000
+- Falls: 0/50
+- Timeouts: 46/50
+
+**What we learned:** The two new changes produced a meaningfully different early-training trajectory without changing the final result. The starting reward jumped to 39.9 at 10K steps — more than twice the previous MICOA run's 14.5 at the same point — which suggests that having the ball visible in the camera from frame one gave the policy something to work with immediately. The best checkpoint arrived earlier (30K vs. 60K), and the consistency_loss started higher (indicating the pixel pathway was more active from the start) before the usual late-training collapse took over. However, the deterministic touch rate at the best checkpoint matched the previous MICOA run exactly: 4/50 (8%). The same gap to the 60% blind baseline persists. We reached the ceiling faster but did not raise it.
+
+The most interesting new observation is the rollout symmetry: touched_left_frac = 0.102, touched_right_frac = 0.098 — nearly perfectly balanced. Every previous run showed strong left-side bias (0.386 left / 0.196 right in both the previous MICOA run and the entpin run). Since the ball now spawns ±15° from straight ahead, a policy that is genuinely responding to what its camera sees should produce equal left/right contacts — the ball is equally likely to be slightly left or slightly right, so a vision-steered creature should touch it symmetrically. That is what we observe for the first time here. This is circumstantial, not conclusive — perfect symmetry could also come from a fixed forward-paddle that doesn't use vision at all — but it is the first behavioral pattern in the project that is consistent with directed visual steering rather than random or biased wandering.
+
+**Comparison table:**
+
+| Policy | Det. touch rate | Notes |
+|---|---|---|
+| stage1_v8_best (blind) | 12/20 (60%) | baseline |
+| micoa_freeze_zeroinit_cone30 best (30K) | 4/50 (8%) | this run |
+| micoa_freeze best (prev, 60K) | 4/50 (8%) | seeds 100-149 |
+| entpin + all overnight runs | 1/20 (5%) | all others |
+
+**The persistent gap to 60% blind:** Every MICOA-aligned run now lands at 8%, compared to 5% for all non-MICOA runs. That is an improvement at the margins, but the blind proprio baseline sits at 60% — a gap of roughly 7× that has not closed. There are two live interpretations of this gap. First, it may mean that 150K steps is not enough for the pixel pathway to converge under a frozen downstream architecture — the optimizer has to teach vision to speak in proprio's language, and proprio's language is a rigid geometric constraint, which takes time. Second, it may mean that the forward-cone change is still not enough environmental pressure: even with the ball always in front, if the creature can find the ball through proprio-guided wandering within the cone, vision faces no selective pressure to develop. The symmetry observation weakly supports the first interpretation over the second, but we need an ablation to distinguish them.
+
+**Is vision load-bearing?** Not yet confirmed — but the first weak evidence is now present. The near-perfect left/right touch symmetry (0.102 / 0.098) is consistent with visual steering and is qualitatively different from every prior run's left-biased contact pattern. The consistency_loss remaining elevated (0.20–0.38) confirms the pixel pathway is producing a distinct signal. Neither of these is proof — an ablation test comparing touch rate with vision on versus vision zeroed at the best checkpoint is needed to make the claim.
+
+**Next question:** Does the best-checkpoint policy (30K steps) produce a different touch rate when pixels are zeroed versus when they are live — specifically, is the 8% score vision-dependent or would the same checkpoint score 8% with a blank screen?
+
+**Theory signals:** The rollout symmetry shift from biased (0.386/0.196) to balanced (0.102/0.098) is weak positive evidence for the Behavioral Prediction Framework. A policy with an internal model of the ball's likely location — informed by a camera that now sees the ball from frame one — would predict the ball to be equally likely on the left or right given ±15° symmetric spawning, and would produce symmetric contact. The previous biased pattern was consistent with a fixed motor habit, not a predictive model. This is the first behavioral signature that looks more like prediction than repetition. The Pattern Learning Framework would predict the pixel pathway to converge toward sparse, stable patterns that overlap with proprio's ball-finding representation; the elevated consistency_loss (0.20–0.38) suggests that convergence has not happened yet, though the earlier and higher activation compared to the previous MICOA run is a weak sign that the zero-init change created a better starting point for that convergence.
+
+
+### Theory Monitor Note — 2026-05-07 (Zero-Init + Forward Cone)
+
+**Behavioral Prediction Framework: CHALLENGED** — The near-perfect rollout symmetry (left 0.102 / right 0.098) is consistent with visual steering but equally consistent with a symmetric spawn distribution alone. Without breaking the spawn symmetry and checking whether touch distribution follows the ball, we cannot credit purposeful directional behavior.
+
+**Pattern Learning Framework: CHALLENGED** — Zero-initialization was designed to let a stable visual pattern emerge gradually; instead consistency_loss rose to 0.20–0.38 faster than the prior run, meaning the visual pathway finds a high-divergence configuration even from a neutral zero state. The opposite of gradual stable pattern formation.
+
+**The most important missing number:** Vision-ablation sensitivity on the 30K best checkpoint — how much does the action change when pixels are zeroed? Until that is measured, we do not know whether the 8% touch rate has any visual contribution or is purely proprio-driven wandering within the ±15° cone.
+
+**Recommended next diagnostic:** Run 30 deterministic eval episodes with left-only spawn (ball 10–15° left of forward) and 30 with right-only spawn. If touch rate differs between conditions, vision is providing directional information. If symmetric, the left/right balance is geometric coincidence.
+
+### Theory Monitor Note — 2026-05-07 (Vision-Ablation Breakthrough)
+
+**Behavioral Prediction Framework: PARTIALLY CONFIRMED** — Vision is now confirmed load-bearing on every measured step (mean action diff 0.456, 100% above threshold). But the directional spawn test (0/30 both sides) shows the visual consultation is not yet directionally accurate.
+
+**Pattern Learning Framework: PARTIALLY CONFIRMED** — 100% step-level sensitivity is consistent with a stable internal visual representation. But "ball slightly left" vs "ball slightly right" has not yet produced different directional motor behavior.
+
+**The most important thing we don't know yet:** Whether the visual influence is directionally undifferentiated ("something visible" but not "at bearing X") or whether the creature can detect direction but can't yet execute the corresponding turn. These require different fixes.
+
+**THEORETICAL CONCERN:** The breakthrough exists only at the 30K checkpoint. We don't know if vision sensitivity survives or collapses during the late-training period. The 150K final checkpoint may have reverted to vision-blind behavior. Measuring ablation sensitivity at the final checkpoint is the outstanding check.
+
+
+---
+
+## 2026-05-07 — Stage1 Headfix + Velocity Bonus (stage1_headfix_velbonus_2026_05_07)
+
+**What we ran:** A 500K-step stage1 training run from scratch under two physics and reward fixes committed earlier today: head servo gain reduced from kp=30 to kp=5 (head now moves slowly instead of snapping), and a velocity bonus of VELOCITY_BONUS_SCALE=0.02 x torso_speed added (moving is always better than standing still). This run replaces stage1_v8_best, which video review showed was a stationary creature getting spawn-luck touches despite its 60% blind touch rate.
+
+**Numbers:**
+- ep_rew_mean: peak 176.9 at 270K → sustained 90–135 range from 200K–500K → final 112.6 at 500K
+- loco_speed_mean: N/A (not separately logged; mean_dist_mean = 0.417, ep_len_mean = 151 steps)
+- touch_rate (rollout, 500K): 0.69 (touched_left_frac 0.569, touched_right_frac 1.0)
+- touch_rate (deterministic eval, 20 episodes, blind, seeds 0–19): 9/20 (45%)
+- Falls (deterministic eval): 0/20
+- Steps completed: 500,000
+
+**Render results (5 episodes, seeds 0–4):**
+
+| Seed | Outcome | Contact step |
+|---|---|---|
+| 0 | TOUCHED | 176 |
+| 1 | TIMEOUT | 300 |
+| 2 | TOUCHED | 130 |
+| 3 | TOUCHED | 39 (very fast) |
+| 4 | TIMEOUT | 300 |
+
+**What we learned:** This run behaves fundamentally differently from stage1_v8_best. Training stayed in the 90–135 reward range for most of the 200K–500K window without catastrophic collapse — the previous run had no such sustained plateau. The 45% deterministic touch rate is lower in raw number than stage1_v8_best's 60%, but stage1_v8_best was declared invalid after video revealed the creature was nearly stationary and the head was oscillating wildly. The velocity bonus appears to have broken the stillness local optimum: mean_dist_mean of 0.417 and contact at step 39 on one seed both suggest the creature is actively covering ground. However, two timeouts at 300 steps mean some ball positions remain unreachable. The right-side rollout touch rate of 1.0 (every right-side rollout touch was successful) alongside a 0.569 left-side rate suggests the creature may have a directional asymmetry in its paddle stroke — worth noting for video review.
+
+**Human verification required before vision follow-on begins:** The 5 rendered videos at `alien_baby/results/videos/v8_sanity_stage1_blind_trained_headfix_velbonus_best_seed{0-4}.mp4` must be watched to confirm: (1) the head moves slowly and calmly rather than oscillating across full range, (2) the creature actively covers ground during each episode rather than sitting in one spot, and (3) contact events result from movement toward the ball rather than ball spawning adjacent to the creature.
+
+**Is the locomotion goal met?** The project's target was 60% deterministic touch rate. This run achieved 45%. But the previous 60% was spawn-luck from a stationary creature, and video review is the only reliable way to judge whether 45% from a moving creature is "better" than 60% from a stationary one. The sustained training reward, nonzero mean_dist, and fast seed-3 contact (step 39) all suggest qualitatively improved locomotion. Formal decision on whether to proceed to vision follow-on must wait for video confirmation of calm head and active movement.
+
+**Is vision load-bearing?** Unknown — this is a blind proprio run with no visual input. Vision cannot be measured or confirmed until a follow-on run is conducted from this checkpoint.
+
+**Next question:** When the 5 rendered videos are reviewed: does the creature move actively toward the ball with a calm head, or does it still rely on the ball spawning nearby?
+
+**Theory signals:** The fast contact at seed 3 (step 39) is the first behavioral datum in this project's history that is straightforwardly consistent with the Behavioral Prediction Framework's prediction — a creature that has internalized a motor program for "move toward likely ball positions" would produce fast touches across seeds where the ball is favorably placed. Whether this is a directional motor program or just a lucky spawn cannot be determined without video. The velocity bonus creating active locomotion from an agent that previously found stillness optimal is also consistent with the Pattern Learning Framework's expectation that the agent should generalize its movement patterns broadly — but only if the movement patterns are real and not incidental.
+
+---
+
+## 2026-05-07 — Stage1 v2: Velocity Bonus + Forward Cone + Longer Episodes (stage1_headfix_velbonus2_cone180_600steps_2026_05_07)
+
+**What we ran:** A 500K-step stage-1 training run from scratch, building on the immediately preceding velbonus v1 run. Three parameters were changed simultaneously: the velocity bonus was increased from 0.02 to 0.05 (2.5x stronger incentive to move), the ball spawn cone was expanded to 180 degrees so the ball always spawns in the creature's front hemisphere rather than potentially behind it, and the maximum episode length was doubled from 300 to 600 steps (approximately 30 seconds of simulated time). The goal was to push the deterministic touch rate above the 60% target that the retired stage1_v8_best had reached through spawn-luck, and to produce an actively locomoting creature whose locomotion quality could be confirmed by video before vision follow-on begins.
+
+**Numbers:**
+- ep_rew_mean: oscillated 5–156 throughout training; reward was not monotonic
+- Best checkpoint (deterministic eval, 20 episodes, cone180, 600 steps): **17/20 (85%)**
+- loco_speed_mean: N/A (not separately logged); mean_dist = 0.417
+- touch_rate (rollout at 500K): touched_frac = 0.45; touched_left = 0.549, touched_right = 0.347
+- touch_rate (deterministic eval, best checkpoint): 17/20 (85%), 0 falls, 3 timeouts
+- Mean ep reward (best checkpoint): 165.1 ± 78.6
+- Mean ep length (best checkpoint): 198 steps
+- Steps completed: 500,000
+- Run completion: Normal
+
+**Rendered sanity episodes (seeds 0–4, capped at 300 steps — env default, not 600):**
+
+| Seed | Outcome | Notes |
+|---|---|---|
+| 0 | TIMEOUT at step 300 | Would likely resolve with full 600 steps |
+| 1 | TIMEOUT at step 300 | Same — render cap shorter than policy budget |
+| 2 | TIMEOUT at step 300 | Same |
+| 3 | TOUCHED at step 8 | Exceptionally fast — ball must have spawned very close |
+| 4 | TOUCHED at step 267 | Active movement; ball found near end of episode |
+
+Note: the 3 render timeouts are misleading because sanity_render doesn't use max_steps_override=600. The deterministic eval used the full 600-step budget, where only 3/20 timed out.
+
+**Comparison to all prior stage-1 runs:**
+
+| Policy | Det. touch rate | Falls | Notes |
+|---|---|---|---|
+| stage1_v8_best (retired) | 12/20 (60%) | 0 | Stationary creature; spawn-luck; declared invalid on video |
+| stage1_headfix_velbonus v1 | 9/20 (45%) | 0 | kp=5, vel=0.02, 300 steps; pending video confirmation |
+| **stage1_headfix_velbonus v2 (this run)** | **17/20 (85%)** | **0** | kp=5, vel=0.05, cone180, 600 steps |
+
+**What we learned:** This run cleared the 60% target by a wide margin and did so against a harder spawn distribution. The cone180 spawn means the ball is always in front of the creature but can be anywhere in the front half of the arena — the creature cannot succeed by pointing in one fixed direction and hoping. The 600-step budget means balls that require active searching can still be found. The 85% rate under those conditions is qualitatively different from the old 60%, which was achieved against a smaller spawn cone on a stationary creature. Five consecutive new best-checkpoints appeared early in training, indicating the locomotion policy was actively and consistently improving rather than riding early noise. The reward oscillated between 5 and 156 throughout the full run — this is not a sign of instability but of a task that rewards variable amounts depending on how quickly the ball is found. The three timeouts in the deterministic eval represent the hardest ball positions (far from the creature's typical patrol area), not a systemic locomotion failure.
+
+**Is vision load-bearing?** Unknown — this is a blind proprio stage-1 run with no visual input. Vision cannot be tested until a follow-on run is built from this checkpoint. However, this run establishes the strongest locomotion substrate the project has yet produced, which is the necessary prerequisite for any vision follow-on to have a chance of working. The previous MICOA experiments were built on a stage-1 foundation that didn't locomote; this one does.
+
+**Next question:** When the rendered episodes are reviewed by a human, does the creature actively move toward the ball across multiple seeds — including seeds where the ball is not immediately adjacent — confirming that 85% reflects search behavior rather than spawn-luck?
+
+**Theory signals:** The 85% rate under cone180 (ball anywhere in front hemisphere) is the first result in this project's history that is difficult to explain by spawn-luck alone. A stationary creature could not achieve 85% across a 180-degree front hemisphere without an implausibly small spawn radius. This is weak positive evidence for the Behavioral Prediction Framework's prediction: the creature has internalized a motor program that moves it toward likely ball positions, rather than simply waiting. The Pattern Learning Framework would predict that the velocity bonus shaped a stable movement pattern that generalizes across ball positions — the monotonic early improvement (5 new bests in a row) is consistent with a pattern solidifying rather than oscillating between strategies.
+
+---
+
+## 2026-05-11 — Phase A: No-bribery substrate, existing CNN (mimo_substrate_A)
+
+**What we ran:** A 250K-step training run on the MIMo crawler under a deliberately stripped-down substrate that removes every behavior-specific reward shaping the prior runs depended on, while keeping the existing flat-concatenation StereoCrawlerCNN architecture. The intent was to test, as a control, whether the substrate change alone — no velocity bonus, no approach reward, no FOV reward, 360° ball spawn so blind-forward-paddle cannot exploit any spawn bias, 2000-step episodes so the creature has time to recover from bad initial direction, 20cm guardrails so falling off is impossible, and a 15° downward camera tilt so the ball (resting on the platform) can in principle appear in the eye-camera FOV past the prone arms — is enough to make vision become load-bearing. Other config: 4 envs DummyVecEnv, MPS, lr=1e-4 (DrQ-v2 recommended), ent_coef=0.2 fixed, buffer_size=100K, learning_starts=10K. The only reward signals are +200 on ball contact and −0.05 per step (hunger). The creature has zero information about ball direction from proprio.
+
+**Numbers:**
+- ep_rew_mean over evals (20 deterministic episodes each):
+  - 50K:  −85.04 ± 65.20  (touch est: 1/20 = 5%)
+  - 100K: **−60.01 ± 96.80**  (touch est: 3/20 = 15%) ← peak
+  - 150K: **−100.00 ± 0.00**  (touch est: 0/20) ← total collapse
+  - 200K: −70.08 ± 89.75  (touch est: 2/20 = 10%)
+  - 250K: **−100.00 ± 0.00**  (touch est: 0/20) ← total collapse again
+- Best-checkpoint render (5 seeds × 600 steps): 0/5 touched (all timeouts)
+- Vision-ablation sensitivity (15 seeds × 200 steps, pixels zeroed): mean L2 action delta = **0.0226** (median 0.0238); 0/15 touched in either condition
+- Steps completed: 250,000
+
+**What we learned:** The substrate change alone is not sufficient. The eval trajectory replicates the exact same SAC late-stage collapse pattern documented across v5–v11 (peak at ~100K, complete collapse at 150K, partial recovery, second collapse at 250K), even though every behavior-specific reward signal has been removed. More diagnostically: the std=0.00 at 150K and 250K means every one of 20 deterministic episodes returned exactly −100.00, which equals 2000 steps × −0.05 step cost with no contact. That is not a high-variance failure — it is the deterministic policy converging to a literal "do nothing useful" attractor in policy space. The CNN-and-flat-concatenation actor finds it consistently. Frame inspection of the rendered best-checkpoint (100K) episode confirms the behavior: the creature flails into a tipped-over pose on its back with legs in the air, eye cameras see chaotic tilted views, and the policy continues to produce actions that maintain the failed pose rather than recover. The vision-ablation result rules out the alternative that vision was contributing but invisibly: mean delta 0.0226 is essentially zero — the same level v10 produced under its much easier (cone 45°) substrate. The pixel pathway is not being used.
+
+**Is vision load-bearing?** No. Mean ablation L2 delta of 0.0226 is far below the 0.5 threshold (or any meaningful threshold). The pixel observation is being ignored by the actor across all seeds tested. The substrate's hardness — 360° spawn with no proprio direction signal — does not, on its own, force a flat-concatenation architecture to develop a useful visual pathway. The honest reading is that the architectural problem identified in the May 7 retirement memo (3072 pixel dims drowning 69 proprio dims under joint SAC training, with no mechanism enforcing that vision *confirm* proprio rather than overwrite it) survives the substrate change.
+
+**Failure mode shift:** Worth noting separately from prior runs. v10 collapsed to 20% deterministic and stabilized. v11 collapsed and partially recovered. This run, mimo_substrate_A, collapsed to **0%** deterministic — the worst outcome of any run on the MIMo body — and showed total-zero deviation across all 20 episodes at both 150K and 250K. Removing the velocity bonus and approach reward (the bribery components) deprived the policy of the gradient signals that prior runs implicitly relied on to maintain locomotor activity even when vision was silent. Without those signals, the only reward gradient comes from sparse contact, which the policy never reaches deterministically — so the actor collapses toward a no-action attractor. This is a clean negative result for the "remove bribery, hope vision develops" hypothesis: when bribery goes away, the architecture has nothing to learn from until vision provides direction, and vision will not provide direction unless the architecture is structured to listen.
+
+**Next question:** Does the dialogue architecture (two-stream actor with proprio + vision producing independent action proposals, a learned scalar gate combining them, and a consistency loss `λ · ||μ_p − μ_v||²` penalizing per-stream disagreement) escape this attractor on the same substrate? Phase B is currently running (300K steps, mimo_dialogue_v1) with identical environment and reward configuration. If Phase B's vision-ablation sensitivity comes back above 0.5 with touch rate > 25%, the structural change is what made vision load-bearing — substrate alone was a necessary but not sufficient prerequisite. If Phase B also collapses, the MIMo body is the limiting factor and the next experiment should be on the platform creature with the dialogue architecture instead.
+
+**Theory signals:** The Behavioral Prediction Framework predicts that an agent with a viable internal model of where contact is achievable should outperform random walk on the 360° spawn distribution (random walk on a 2m × 2m platform with a 5cm ball over 2000 steps should produce ~30-50% touch by ballistic coverage alone). The deterministic 0% touch rate is far below the random-walk baseline, indicating the policy has not built a predictive model — it has been driven by the SAC update dynamics into a state of literal inaction. This is a stronger violation of the framework's prediction than any prior run, because no prior run had a substrate that supported random walk baseline at this level. The Pattern Learning Framework predicts that the visual representation should respond to recurring patterns in the camera feed (the ball as a stable red structure, the guardrail walls as a recurring spatial feature). The 0.0226 ablation delta shows no such pattern has developed — the visual pathway is not just unused for control, it is structurally inert. Both frameworks are challenged in the same direction: when bribery is removed, the flat-concatenation architecture produces a less capable policy, not a more grounded one. The architecture, not the substrate, is the load-bearing failure.
+
