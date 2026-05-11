@@ -118,14 +118,14 @@
                      axis="0 0 -1" range="-99 67" stiffness=".12" damping=".07"
                      frictionloss=".0008" armature="0.004"/>
               <geom name="right_uarm1" type="capsule" material="green_top"
-                    size="0.024 0.0536" mass=".2684" pos="0 0 .0536"/>
-              <body name="right_lower_arm" pos="0 0 .1076">
+                    size="0.024 0.040" mass=".200" pos="0 0 .040"/>
+              <body name="right_lower_arm" pos="0 0 .080">
                 <joint name="robot:right_elbow" type="hinge" pos="0 0 0" axis="0 -1 0"
                        springref="-20" range="-146 5" stiffness=".13" damping=".11"
                        frictionloss=".030" armature="0.002"/>
-                <geom name="right_larm" type="capsule" size=".023 0.037" mass=".1853" pos="0 0 .037" material="skin"/>
+                <geom name="right_larm" type="capsule" size=".023 0.028" mass=".140" pos="0 0 .028" material="skin"/>
                 <!-- Wrist + hand: passive (no actuator) -->
-                <body name="right_hand" pos="0 -.007 .087">
+                <body name="right_hand" pos="0 -.007 .060">
                   <joint name="robot:right_hand1" type="hinge" pos="0 .007 0" axis="0 0 -1"
                          springref="-20" range="-90 90" stiffness=".22" damping=".03" frictionloss=".007" armature="0.001"/>
                   <joint name="robot:right_hand2" type="hinge" pos="0 0 0" axis="-1 0 0"
@@ -163,13 +163,13 @@
                      axis="0 0 1" range="-99 67" stiffness=".12" damping=".07"
                      frictionloss=".0008" armature="0.004"/>
               <geom name="left_uarm1" type="capsule" material="green_top"
-                    size="0.024 0.0536" mass=".2684" pos="0 0 .0536"/>
-              <body name="left_lower_arm" pos="0 0 .1076">
+                    size="0.024 0.040" mass=".200" pos="0 0 .040"/>
+              <body name="left_lower_arm" pos="0 0 .080">
                 <joint name="robot:left_elbow" type="hinge" pos="0 0 0" axis="0 -1 0"
                        springref="-20" range="-146 5" stiffness=".13" damping=".11"
                        frictionloss=".030" armature="0.002"/>
-                <geom name="left_larm" type="capsule" size=".023 0.037" mass=".1853" pos="0 0 .037" material="skin"/>
-                <body name="left_hand" pos="0 .007 .087">
+                <geom name="left_larm" type="capsule" size=".023 0.028" mass=".140" pos="0 0 .028" material="skin"/>
+                <body name="left_hand" pos="0 .007 .060">
                   <joint name="robot:left_hand1" type="hinge" pos="0 .007 0" axis="0 0 1"
                          springref="-20" range="-90 90" stiffness=".22" damping=".03" frictionloss=".007" armature="0.001"/>
                   <joint name="robot:left_hand2" type="hinge" pos="0 0 0" axis="1 0 0"
@@ -269,13 +269,13 @@
         <joint name="robot:right_hip3" type="hinge" pos="0 0 0" axis="0 0 -1"
                range="-32 41" stiffness="2.16" damping="0.75" frictionloss=".027" armature=".005"/>
         <geom name="geom:right_upper_leg1" type="capsule" material="blue_pants"
-              size=".037 .0625" mass=".7998" pos="0 0 -.0645"/>
-        <body name="right_lower_leg" pos="0 0 -.135">
+              size=".037 .053" mass=".680" pos="0 0 -.054"/>
+        <body name="right_lower_leg" pos="0 0 -.115">
           <joint name="robot:right_knee" type="hinge" pos="0 0 0" axis="0 -1 0"
                  springref="-30" range="-145 4" stiffness="1.63" damping="0.53" frictionloss=".065" armature=".003"/>
-          <geom name="geom:right_lower_leg1" type="capsule" size=".029 .044" mass=".3341" pos="0 0 -.044" material="skin"/>
-          <geom name="geom:right_lower_leg2" type="capsule" size=".021 .028" mass=".1160" pos="0 0 -.134" material="skin"/>
-          <body name="right_foot" pos="0 0 -.177">
+          <geom name="geom:right_lower_leg1" type="capsule" size=".029 .037" mass=".284" pos="0 0 -.037" material="skin"/>
+          <geom name="geom:right_lower_leg2" type="capsule" size=".021 .024" mass=".098" pos="0 0 -.114" material="skin"/>
+          <body name="right_foot" pos="0 0 -.150">
             <joint name="robot:right_foot1" type="hinge" pos="0 0 .015" axis="0 -1 0"
                    springref="-10" range="-63 32" stiffness="1.29" damping="0.6" frictionloss=".019" armature=".003"/>
             <joint name="robot:right_foot2" type="hinge" pos="0 0 .015" axis="1 0 0"
@@ -305,13 +305,13 @@
         <joint name="robot:left_hip3" type="hinge" pos="0 0 0" axis="0 0 1"
                range="-32 41" stiffness="2.16" damping="0.75" frictionloss=".027" armature=".005"/>
         <geom name="geom:left_upper_leg1" type="capsule" material="blue_pants"
-              size=".037 .0625" mass=".7998" pos="0 0 -.0645"/>
-        <body name="left_lower_leg" pos="0 0 -.135">
+              size=".037 .053" mass=".680" pos="0 0 -.054"/>
+        <body name="left_lower_leg" pos="0 0 -.115">
           <joint name="robot:left_knee" type="hinge" pos="0 0 0" axis="0 -1 0"
                  springref="-30" range="-145 4" stiffness="1.63" damping="0.53" frictionloss=".065" armature=".003"/>
-          <geom name="geom:left_lower_leg1" type="capsule" size=".029 .044" mass=".3341" pos="0 0 -.044" material="skin"/>
-          <geom name="geom:left_lower_leg2" type="capsule" size=".021 .028" mass=".1160" pos="0 0 -.134" material="skin"/>
-          <body name="left_foot" pos="0 0 -.177">
+          <geom name="geom:left_lower_leg1" type="capsule" size=".029 .037" mass=".284" pos="0 0 -.037" material="skin"/>
+          <geom name="geom:left_lower_leg2" type="capsule" size=".021 .024" mass=".098" pos="0 0 -.114" material="skin"/>
+          <body name="left_foot" pos="0 0 -.150">
             <joint name="robot:left_foot1" type="hinge" pos="0 0 .015" axis="0 -1 0"
                    springref="-10" range="-63 32" stiffness="1.29" damping="0.6" frictionloss=".019" armature=".003"/>
             <joint name="robot:left_foot2" type="hinge" pos="0 0 .015" axis="-1 0 0"
