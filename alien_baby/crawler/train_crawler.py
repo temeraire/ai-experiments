@@ -12,21 +12,112 @@ Usage:
 """
 
 import argparse
+import faulthandler
+import os
 import pathlib
 import datetime
 import numpy as np
 
+# Python 3.13 + MuJoCo + PyTorch on macOS has a finalization race that crashes
+# in _datetime.delta_new during gc_collect_main. faulthandler gives a real
+# Python traceback for any other crash; the os._exit(0) at end of __main__
+# skips Python's broken finalization entirely once training completes.
+faulthandler.enable()
+
 from stable_baselines3 import SAC, HerReplayBuffer
 from stable_baselines3.common.vec_env import SubprocVecEnv, DummyVecEnv, VecNormalize
 from stable_baselines3.common.callbacks import (
-    EvalCallback, CheckpointCallback, CallbackList
+    BaseCallback, EvalCallback, CheckpointCallback, CallbackList
 )
 from stable_baselines3.common.monitor import Monitor
+
+
+class EntropyAnnealCallback(BaseCallback):
+    """Anneal SAC's fixed ent_coef from start to end over [anneal_start, anneal_end].
+
+    Works only when ent_coef was passed as a float (not 'auto'/'auto_X'). Updates
+    SAC's `ent_coef_tensor` attribute on every _on_step. The model's train()
+    method reads this tensor when computing the actor's entropy bonus.
+    """
+    def __init__(self, start_ent, end_ent, anneal_start, anneal_end, verbose=1):
+        super().__init__(verbose)
+        self.start_ent = float(start_ent)
+        self.end_ent = float(end_ent)
+        self.anneal_start = int(anneal_start)
+        self.anneal_end = int(anneal_end)
+        self._last_logged_ent = None
+
+    def _on_step(self) -> bool:
+        t = self.num_timesteps
+        if t < self.anneal_start:
+            ent = self.start_ent
+        elif t < self.anneal_end:
+            span = max(1, self.anneal_end - self.anneal_start)
+            ent = self.start_ent + (t - self.anneal_start) / span * (self.end_ent - self.start_ent)
+        else:
+            ent = self.end_ent
+        import torch as th
+        if hasattr(self.model, "ent_coef_tensor"):
+            self.model.ent_coef_tensor = th.tensor(float(ent), device=self.model.device)
+        if (self.verbose >= 1 and
+                (self._last_logged_ent is None or abs(ent - self._last_logged_ent) > 0.01)):
+            print(f"[EntAnneal] t={t} ent_coef={ent:.3f}", flush=True)
+            self._last_logged_ent = ent
+        return True
+
+
+class CurriculumCallback(BaseCallback):
+    """Ramp ball x-offset over training so AB must reach further from the cart
+    path as training progresses. Asymmetric: ball1 to +x, ball2 to -x.
+
+    Schedule (in env-timesteps, matching SB3's num_timesteps):
+      [0, warmup_steps)            offset = 0           (warmup)
+      [warmup_steps, ramp_end)     offset linear 0 -> final_offset
+      [ramp_end, infinity)         offset = final_offset
+    """
+
+    def __init__(self, train_env, eval_env, warmup_steps, ramp_end_steps,
+                 final_offset, ball_y=0.35, verbose=1):
+        super().__init__(verbose)
+        self._train_env = train_env
+        self._eval_env  = eval_env
+        self.warmup_steps  = int(warmup_steps)
+        self.ramp_end_steps = int(ramp_end_steps)
+        self.final_offset  = float(final_offset)
+        self.ball_y        = float(ball_y)
+        self._last_offset  = None
+
+    def _on_training_start(self) -> None:
+        self._update_envs(0.0)
+
+    def _on_step(self) -> bool:
+        t = self.num_timesteps
+        if t < self.warmup_steps:
+            offset = 0.0
+        elif t < self.ramp_end_steps:
+            span = max(1, self.ramp_end_steps - self.warmup_steps)
+            offset = ((t - self.warmup_steps) / span) * self.final_offset
+        else:
+            offset = self.final_offset
+        if self._last_offset is None or abs(offset - self._last_offset) > 0.005:
+            self._update_envs(offset)
+            self._last_offset = offset
+        return True
+
+    def _update_envs(self, offset: float) -> None:
+        b1 = (offset, self.ball_y)
+        b2 = (-offset, -self.ball_y)
+        self._train_env.env_method("set_ball_positions", b1, b2)
+        self._eval_env.env_method("set_ball_positions", b1, b2)
+        if self.verbose >= 1:
+            print(f"[Curriculum] t={self.num_timesteps} offset={offset:+.4f} "
+                  f"ball1={b1} ball2={b2}", flush=True)
 
 from alien_baby.crawler.mimo_crawler_env import MimoCrawlerEnv
 from alien_baby.crawler.her_wrapper import HERCrawlerWrapper
 from alien_baby.crawler.crawler_cnn_extractor import StereoCrawlerCNN, PIXEL_LATENT_DIM
 from alien_baby.crawler.mimo_crawler_env import PROPRIO_DIM
+from alien_baby.crawler.mimo_crawler_cart_env import MimoCrawlerCartEnv
 
 RESULTS_DIR = pathlib.Path(__file__).parent.parent / "results"
 
@@ -34,27 +125,54 @@ RESULTS_DIR = pathlib.Path(__file__).parent.parent / "results"
 def make_env(rank, seed, strength_scale, spawn_cone_deg, max_steps, n_substeps,
              vision=False, approach_reward_scale=2.0, velocity_bonus_scale=0.05,
              fixed_ball_positions=None, random_start_orientation=False,
-             memory_obs=False, stereo=True, her=False):
+             memory_obs=False, stereo=True, her=False,
+             cart_mode="none", cart_speed=0.15,
+             hunger_mode="flat", hunger_base=0.05, hunger_rate=0.20, hunger_scale=500.0,
+             hip_actuation=True, ball_radius=None, random_ball_box=None,
+             ball_timeout_steps=None, ball_speed=0.0):
     def _init():
-        env_kwargs = dict(
-            vision=vision,
-            strength_scale=strength_scale,
-            spawn_cone_deg=spawn_cone_deg,
-            max_steps=max_steps,
-            n_substeps=n_substeps,
-            approach_reward_scale=approach_reward_scale,
-            velocity_bonus_scale=velocity_bonus_scale,
-            fixed_ball_positions=fixed_ball_positions,
-            random_start_orientation=random_start_orientation,
-            memory_obs=memory_obs,
-            stereo=stereo,
-        )
-        if her:
-            # HERCrawlerWrapper instantiates MimoCrawlerEnv internally and adds
-            # the goal-conditioned Dict observation.
-            env = HERCrawlerWrapper(**env_kwargs)
+        if cart_mode != "none":
+            # Phase G: cart substrate. HER not used; plain MimoCrawlerCartEnv.
+            env = MimoCrawlerCartEnv(
+                vision=vision,
+                strength_scale=strength_scale,
+                max_steps=max_steps,
+                n_substeps=n_substeps,
+                approach_reward_scale=approach_reward_scale,
+                velocity_bonus_scale=velocity_bonus_scale,
+                fixed_ball_positions=fixed_ball_positions,
+                memory_obs=memory_obs,
+                stereo=stereo,
+                cart_speed=cart_speed,
+                hunger_base=hunger_base,
+                hunger_rate=hunger_rate,
+                hunger_scale=hunger_scale,
+                hip_actuation=hip_actuation,
+                ball_radius=ball_radius,
+                random_ball_box=random_ball_box,
+                ball_timeout_steps=ball_timeout_steps,
+                ball_speed=ball_speed,
+            )
         else:
-            env = MimoCrawlerEnv(**env_kwargs)
+            env_kwargs = dict(
+                vision=vision,
+                strength_scale=strength_scale,
+                spawn_cone_deg=spawn_cone_deg,
+                max_steps=max_steps,
+                n_substeps=n_substeps,
+                approach_reward_scale=approach_reward_scale,
+                velocity_bonus_scale=velocity_bonus_scale,
+                fixed_ball_positions=fixed_ball_positions,
+                random_start_orientation=random_start_orientation,
+                memory_obs=memory_obs,
+                stereo=stereo,
+            )
+            if her:
+                # HERCrawlerWrapper instantiates MimoCrawlerEnv internally and adds
+                # the goal-conditioned Dict observation.
+                env = HERCrawlerWrapper(**env_kwargs)
+            else:
+                env = MimoCrawlerEnv(**env_kwargs)
         env = Monitor(env)
         env.reset(seed=seed + rank)
         return env
@@ -71,14 +189,39 @@ def train(args):
     best_dir = RESULTS_DIR / (tag + "_best")
     best_dir.mkdir(parents=True, exist_ok=True)
 
+    cart_mode = getattr(args, "cart_mode", "none")
     print(f"\n=== Crawler training: {tag} ===")
     print(f"  strength_scale={args.strength_scale}  steps={args.steps}")
     print(f"  spawn_cone={args.spawn_cone_deg}°  max_steps={args.max_steps}")
-    print(f"  n_envs={args.n_envs}  seed={args.seed}\n")
+    print(f"  n_envs={args.n_envs}  seed={args.seed}")
+    if cart_mode != "none":
+        print(f"  cart_mode={cart_mode}  cart_speed={args.cart_speed}")
+        print(f"  hunger_mode={args.hunger_mode}  hunger_base={args.hunger_base}"
+              f"  hunger_rate={args.hunger_rate}  hunger_scale={args.hunger_scale}")
+        print(f"  hip_actuation={args.hip_actuation}")
+        print(f"  ball_speed={getattr(args, 'ball_speed', 0.0)}")
+    print()
+
+    # Shared kwargs for cart mode
+    cart_kwargs = dict(
+        cart_mode=cart_mode,
+        cart_speed=getattr(args, "cart_speed", 0.15),
+        hunger_mode=getattr(args, "hunger_mode", "flat"),
+        hunger_base=getattr(args, "hunger_base", 0.05),
+        hunger_rate=getattr(args, "hunger_rate", 0.20),
+        hunger_scale=getattr(args, "hunger_scale", 500.0),
+        hip_actuation=(getattr(args, "hip_actuation", "on") != "off"),
+        ball_radius=getattr(args, "ball_radius", None),
+        random_ball_box=getattr(args, "random_ball_box", None),
+        ball_timeout_steps=getattr(args, "ball_timeout_steps", None),
+        ball_speed=getattr(args, "ball_speed", 0.0),
+    )
 
     # Vision=True: MuJoCo Metal renderer fails in forked subprocesses on macOS.
     # Use DummyVecEnv (single process) for vision; SubprocVecEnv for no-vision.
-    VecEnvCls = DummyVecEnv if args.vision else SubprocVecEnv
+    # --force-dummy-vec-env: also use DummyVecEnv without vision (controls).
+    use_dummy = args.vision or getattr(args, "force_dummy_vec_env", False)
+    VecEnvCls = DummyVecEnv if use_dummy else SubprocVecEnv
 
     # Training envs
     train_env = VecEnvCls([
@@ -90,7 +233,8 @@ def train(args):
                  random_start_orientation=args.random_start_orientation,
                  memory_obs=args.memory_obs,
                  stereo=not args.mono,
-                 her=args.her)
+                 her=args.her,
+                 **cart_kwargs)
         for i in range(args.n_envs)
     ])
     # VecNormalize with Dict obs (HER) requires norm_obs_keys instead of norm_obs.
@@ -111,7 +255,8 @@ def train(args):
                  random_start_orientation=args.random_start_orientation,
                  memory_obs=args.memory_obs,
                  stereo=not args.mono,
-                 her=args.her)
+                 her=args.her,
+                 **cart_kwargs)
     ])
     if args.her:
         eval_env = VecNormalize(eval_env, norm_obs_keys=["observation"],
@@ -134,6 +279,26 @@ def train(args):
             eval_env  = VecNormalize.load(str(vn_path), eval_env)
             eval_env.training = False
             print(f"  Loaded VecNormalize stats: {vn_path}")
+        # Load replay buffer if a sibling .pkl exists. Without buffer
+        # preservation, every warm-start so far collapsed in <10K steps
+        # because the policy lost its exploration history. With buffer
+        # loaded, SAC continues with the gradient support of past episodes.
+        # Look in both the _best dir and the matching run dir.
+        rb_candidates = [
+            pathlib.Path(args.init_from).parent / "replay_buffer.pkl",
+            (pathlib.Path(args.init_from).parent.parent /
+             pathlib.Path(args.init_from).parent.name.replace("_best", "") /
+             "replay_buffer.pkl"),
+        ]
+        for rb_path in rb_candidates:
+            if rb_path.exists():
+                model.load_replay_buffer(str(rb_path))
+                print(f"  Loaded replay buffer: {rb_path}  "
+                      f"(size={model.replay_buffer.size()})")
+                break
+        else:
+            print("  WARNING: no replay_buffer.pkl found beside init_from. "
+                  "Policy will warm-start with EMPTY buffer (likely to drift).")
     else:
         if args.vision:
             policy_kwargs = dict(
@@ -174,7 +339,7 @@ def train(args):
         else:
             model = SAC("MlpPolicy", train_env, **sac_kwargs)
 
-    callbacks = CallbackList([
+    callback_list = [
         CheckpointCallback(
             save_freq=max(args.checkpoint_interval // args.n_envs, 1),
             save_path=str(out_dir),
@@ -191,24 +356,81 @@ def train(args):
             deterministic=True,
             verbose=1,
         ),
-    ])
+    ]
+    if getattr(args, "ent_anneal_end_val", None) is not None:
+        if args.ent_coef == "auto" or (isinstance(args.ent_coef, str) and args.ent_coef.startswith("auto")):
+            raise ValueError("--ent-anneal-* requires a fixed --ent-coef, not 'auto'.")
+        callback_list.append(EntropyAnnealCallback(
+            start_ent=float(args.ent_coef),
+            end_ent=args.ent_anneal_end_val,
+            anneal_start=args.ent_anneal_start_step,
+            anneal_end=args.ent_anneal_end_step,
+            verbose=1,
+        ))
+        print(f"  entropy anneal: {args.ent_coef} -> {args.ent_anneal_end_val} "
+              f"over [{args.ent_anneal_start_step}, {args.ent_anneal_end_step}]")
+    if getattr(args, "curriculum", False):
+        if cart_mode == "none":
+            raise ValueError("--curriculum requires --cart-mode constant_velocity_bouncer "
+                             "(it calls set_ball_positions, only defined on MimoCrawlerCartEnv).")
+        callback_list.append(CurriculumCallback(
+            train_env=train_env,
+            eval_env=eval_env,
+            warmup_steps=args.curriculum_warmup,
+            ramp_end_steps=args.curriculum_ramp_end,
+            final_offset=args.curriculum_final_offset,
+            ball_y=args.curriculum_ball_y,
+            verbose=1,
+        ))
+        print(f"  curriculum: warmup={args.curriculum_warmup}  "
+              f"ramp_end={args.curriculum_ramp_end}  "
+              f"final_offset={args.curriculum_final_offset}  "
+              f"ball_y={args.curriculum_ball_y}")
+    callbacks = CallbackList(callback_list)
 
+    # progress_bar=False: tqdm.rich.__del__ segfaults on Python 3.13 + macOS
+    # via Live.refresh → datetime.timedelta during interpreter teardown.
+    # SB3's stdout logger still prints rollout/train stats every interval.
     model.learn(
         total_timesteps=args.steps,
         callback=callbacks,
         reset_num_timesteps=(args.init_from is None),
-        progress_bar=True,
+        progress_bar=False,
     )
 
-    # Save final model + VecNormalize
+    # Save final model + VecNormalize + replay buffer
     final_path = out_dir / "final_model"
     model.save(str(final_path))
     train_env.save(str(out_dir / "vec_normalize.pkl"))
+    # Save replay buffer so a follow-on warm-start (--init-from) can resume
+    # SAC training without losing the policy's exploration history. This
+    # closes the bug that made R7/R11/R21 collapse despite starting from
+    # a perfect policy. NOTE: replay buffers can be large (~hundreds of MB
+    # for buffer_size=500K); skip saving in vision mode where pixel obs
+    # bloat the buffer beyond useful size.
+    if not args.vision:
+        rb_path = out_dir / "replay_buffer.pkl"
+        try:
+            model.save_replay_buffer(str(rb_path))
+            print(f"Replay buffer saved: {rb_path}  "
+                  f"(size={model.replay_buffer.size()})")
+        except Exception as e:
+            print(f"Replay buffer save failed: {e}")
     print(f"\nFinal model: {final_path}.zip")
     print(f"Best model:  {best_dir}/best_model.zip")
 
     train_env.close()
     eval_env.close()
+
+    # Done-sound chime so the user knows to come back to the session
+    # (macOS only; silent on other platforms). See CLAUDE.md training-run rules.
+    import subprocess, sys
+    if sys.platform == "darwin":
+        try:
+            subprocess.Popen(["afplay", "/System/Library/Sounds/Glass.aiff"])
+        except Exception:
+            pass
+
     return str(final_path) + ".zip"
 
 
@@ -280,6 +502,69 @@ if __name__ == "__main__":
                              "goal-conditioned observations and switches SAC to use "
                              "HerReplayBuffer + MultiInputPolicy. Requires "
                              "--fixed-ball-positions (HER needs stable goals).")
+    # Phase G: cart substrate flags
+    parser.add_argument("--cart-mode", default="none",
+                        choices=["none", "constant_velocity_bouncer"],
+                        help="Phase G: 'constant_velocity_bouncer' mounts AB on a cart that "
+                             "traverses the platform autonomously. 'none' = standard env.")
+    parser.add_argument("--cart-speed", type=float, default=0.15,
+                        help="Phase G: cart speed in m/s (default 0.15).")
+    parser.add_argument("--hunger-mode", default="flat",
+                        choices=["flat", "quadratic"],
+                        help="Phase G: hunger cost schedule. 'flat' = constant -BASE_COST/step. "
+                             "'quadratic' = -(BASE + RATE*(steps_since_contact/SCALE)^2).")
+    parser.add_argument("--hunger-base", type=float, default=0.05,
+                        help="Phase G: base hunger cost per step (default 0.05).")
+    parser.add_argument("--hunger-rate", type=float, default=0.20,
+                        help="Phase G: quadratic hunger rate coefficient (default 0.20).")
+    parser.add_argument("--hunger-scale", type=float, default=500.0,
+                        help="Phase G: quadratic hunger scale (denominator, default 500).")
+    parser.add_argument("--hip-actuation", default="on",
+                        choices=["on", "off"],
+                        help="Phase G: 'off' zeros trunk (0-4) and leg (15-24) actuator "
+                             "commands so the policy cannot locomote — only arms and head.")
+    parser.add_argument("--ball-radius", type=float, default=None,
+                        help="Phase G: override ball sphere radius (XML default ~0.053). "
+                             "Larger balls increase contact cross-section.")
+    # Phase G curriculum: ramp ball x-offset to force learned arm extension
+    parser.add_argument("--curriculum", action="store_true",
+                        help="Enable ball-offset curriculum (cart-substrate only). "
+                             "Ramps ball x-offset from 0 to --curriculum-final-offset "
+                             "over training; asymmetric (+x for ball1, -x for ball2).")
+    parser.add_argument("--curriculum-warmup", type=int, default=1000,
+                        help="Curriculum: env-timesteps held at offset=0 (default 1000).")
+    parser.add_argument("--curriculum-ramp-end", type=int, default=5000,
+                        help="Curriculum: env-timestep at which offset reaches "
+                             "--curriculum-final-offset (default 5000).")
+    parser.add_argument("--curriculum-final-offset", type=float, default=0.15,
+                        help="Curriculum: final ball x-offset in meters (default 0.15).")
+    parser.add_argument("--curriculum-ball-y", type=float, default=0.35,
+                        help="Curriculum: ball y-coordinate (cart-path coordinate, default 0.35).")
+    parser.add_argument("--ent-anneal-end-val", type=float, default=None,
+                        help="Anneal ent_coef from its starting value to this final value.")
+    parser.add_argument("--ent-anneal-start-step", type=int, default=15000,
+                        help="Env-timestep at which entropy annealing starts.")
+    parser.add_argument("--ent-anneal-end-step", type=int, default=30000,
+                        help="Env-timestep at which entropy reaches end-val.")
+    parser.add_argument("--ball-timeout-steps", type=int, default=None,
+                        help="If set, each ball disappears (moves offscreen) after this "
+                             "many env-steps if not touched. Forces AB to act within a "
+                             "deadline. Used to test whether vision is genuinely needed.")
+    parser.add_argument("--random-ball-box", default=None,
+                        help="Make ball positions random per episode within a box "
+                             "around the fixed_ball_positions anchors. Format: "
+                             "'dx,dy' (half-ranges in meters). Example: '0.10,0.05'.")
+    # Phase H: moving-balls flag
+    parser.add_argument("--ball-speed", type=float, default=0.0,
+                        help="Phase H: constant-velocity ball speed in m/s (default 0.0 = "
+                             "stationary, bit-identical to all Phase G runs). Non-zero: each "
+                             "ball gets a per-episode random heading and integrates "
+                             "pos += vel * dt each env step, bouncing off platform edges. "
+                             "Ball velocity is NOT exposed in proprio.")
+    parser.add_argument("--force-dummy-vec-env", action="store_true",
+                        help="Force DummyVecEnv (single-process) even without --vision. "
+                             "Used for controlled comparisons against vision runs (which must "
+                             "use DummyVecEnv on macOS due to Metal renderer + fork issues).")
     args = parser.parse_args()
     # Convert numeric strings to float
     if args.ent_coef != "auto":
@@ -293,4 +578,28 @@ if __name__ == "__main__":
             x, y = chunk.split(",")
             balls.append((float(x), float(y)))
         args.fixed_ball_positions = balls
-    train(args)
+    # Parse random-ball-box "dx,dy"
+    if args.random_ball_box:
+        dx, dy = args.random_ball_box.split(",")
+        args.random_ball_box = (float(dx), float(dy))
+    # Curriculum: when enabled and no explicit fixed_ball_positions given, seed
+    # the envs at the warmup positions (offset=0). The CurriculumCallback will
+    # then push updated positions on every step.
+    if args.curriculum and not args.fixed_ball_positions:
+        args.fixed_ball_positions = [
+            (0.0, args.curriculum_ball_y),
+            (0.0, -args.curriculum_ball_y),
+        ]
+    # Always exit via os._exit so we skip Python's broken finalization on
+    # macOS + Python 3.13 + MuJoCo + PyTorch, whether train() succeeded or
+    # raised. Without this, any uncaught exception triggers the same
+    # _datetime.delta_new segfault during interpreter teardown and we lose
+    # the real traceback to a misleading crash report.
+    exit_code = 0
+    try:
+        train(args)
+    except BaseException:
+        import traceback
+        traceback.print_exc()
+        exit_code = 1
+    os._exit(exit_code)
