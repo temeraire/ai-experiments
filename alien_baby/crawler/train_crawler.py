@@ -32,6 +32,27 @@ from stable_baselines3.common.callbacks import (
 from stable_baselines3.common.monitor import Monitor
 
 
+class _SafeSaveEvalCallback(EvalCallback):
+    """EvalCallback that retries best-model saves on transient filesystem
+    timeouts (macOS Spotlight / iCloud can briefly lock files during sync,
+    producing Errno 60 inside zipfile.close). Without this wrapper the entire
+    training process dies on a recoverable IO error."""
+    def _on_step(self) -> bool:
+        import time as _time
+        for attempt in range(4):
+            try:
+                return super()._on_step()
+            except (TimeoutError, OSError) as e:
+                wait = 2 ** attempt
+                print(f"[SafeSave] EvalCallback save failed "
+                      f"(attempt {attempt+1}/4): {e!r} — retrying in {wait}s",
+                      flush=True)
+                _time.sleep(wait)
+        print("[SafeSave] EvalCallback save failed 4x — continuing training "
+              "without saving this best model", flush=True)
+        return True
+
+
 class EntropyAnnealCallback(BaseCallback):
     """Anneal SAC's fixed ent_coef from start to end over [anneal_start, anneal_end].
 
@@ -374,7 +395,7 @@ def train(args):
             save_vecnormalize=True,
             verbose=1,
         ),
-        EvalCallback(
+        _SafeSaveEvalCallback(
             eval_env,
             best_model_save_path=str(best_dir),
             log_path=str(out_dir),
