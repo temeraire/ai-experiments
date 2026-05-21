@@ -446,3 +446,130 @@ help.
 - `alien_baby/results/videos/R38_predictive_only_final_seed{0,1}_off0.15.mp4`
 - Eval JSON inline above
 - Re-run: `python -m alien_baby.visualization.eval_phase_i --run-tag mimo_phase_ii_R38_predictive_only --ball-speed 0.0 --offset 0.15`
+
+---
+
+# R39 — Phase III: multi-horizon predictive loss
+
+## Config
+
+Same env as R36/R37/R38. New flag: `--micoa-pred-horizons "1:0.03,5:0.05,25:0.1,50:0.15"`.
+Four horizons (20 ms, 100 ms, 500 ms, 1 sim-sec), weighted toward longer
+horizons because (a) the long ones carry the cart-traversal-timescale
+information vision could plausibly add and (b) k=50 KL is naturally
+harder to satisfy by trivial mirroring.
+
+Also tightened the encoder σ clamp from `log_sigma ∈ [-4, 2]` → `[-2, 2]`
+(so σ ∈ [0.135, 7.4] instead of [0.018, 7.4]) to address R38's
+precision blow-up where kl_pred grew unbounded as σ_p shrank.
+
+## Headline result: went backwards on load-bearing
+
+| metric                            | R36   | R37   | **R38** | **R39** | threshold |
+|-----------------------------------|-------|-------|---------|---------|-----------|
+| Vision ablation L2 delta          | 0.0019| 0.0023| **0.66**| **0.035**| > 0.05    |
+| Episode both-touched, normal      | 6/20  | 18/20 | 6/20    | 3/20    | —         |
+| Episode both-touched, pixels zeroed | 5/20 | 16/20 | 6/20    | 4/20    | —         |
+| Pixel-zero delta (normal − zeroed)| +1    | +2    | +0      | **−1**  | > +4      |
+| Eval @ 80K mean_reward            | -835  | +121  | -757    | -951    | —         |
+
+Two unpleasant findings:
+
+1. **Ablation delta is 18× lower than R38** (0.035 vs. 0.66). The
+   multi-horizon experiment moved away from the only configuration
+   so far that crossed the load-bearing threshold.
+
+2. **Vision is now slightly anti-productive.** Pixels-zeroed both-
+   touched is 4/20 vs. pixels-normal 3/20 — zeroing vision *improves*
+   the outcome by 1 episode. R36/R37/R38 all had vision either
+   inert or neutral. R39 has vision actively hurting.
+
+## Diagnostic scalars
+
+### σ_combined — controlled, no R38-style collapse
+
+| t   | R36   | R37   | R38         | R39          |
+|-----|-------|-------|-------------|--------------|
+|  8K | 0.71  | 0.71  | 0.71        | 0.71         |
+| 32K | 0.65  | 0.65  | 0.61        | 0.49 (then ↑ to 0.57 @36K) |
+| 80K | 0.45  | 0.46  | **0.147**   | 0.33         |
+
+R39's σ_combined trajectory is **non-monotonic and oscillating** —
+drops to 0.45 at 28K, bounces back to 0.57 at 36K, oscillates between
+0.39 and 0.61, lands at 0.33. The σ-clamp is doing its job — no
+collapse to 0.147 — but the oscillation suggests the encoders are
+being pulled in conflicting directions by the four horizons and never
+converging.
+
+### kl_pred per horizon — bounded, no explosion
+
+R39's per-horizon KLs stayed in [0.3, 2.5] throughout training.
+Compare R38 where kl_pred grew unbounded to 100+. The σ clamp solved
+the instability. But — see ablation result — solving the instability
+also lost the load-bearing signal.
+
+### kl_agreement (diagnostic since β_sym=0)
+
+| t   | R36         | R37         | R38     | R39     |
+|-----|-------------|-------------|---------|---------|
+|  8K | 0.81        | 0.81        | 0.81    | 0.81    |
+| 32K | 0.0014      | 0.0014      | 1.02    | 3.21    |
+| 80K | 0.0014      | 0.0147      | **84.1**| 1.55    |
+
+R39 sits in the middle: encoders are NOT mirror-collapsing (kl > 0.8
+throughout) but also not exploding apart (kl < 5 most of training).
+This is exactly what the architecture *should* look like in principle.
+But the policy isn't using vision's differentiation usefully.
+
+## Diagnosis: three suspect knobs were turned at once
+
+Between R38 (load-bearing but broken) and R39 (not load-bearing, more
+broken), three things changed simultaneously:
+
+1. **σ clamp tightened** (R38: σ ∈ [0.018, 7.4] → R39: [0.135, 7.4]).
+   R38's high ablation delta may have ridden on the pathology — σ_p
+   shrinking to 0.018 let the vision encoder confidently broadcast
+   *something specific* into the policy, even if that something was
+   the chaos of an unsatisfiable loss. The clamp killed the explosion
+   *and* the broadcast.
+
+2. **Total β tripled** (R38: 0.10 → R39: 0.33 across 4 horizons).
+   Three times more KL pressure deforming the actor's task gradient.
+   Task performance dropped from -757 (R38) to -951 (R39).
+
+3. **Multi-horizon may be interfering with itself.** Vision is being
+   pulled toward proprio at four different futures. The σ oscillation
+   (0.45 → 0.57 → 0.39 → 0.61 → 0.33) suggests the gradients don't
+   compose cleanly — each horizon's pressure is undoing the others'.
+
+We changed three variables and the outcome is worse. Need to
+disambiguate.
+
+## Recommended R40
+
+**Isolate the σ clamp variable first.** R40 = R38 setup (single horizon
+t+1, β=0.1) but WITH the tighter σ clamp from R39. If ablation drops
+from 0.66 to <0.05, the σ clamp is what killed the load-bearing
+signal in R39 — and the fix is to allow vision more precision (relax
+the σ_v clamp specifically) while regularizing proprio's precision
+(keep σ_p ≥ 0.135 to prevent the explosion).
+
+If R40's ablation stays high (~0.5), the multi-horizon setup itself
+is the problem, and the next experiment should pick one horizon and
+weight (e.g. k=25 alone at β=0.1) and see if a long-horizon-only loss
+preserves the load-bearing signal R38 found.
+
+In either case, **task regression** is a separate problem the σ clamp
+doesn't address. Even if R40 recovers ablation delta, the policy still
+needs a way to use vision's signal *productively*. That may require:
+- much smaller β (vision pressure as a perturbation, not a force)
+- β-ramp (let actor learn task first, then add vision pressure slowly)
+- splitting the predictive loss into a separate critic-side gradient
+  (so vision pressure doesn't deform the actor's policy directly)
+
+## Files (R39)
+
+- `alien_baby/results/mimo_phase_iii_R39_multihorizon/final_model.zip`
+- `alien_baby/results/mimo_phase_iii_R39_multihorizon.log`
+- `alien_baby/results/videos/R39_multihorizon_final_seed{0,1}_off0.15.mp4`
+- Re-run eval: `python -m alien_baby.visualization.eval_phase_i --run-tag mimo_phase_iii_R39_multihorizon --ball-speed 0.0 --offset 0.15`
