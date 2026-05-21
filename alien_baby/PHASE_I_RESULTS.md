@@ -573,3 +573,91 @@ needs a way to use vision's signal *productively*. That may require:
 - `alien_baby/results/mimo_phase_iii_R39_multihorizon.log`
 - `alien_baby/results/videos/R39_multihorizon_final_seed{0,1}_off0.15.mp4`
 - Re-run eval: `python -m alien_baby.visualization.eval_phase_i --run-tag mimo_phase_iii_R39_multihorizon --ball-speed 0.0 --offset 0.15`
+
+---
+
+# R40 — single-horizon t+1 with the tight σ clamp (the disambiguation)
+
+## Why R40
+
+R38 broke the load-bearing barrier (ablation delta 0.66) but rode on
+a σ pathology (σ → 0.018, kl_pred → 100+). R39 added the σ clamp and
+multi-horizon together and lost the load-bearing signal. R40 isolates
+the σ clamp variable: same as R38 (single horizon t+1, β_pred = 0.1)
+plus *only* the tighter σ clamp.
+
+If R40's ablation delta stays near R38's: σ clamp is fine; R39's
+failure was the multi-horizon setup. If R40 collapses to <0.05: the
+σ clamp killed the broadcast.
+
+## Headline: the best run yet
+
+| metric                            | R36   | R37   | R38     | R39     | **R40**     | threshold |
+|-----------------------------------|-------|-------|---------|---------|-------------|-----------|
+| Vision ablation L2 delta          | 0.0019| 0.0023| 0.66    | 0.035   | **0.481**   | > 0.05    |
+| Episode both-touched, normal      | 6/20  | 18/20 | 6/20    | 3/20    | **15/20**   | —         |
+| Episode both-touched, pixels zeroed | 5/20 | 16/20 | 6/20    | 4/20    | 14/20       | —         |
+| Pixel-zero delta (normal − zeroed)| +1    | +2    | 0       | −1      | **+1**      | —         |
+| Eval @ 80K mean_reward            | -835  | +121  | -757    | -951    | **-234**    | —         |
+
+**R40 is the first run where vision is load-bearing *and* the task is
+mostly solved.** 0.48 ablation delta (well past the 0.05 threshold)
+combined with 15/20 both-touched (near R37's 18/20 best).
+
+Rendered episodes confirm: seed 0 → both balls touched in 525 steps
+(reward +337); seed 1 → both balls touched in 265 steps (reward +382).
+These are among the best deterministic episodes across all 10 vision
+experiments.
+
+## Disambiguation: σ clamp is not the culprit
+
+R40's σ_combined ended at 0.132 — essentially identical to R38's
+0.147. Both runs walked the encoders to the σ floor. The σ clamp
+neither prevented the "broadcast" that makes vision load-bearing nor
+allowed the full R38 pathology — and the load-bearing signal survived
+the constraint cleanly.
+
+**Therefore R39's collapse was the multi-horizon setup itself**, not
+the clamp. The most likely cause was 3× total β (0.33 vs R38/R40's
+0.10) deforming the actor's task gradient. Possibly also horizon
+interference (gradients from t+1, t+5, t+25, t+50 not composing).
+Either way, the multi-horizon idea needs a much gentler form — much
+smaller per-horizon β, or one long horizon alone rather than four.
+
+## Why R40 works where R38 didn't (task-wise)
+
+R38 ablation 0.66 + task broken. R40 ablation 0.48 + task mostly OK.
+What changed? Only the σ clamp. The clamp prevents the *most extreme*
+encoder precision, which appears to have been what drove the actor's
+loss landscape into a degenerate region in R38. With σ_p floored at
+0.135, the vision encoder still gets confident enough to broadcast
+useful signal, but the proprio encoder can't shrink so far that it
+dominates the actor's input.
+
+Read this as a Goldilocks story: σ_p in [0.018, 7.4] is too permissive
+(R38); σ_p in [0.135, 7.4] is the sweet spot we just hit. The same
+mechanism made vision active *and* kept the actor learnable.
+
+## Outstanding limit: ablation delta is large but doesn't move outcomes much
+
+R40 has ablation delta 0.48 at the action level but only +1 episode
+difference at the episode-outcome level (15 vs. 14 both-touched).
+Vision changes the *exact* actions at each step but proprio is still
+encoding enough to get to the ball roughly without it.
+
+To get a stronger vision-required signal, the task would need to be
+harder for proprio alone — for example: moving balls (where vision's
+predictive role pays off because the ball's position at contact is
+not knowable from proprio), or balls with random locations not
+inferable from the curriculum's fixed offsets.
+
+That's the natural R41+ direction: keep R40's architecture,
+re-introduce ball-speed > 0 (Phase H's moving-ball setup) to give
+vision a job that proprio cannot do.
+
+## Files (R40)
+
+- `alien_baby/results/mimo_phase_iii_R40_t1_tightsigma/final_model.zip`
+- `alien_baby/results/mimo_phase_iii_R40_t1_tightsigma.log`
+- `alien_baby/results/videos/R40_t1_tightsigma_final_seed{0,1}_off0.15.mp4`
+- Re-run eval: `python -m alien_baby.visualization.eval_phase_i --run-tag mimo_phase_iii_R40_t1_tightsigma --ball-speed 0.0 --offset 0.15`
