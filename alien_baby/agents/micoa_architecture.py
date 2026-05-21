@@ -350,62 +350,112 @@ class MICOASAC(_SAC):
       kl_agreement never moves → beta too low, increase to 0.3 then 1.0
       sigma_combined decreases while kl_agreement is moderate → corner forming
     """
-    def __init__(self, *args, micoa_beta: float = 0.1, **kwargs):
+    def __init__(self, *args, micoa_beta: float = 0.1,
+                 micoa_pred_beta: float = 0.0, **kwargs):
         super().__init__(*args, **kwargs)
-        self.micoa_beta = micoa_beta
+        self.micoa_beta      = micoa_beta
+        self.micoa_pred_beta = micoa_pred_beta
 
     def train(self, gradient_steps: int, batch_size: int = 64) -> None:
         super().train(gradient_steps, batch_size)
 
-        if self.micoa_beta == 0.0:
+        # If both MICOA losses are disabled, nothing to do — the policy still
+        # uses the MICOAExtractor for inference but no agreement pressure is
+        # applied to the encoder weights.
+        if self.micoa_beta == 0.0 and self.micoa_pred_beta == 0.0:
             return
 
         extractor = _get_micoa_extractor(self.policy)
         if extractor is None:
             return
 
-        # Do a fresh forward pass with grad enabled on a replay-buffer sample
-        # so the KL loss has a valid autograd graph. The last_mu_* stored on
-        # the extractor cannot be reused: super().train() already consumed
-        # its grad graph via the actor/critic .backward() calls, and rollout
-        # forwards happen under torch.no_grad().
+        # Sample one batch and do two forward passes — at t and at t+1.
+        # The same batch carries both observations, so we get a consistent
+        # (o_t, o_{t+1}) pair for the predictive loss.
         replay_data = self.replay_buffer.sample(
             batch_size, env=self._vec_normalize_env
         )
-        obs = replay_data.observations
+        obs_t      = replay_data.observations
+        obs_t_next = replay_data.next_observations
+
         was_training = extractor.training
         extractor.train()
-        with torch.set_grad_enabled(True):
-            _ = extractor(obs)  # populates last_mu_p/sigma_p/mu_v/sigma_v with grad
-        if not was_training:
-            extractor.eval()
+        try:
+            with torch.set_grad_enabled(True):
+                # Forward at t — populates last_mu_p/sigma_p/mu_v/sigma_v with t-distribution
+                _ = extractor(obs_t)
+                mu_p_t, sigma_p_t = extractor.last_mu_p, extractor.last_sigma_p
+                mu_v_t, sigma_v_t = extractor.last_mu_v, extractor.last_sigma_v
 
-        kl = encoder_agreement_loss(
-            extractor.last_mu_p, extractor.last_sigma_p,
-            extractor.last_mu_v, extractor.last_sigma_v,
-        )
-        agreement_loss = self.micoa_beta * kl
+                losses = []
+                logged = {}
 
+                # --- Same-time symmetric KL (Phase I) -----------------------
+                if self.micoa_beta > 0.0:
+                    kl_sym = encoder_agreement_loss(
+                        mu_p_t, sigma_p_t, mu_v_t, sigma_v_t,
+                    )
+                    losses.append(self.micoa_beta * kl_sym)
+                    logged["kl_agreement"] = float(kl_sym.item())
+
+                # --- Predictive KL (Phase II) -------------------------------
+                # vision(t) should look like proprio(t+1). Detach the proprio
+                # side so this loss only updates vision encoder weights —
+                # vision learns to predict proprio's future, proprio is the
+                # ground truth and is unaffected by this loss.
+                if self.micoa_pred_beta > 0.0:
+                    # Second forward overwrites extractor's last_* attributes;
+                    # our locals (mu_v_t, mu_p_t, ...) keep pointing at the
+                    # t-tensors with their grad attached, so the symmetric KL
+                    # above already captured what it needs.
+                    _ = extractor(obs_t_next)
+                    mu_p_next    = extractor.last_mu_p.detach()
+                    sigma_p_next = extractor.last_sigma_p.detach()
+                    kl_pred = kl_gaussian(
+                        mu_v_t, sigma_v_t, mu_p_next, sigma_p_next,
+                    ).mean()
+                    losses.append(self.micoa_pred_beta * kl_pred)
+                    logged["kl_predictive"] = float(kl_pred.item())
+        finally:
+            if not was_training:
+                extractor.eval()
+
+        if not losses:
+            return
+
+        # --- One backward / one optimizer step ---------------------------
         # With share_features_extractor=True, the extractor is shared between
         # actor and critic. SB3 SAC excludes the shared extractor params from
-        # the actor optimizer (to avoid double-stepping with the critic). Build
-        # an explicit optimizer over the extractor's own params for the KL step.
+        # the actor optimizer (to avoid double-stepping with the critic), so
+        # we maintain our own optimizer over the extractor params.
         ext_params = list(extractor.parameters())
         if not hasattr(self, "_micoa_opt"):
-            # Match the actor optimizer's current LR (handles float or Schedule)
             try:
                 lr = self.policy.actor.optimizer.param_groups[0]["lr"]
             except Exception:
                 lr = 1e-4
             self._micoa_opt = torch.optim.Adam(ext_params, lr=lr)
+
+        total_loss = sum(losses)
         self._micoa_opt.zero_grad()
-        agreement_loss.backward()
+        total_loss.backward()
         self._micoa_opt.step()
 
-        self.logger.record("micoa/kl_agreement_loss", agreement_loss.item())
-        # Mirror to stdout for log-parsing heartbeats
-        print(f"[MICOA] kl_agreement_loss={agreement_loss.item():.4f}  "
-              f"(beta={self.micoa_beta}  kl={kl.item():.4f})", flush=True)
+        # Logging — both TB record and stdout mirror
+        if "kl_agreement" in logged:
+            self.logger.record("micoa/kl_agreement_loss",
+                               self.micoa_beta * logged["kl_agreement"])
+        if "kl_predictive" in logged:
+            self.logger.record("micoa/kl_predictive_loss",
+                               self.micoa_pred_beta * logged["kl_predictive"])
+        parts = []
+        if "kl_agreement" in logged:
+            parts.append(f"kl_sym={logged['kl_agreement']:.4f}")
+        if "kl_predictive" in logged:
+            parts.append(f"kl_pred={logged['kl_predictive']:.4f}")
+        print(f"[MICOA] total_loss={total_loss.item():.4f}  "
+              f"(beta_sym={self.micoa_beta}  beta_pred={self.micoa_pred_beta}  "
+              + "  ".join(parts) + ")", flush=True)
 
 
 # ── Temporal prediction (Phase II — not yet implemented) ─────────────────────

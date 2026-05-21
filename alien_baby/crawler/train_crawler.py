@@ -383,7 +383,9 @@ def train(args):
             model = SAC("MultiInputPolicy", train_env, **sac_kwargs)
         elif args.micoa:
             model = MICOASAC("MlpPolicy", train_env,
-                             micoa_beta=args.micoa_beta, **sac_kwargs)
+                             micoa_beta=args.micoa_beta,
+                             micoa_pred_beta=args.micoa_pred_beta,
+                             **sac_kwargs)
         else:
             model = SAC("MlpPolicy", train_env, **sac_kwargs)
 
@@ -407,8 +409,9 @@ def train(args):
     ]
     if getattr(args, "micoa", False):
         callback_list.append(MICOAConfirmationCallback(log_freq=500))
-        print(f"  MICOA: beta={args.micoa_beta}  latent_dim={LATENT_DIM}  "
-              f"features_dim={LATENT_DIM*3}")
+        print(f"  MICOA: beta_sym={args.micoa_beta}  "
+              f"beta_pred={args.micoa_pred_beta}  "
+              f"latent_dim={LATENT_DIM}  features_dim={LATENT_DIM*3}")
     if getattr(args, "ent_anneal_end_val", None) is not None:
         if args.ent_coef == "auto" or (isinstance(args.ent_coef, str) and args.ent_coef.startswith("auto")):
             raise ValueError("--ent-anneal-* requires a fixed --ent-coef, not 'auto'.")
@@ -522,6 +525,12 @@ if __name__ == "__main__":
                         help="Phase I: weight on the encoder-agreement KL loss. "
                              "Start 0.1; raise to 0.3 then 1.0 if kl_agreement flat. "
                              "0.0 disables the KL step (PoE still active).")
+    parser.add_argument("--micoa-pred-beta", type=float, default=0.0,
+                        help="Phase II: weight on the temporal predictive KL loss "
+                             "KL(N(mu_v(t), sigma_v(t)) || N(mu_p(t+1), sigma_p(t+1))). "
+                             "Vision is pulled toward predicting proprio's next-step "
+                             "distribution; proprio is detached so only vision's "
+                             "encoder is updated by this loss. 0.0 = off (Phase I only).")
     parser.add_argument("--learning-rate", type=float, default=1e-4,
                         help="SAC learning rate. DrQ-v2 recommends 1e-4 for pixel obs "
                              "(not 3e-4 which is for state obs). Higher causes actor to "
