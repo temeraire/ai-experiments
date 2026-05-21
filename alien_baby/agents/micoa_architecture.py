@@ -282,12 +282,20 @@ class MICOAConfirmationCallback(BaseCallback):
             extractor = self.model.policy.features_extractor
             if not isinstance(extractor, MICOAExtractor):
                 return True
-            if extractor.last_sigma_combined is not None:
-                self.logger.record("micoa/sigma_combined",
-                                   extractor.last_sigma_combined)
-            if extractor.last_kl_agreement is not None:
-                self.logger.record("micoa/kl_agreement",
-                                   extractor.last_kl_agreement)
+            sigma = extractor.last_sigma_combined
+            kl    = extractor.last_kl_agreement
+            if sigma is not None:
+                self.logger.record("micoa/sigma_combined", sigma)
+            if kl is not None:
+                self.logger.record("micoa/kl_agreement", kl)
+            # Also print to stdout so the values land in the training log
+            # without requiring tensorboard_log to be configured. This is the
+            # primary diagnostic for whether the corner is forming — must be
+            # visible in plain text for the overnight heartbeat loop.
+            if sigma is not None or kl is not None:
+                t = self.num_timesteps
+                print(f"[MICOA] t={t}  sigma_combined={sigma}  "
+                      f"kl_agreement={kl}", flush=True)
         return True
 
 
