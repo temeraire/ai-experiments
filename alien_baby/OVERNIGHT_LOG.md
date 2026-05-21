@@ -1071,6 +1071,28 @@ auto-extend same run to 250K on success; no wall-clock stop.
   during episodes.
 - ETA 80K: ~6–8 more min at current FPS. **Continue.**
 
+### 00:34 — R36 completed cleanly. Eval verdict.
+- 80K final_model saved at 00:34. sigma_combined 0.7105 → 0.4516 (-36.4%).
+- Eval (20 seeds, static balls, offset 0.15) on final_model:
+  - mean_reward = -746 (regressed from +127 at 5K best)
+  - both-touched = 6/20 (regressed from 18/20 at 5K best)
+  - **Vision ablation delta = 0.0019** — way below 0.05 success threshold.
+  - Episode pixels-zeroed vs normal: 5/20 vs 6/20 (delta +1).
+- **Per pre-approved criteria, do NOT extend to 250K.** Sigma decreasing
+  was satisfied; ablation > 0.05 was not. Stop.
+- Diagnosis: β=0.1 too high. KL collapsed to ~0.001 in first 4K training
+  steps, before vision could develop channel-specific features. The
+  encoders agreed on whatever proprio already knew; vision became
+  redundant. σ_combined dropped because both encoders became more
+  confident together, not because vision learned to confirm something
+  proprio already encoded.
+- The pre-approved auto-tune sequence (0.1 → 0.3 → 1.0) is for "kl flat
+  high" failure. We have the opposite. Did NOT auto-escalate. Human
+  decides β next.
+- Writeup: `alien_baby/PHASE_I_RESULTS.md`. Cron heartbeat deleted.
+- Total elapsed: ~3.5 hours of which ~75 min was actual training (the
+  rest was bug discovery + recovery).
+
 
 
 
