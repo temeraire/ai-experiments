@@ -299,3 +299,150 @@ cleaner is the one to pick.
 - `alien_baby/results/videos/R37_micoa_beta0.03_final_seed{0,1}_off0.15.mp4`
 - Eval JSON above; also re-runnable via
   `python -m alien_baby.visualization.eval_phase_i --run-tag mimo_phase_i_R37_micoa_beta0.03 --ball-speed 0.0 --offset 0.15`
+
+---
+
+# R38 — Phase II: pure temporal predictive loss
+
+## Config
+
+Same env as R36/R37. `--micoa-beta 0.0 --micoa-pred-beta 0.1`. Vision is
+pulled toward `proprio(t+1)` with proprio detached. No same-time
+symmetric KL. 80K steps, seed 42.
+
+## Headline result: the ablation barrier broke
+
+|                                  | R36 (β_sym=0.1) | R37 (β_sym=0.03) | **R38 (β_pred=0.1)** | threshold |
+|----------------------------------|----------------|-------------------|----------------------|-----------|
+| **Vision ablation L2 delta**     | 0.0019         | 0.0023            | **0.6563**           | > 0.05    |
+| Episode both-touched, normal     | 6/20           | 18/20             | 6/20                 | —         |
+| Episode both-touched, pixels zeroed | 5/20         | 16/20             | 6/20                 | —         |
+| Episode-level pixel-zero delta   | +1             | +2                | **+0**               | > +4      |
+| Eval @ 80K mean_reward           | -835           | +121              | -757                 | —         |
+
+**For the first time across 9 vision experiments, the single-step ablation delta
+is non-trivial.** 0.66 is 350× higher than R36/R37 and 13× past the
+pre-approved 0.05 threshold. Vision is genuinely encoding information
+that changes the agent's actions, step by step.
+
+## But — active is not the same as productive
+
+The episode-level outcome is unchanged when pixels are zeroed (6/20
+both-touched either way). The single-step deltas don't accumulate into
+better task performance. Vision is **active** (it moves the actions)
+but not **productive** (it doesn't move the *outcomes*).
+
+This is a real, novel failure mode worth naming. Across the entire
+Phase G/H/I (R36/R37) history, vision was *silent* — actions were the
+same with or without it. R38 made vision *loud* without making it
+useful. The KL pressure successfully forced the vision encoder to
+carry information proprio doesn't, but the actor hasn't learned to
+use that information to choose better actions.
+
+Task performance regressed to R36 levels (6/20, -757 reward) because
+the actor has to share the latent space with an encoder whose output
+keeps shifting (the kl_pred loss kept growing — see next section).
+
+## Diagnostic scalars
+
+### sigma_combined — fastest drop yet
+
+| t   | R36    | R37    | R38         |
+|-----|--------|--------|-------------|
+|  8K | 0.7105 | 0.7105 | 0.7105      |
+| 24K | 0.6682 | 0.6684 | 0.4971 (-30%) |
+| 48K | 0.6211 | 0.6145 | 0.4118 (-42%) |
+| 80K | 0.4516 (-36%) | 0.4634 (-35%) | **0.1468 (-79%)** |
+
+R38 ends with σ_combined less than a third of R36/R37. The PoE corner
+is dramatically tighter — *and* it is **earned**, not forced by
+mirroring (see kl_agreement below).
+
+### kl_agreement — the smoking gun for "not mirroring"
+
+This is the **same-time** symmetric KL — measured as a diagnostic
+(β_sym = 0, so no gradient pressure on it).
+
+| t   | R36          | R37          | R38                   |
+|-----|--------------|--------------|-----------------------|
+|  8K | 0.81         | 0.81         | 0.81                  |
+| 24K | 0.0022       | 0.0018       | **0.63**              |
+| 48K | 0.0007       | 0.0004       | **0.98**              |
+| 80K | 0.0014       | 0.0147       | **84.10**             |
+
+R36/R37: same-time KL crashed to ~0 in the first 4K of training and
+stayed there — vision encoded the same Gaussian as proprio at every
+moment. **R38: same-time KL grew by 100× over training.** Vision's
+distribution at time t is now *very* different from proprio's at time
+t. This is the architectural pre-condition for ablation to matter:
+vision encodes something proprio does not.
+
+### kl_pred — the loss that was actually optimized
+
+The optimizer target started at ~1.18 and ended around 116–158 with
+high variance. The predictive loss grew during training rather than
+shrinking.
+
+Why: the KL formula `KL(N(μ_v,σ_v) || N(μ_p_next,σ_p_next))` has terms
+in `1/σ_p_next²` and `log(σ_p_next/σ_v)`. As σ_p shrinks (proprio
+becoming more confident about its own next state), the KL blows up
+unless vision can match with near-zero precision — which is hard
+because pixels carry less direct information about a 20ms-ahead
+proprio state than proprio itself does.
+
+This is a known instability in VAE-style KL losses: when the prior
+becomes tight, the posterior matching it becomes nearly impossible.
+The growing kl_pred is *not* the architecture working — it's the
+architecture being asked to do something the loss formulation makes
+hard.
+
+## Diagnosis: right shape, wrong horizon
+
+R38 is the *first* experiment in this codebase where vision became
+load-bearing in any measurable sense. That is real progress on the
+deepest pathology of Phase G/H. The architecture's predictive bone
+is in the right place.
+
+But predicting `t+1` (= 20 ms of simulated time) only teaches vision
+to encode "what proprio will feel in the next breath." That is a
+useful but very weak signal: for our task, "the next breath" is barely
+different from "now" — same posture, same cart position, ball still
+where it was. The actor doesn't get *long-horizon* information from
+vision that would tell it which ball to commit to reaching.
+
+The pre-rendering conversation already named the fix: **predictive
+horizon should scale with distance to contact**. Vision's job is to
+encode `proprio(t + tau)` where tau is on the order of
+*time-to-interaction*, not one timestep. 50 steps ahead = 1 sim-second
+= roughly the cart-traversal timescale of the curriculum.
+
+## Recommended R39
+
+**Multi-horizon predictive loss.** Sum predictive KLs at several
+look-aheads:
+
+```
+loss = β_1 * KL(v(t) || p(t+1).detach())
+     + β_5 * KL(v(t) || p(t+5).detach())
+     + β_25 * KL(v(t) || p(t+25).detach())
+     + β_50 * KL(v(t) || p(t+50).detach())
+```
+
+Implementation cost is low: sample several `(o_t, o_{t+k})` pairs from
+the replay buffer instead of one. Each horizon's KL adds its own
+gradient pressure; vision must encode something useful at all of them
+simultaneously, which forces a richer representation than t+1 alone.
+
+We should also consider scaling the β to stabilize the loss against
+the precision blow-up — divide each term by `1 + σ_p_next` or clamp
+the σ_p log-term. The t=80K σ_combined of 0.147 means encoders are
+*very* tight; a regularizer that keeps σ in a healthier range may
+help.
+
+## Files (R38)
+
+- `alien_baby/results/mimo_phase_ii_R38_predictive_only/final_model.zip`
+- `alien_baby/results/mimo_phase_ii_R38_predictive_only.log`
+- `alien_baby/results/videos/R38_predictive_only_final_seed{0,1}_off0.15.mp4`
+- Eval JSON inline above
+- Re-run: `python -m alien_baby.visualization.eval_phase_i --run-tag mimo_phase_ii_R38_predictive_only --ball-speed 0.0 --offset 0.15`
