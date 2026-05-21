@@ -67,6 +67,12 @@ Worth distinguishing:
 
 **Loss function.** A single scalar that measures how badly the model is doing on a batch. The optimizer minimizes it. SAC's actor loss has two parts (task performance and entropy); v5 adds a third (consistency). MSE — mean squared error — is the simplest loss: average of `(prediction − target)²`.
 
+**KL divergence (Kullback-Leibler).** A number measuring how different two probability distributions P and Q are, written `KL(P || Q)`. Zero when P = Q; grows as P diverges from Q. For two Gaussians it has a clean closed-form formula in terms of their means and variances, which makes it cheap to compute and differentiable — you can use it directly as a loss term.
+
+Crucially, KL is **asymmetric**: `KL(P || Q) ≠ KL(Q || P)` in general. The asymmetry matters. `KL(P || Q)` heavily penalizes P putting probability mass anywhere Q assigns near-zero probability — informally, "P should be careful never to claim things Q rules out." The direction you write the KL in expresses *which* distribution is the reference. When neither side should be treated as ground truth, you average both directions and call it **symmetric KL**.
+
+In Phase I MICOA we use symmetric KL between the proprio and vision encoder distributions (neither is ground truth, both are penalized for disagreement). In Phase II we use the asymmetric form `KL(vision(t) || proprio(t+1))` with proprio detached — vision is pulled toward proprio's future, but proprio is unaffected by the loss (proprio is the ground truth for what vision should be predicting).
+
 ---
 
 ## Representation-analysis tools
@@ -90,6 +96,41 @@ Worth distinguishing:
 **Spearman correlation (distance correlation).** Correlation between the *ranks* of two variables (not the raw values). We use it to ask "when two observations are close in hidden1 space, are their actions also close?" Spearman is robust to outliers and non-linear monotonic relationships.
 
 **MSE (mean squared error).** Average of squared differences. Our v5 consistency loss is `MSE(h_full, h_blind)` — push the two hidden1 vectors to be numerically close. Same quantity R² implicitly measures.
+
+---
+
+## MICOA (Multiple Inputs Confirming One Another)
+
+The architecture we built in Phase I and Phase II to address the problem that vision was never load-bearing across 7 prior experiments (Phase G/H). The diagnosis was structural: concatenating proprio and pixels into one flat vector for SAC is "welding two tubes end-to-end" — it makes a longer rod, not a box. SAC just follows whichever gradient is easier (always proprio), and the pixel encoder gets no useful training signal. To make a box, the architecture needs a component whose job is to *detect* when two independent streams are constraining the same world-state simultaneously. That detector is what MICOA adds.
+
+**Product of Experts (PoE).** The parameter-free math at the heart of MICOA. Each modality's encoder outputs a Gaussian distribution `(μ, σ)` over a shared 64-dim latent space `Z` instead of a single point. The PoE fuses them with Bayesian precision-weighted averaging:
+```
+μ_combined  = (μ_p/σ_p² + μ_v/σ_v²) / (1/σ_p² + 1/σ_v²)
+σ_combined² = 1 / (1/σ_p² + 1/σ_v²)
+```
+When both encoders point at the same region of Z, the precisions add and σ_combined shrinks — that tightening is the "corner" forming. When they disagree, σ_combined stays large and the system represents its own uncertainty. The PoE has no learned weights; the confirmation emerges from the mathematics of multiplying independent Gaussians.
+
+**MICOAExtractor.** Our SB3-compatible feature extractor that implements PoE. Each modality has its own encoder (a 3-layer MLP for proprio, a DrQ-v2 4-conv CNN for stereo pixels), each outputs `(μ, σ)`. PoE fuses them. The downstream policy sees `[z_combined | μ_p | μ_v]` (3 × 64 = 192 dims) so the actor can detect "all three columns are similar" → high confidence vs. "columns diverge" → caution.
+
+**MICOASAC.** A SAC subclass that adds the MICOA agreement loss(es) on top of SAC's normal actor/critic gradients. Each gradient step, after SAC's own backward pass, MICOASAC samples a fresh batch from the replay buffer and runs an extra forward + backward over the encoder's parameters with `_micoa_opt` (a separate Adam optimizer over the extractor only). The SAC training loop itself is untouched — the auxiliary loss only shapes the encoders.
+
+**Symmetric KL agreement loss (Phase I).** The first MICOA loss term, weighted by `--micoa-beta`:
+```
+loss_sym = β_sym * 0.5 * (KL(p || v) + KL(v || p))
+```
+where `p = N(μ_p, σ_p)` and `v = N(μ_v, σ_v)` come from the same observation at the same timestep. Symmetric so neither encoder is treated as ground truth — both are equally penalized for outputting different distributions. This is "confirmation" — the two encoders agree about *now*. **Result across R36/R37: vision learned to mirror proprio's encoding (cheapest way to satisfy the loss) and remained inert in behavior.** This is the "confirmation without anticipation" failure mode.
+
+**Temporal predictive KL loss (Phase II).** The second MICOA loss term, weighted by `--micoa-pred-beta`:
+```
+loss_pred = β_pred * KL(N(μ_v(t), σ_v(t)) || N(μ_p(t+1), σ_p(t+1)).detach())
+```
+Vision at time `t` is pulled toward the distribution proprio will encode at `t+1`. Asymmetric and one-sided: the `.detach()` on proprio's future means only the vision encoder is updated by this loss. Vision is the predictor; proprio is the ground truth. This is "anticipation" — vision must learn to see *what proprio is about to feel*. Mirroring proprio(t) won't satisfy this loss because in general proprio(t) ≠ proprio(t+1); vision has to actually predict the change. Whether this gets vision over the load-bearing threshold is what R38 tests.
+
+**The "corner" vs "tube" framing.** A flat MLP over `[proprio | pixels]` builds a longer tube. Two encoders + PoE builds a corner: σ_combined shrinks precisely when both encoders are constraining the same Z, which is what makes the corner rigid. The empirical question is whether SAC's task gradient is strong enough — combined with MICOA's KL pressure — to make the corner load-bearing for behavior, not just present as a representation. Phase I result: corner forms, behavior doesn't change. Phase II is the test of whether temporal asymmetry breaks that pattern.
+
+**σ_combined and kl_agreement.** The two diagnostic scalars MICOA logs every 500 steps (look for `[MICOA]` lines in the training log). σ_combined falling = corner is forming. kl_agreement near zero = encoder distributions overlap. We learned to read these *together*: σ_combined falling while kl_agreement stays moderate-and-falling = healthy corner formation. σ_combined falling while kl_agreement crashes to zero in the first 4K steps = forced collapse (β too high; what R36 did).
+
+**Ablation delta (the real success metric).** How much the agent's action changes when we zero all pixel inputs at inference time. Measured as the L2 norm of `action(full_obs) - action(blind_obs)`. The pre-approved success threshold for Phase I/II is `> 0.05`. Across 9 prior runs (Phase G/H, R36, R37) the number sits around 0.001–0.002 — vision has been silently inert. Whether MICOA + temporal prediction can push this above 0.05 is the question that breaks the pattern.
 
 ---
 
