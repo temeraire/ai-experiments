@@ -117,7 +117,10 @@ from alien_baby.crawler.mimo_crawler_env import MimoCrawlerEnv
 from alien_baby.crawler.her_wrapper import HERCrawlerWrapper
 from alien_baby.crawler.crawler_cnn_extractor import StereoCrawlerCNN, PIXEL_LATENT_DIM
 from alien_baby.crawler.mimo_crawler_env import PROPRIO_DIM
-from alien_baby.crawler.mimo_crawler_cart_env import MimoCrawlerCartEnv
+from alien_baby.crawler.mimo_crawler_cart_env import MimoCrawlerCartEnv, CAM_H, CAM_W
+from alien_baby.agents.micoa_architecture import (
+    MICOAExtractor, MICOASAC, MICOAConfirmationCallback, LATENT_DIM,
+)
 
 RESULTS_DIR = pathlib.Path(__file__).parent.parent / "results"
 
@@ -300,7 +303,23 @@ def train(args):
             print("  WARNING: no replay_buffer.pkl found beside init_from. "
                   "Policy will warm-start with EMPTY buffer (likely to drift).")
     else:
-        if args.vision:
+        if args.vision and args.micoa:
+            # Phase I: MICOA extractor. Each modality encodes to a Gaussian
+            # over a shared latent Z; Product of Experts fuses them; the
+            # downstream MLP sees [z_combined | mu_p | mu_v] (3 * LATENT_DIM).
+            effective_proprio_dim = PROPRIO_DIM + (2 if args.memory_obs else 0)
+            in_channels = 3 if args.mono else 6
+            policy_kwargs = dict(
+                features_extractor_class=MICOAExtractor,
+                features_extractor_kwargs=dict(
+                    proprio_dim=effective_proprio_dim,
+                    cam_h=CAM_H, cam_w=CAM_W,
+                    in_channels=in_channels,
+                    latent_dim=LATENT_DIM,
+                ),
+                net_arch=[256, 256],
+            )
+        elif args.vision:
             policy_kwargs = dict(
                 features_extractor_class=StereoCrawlerCNN,
                 features_extractor_kwargs=dict(
@@ -336,6 +355,9 @@ def train(args):
                 goal_selection_strategy="future",
             )
             model = SAC("MultiInputPolicy", train_env, **sac_kwargs)
+        elif args.micoa:
+            model = MICOASAC("MlpPolicy", train_env,
+                             micoa_beta=args.micoa_beta, **sac_kwargs)
         else:
             model = SAC("MlpPolicy", train_env, **sac_kwargs)
 
@@ -357,6 +379,10 @@ def train(args):
             verbose=1,
         ),
     ]
+    if getattr(args, "micoa", False):
+        callback_list.append(MICOAConfirmationCallback(log_freq=500))
+        print(f"  MICOA: beta={args.micoa_beta}  latent_dim={LATENT_DIM}  "
+              f"features_dim={LATENT_DIM*3}")
     if getattr(args, "ent_anneal_end_val", None) is not None:
         if args.ent_coef == "auto" or (isinstance(args.ent_coef, str) and args.ent_coef.startswith("auto")):
             raise ValueError("--ent-anneal-* requires a fixed --ent-coef, not 'auto'.")
@@ -450,7 +476,7 @@ if __name__ == "__main__":
                         help="Half-angle of ball spawn cone (180=full forward hemisphere).")
     parser.add_argument("--max-steps", type=int, default=600,
                         help="Episode step limit (~30s at 20Hz).")
-    parser.add_argument("--checkpoint-interval", type=int, default=50_000)
+    parser.add_argument("--checkpoint-interval", type=int, default=10_000)
     parser.add_argument("--init-from", default=None,
                         help="Path to checkpoint .zip to continue from.")
     parser.add_argument("--run-tag", default=None,
@@ -460,6 +486,16 @@ if __name__ == "__main__":
     parser.add_argument("--vision", action="store_true",
                         help="Enable stereo vision (left_eye + right_eye cameras). "
                              "Uses StereoCrawlerCNN feature extractor.")
+    parser.add_argument("--micoa", action="store_true",
+                        help="Phase I: use MICOA architecture (Product of Experts + KL "
+                             "agreement loss) instead of StereoCrawlerCNN concatenation. "
+                             "Requires --vision. Each modality encodes to a Gaussian over "
+                             "a shared latent space; PoE detects when they agree. "
+                             "Incompatible with --her and --mono.")
+    parser.add_argument("--micoa-beta", type=float, default=0.1,
+                        help="Phase I: weight on the encoder-agreement KL loss. "
+                             "Start 0.1; raise to 0.3 then 1.0 if kl_agreement flat. "
+                             "0.0 disables the KL step (PoE still active).")
     parser.add_argument("--learning-rate", type=float, default=1e-4,
                         help="SAC learning rate. DrQ-v2 recommends 1e-4 for pixel obs "
                              "(not 3e-4 which is for state obs). Higher causes actor to "
@@ -571,6 +607,13 @@ if __name__ == "__main__":
         args.ent_coef = float(args.ent_coef)
     if args.target_entropy != "auto":
         args.target_entropy = float(args.target_entropy)
+    # MICOA preconditions: vision required; HER + MICOA out of scope for R36.
+    if args.micoa:
+        if not args.vision:
+            raise SystemExit("--micoa requires --vision (vision encoder needs pixel obs).")
+        if args.her:
+            raise SystemExit("--micoa + --her not supported (HER uses Dict obs; "
+                             "MICOAExtractor expects flat Box obs).")
     # Parse fixed-ball-positions string into list of (x, y) tuples
     if args.fixed_ball_positions:
         balls = []
