@@ -185,12 +185,117 @@ corner is load-bearing first.
 - `alien_baby/agents/micoa_architecture.py` — the architecture
 - `alien_baby/visualization/eval_phase_i.py` — eval script (uses final_model)
 
-## Gap: no visual render
+## Visual render
 
-The cart-mode renderer (`render_crawler_cart.py`) hardcodes `vision=False`
-and the loaded MICOA policy expects a 6215-dim observation, so the render
-crashed with a shape mismatch. Building a vision-aware cart renderer is
-a non-trivial addition; deferred to next session. The eval numbers are
-decisive on their own (ablation delta 0.0019 vs threshold 0.05) and the
-visual rendering would only confirm what we already know about behavior
-(the policy is poor, vision is unused).
+After R36 completed I added `--vision` and `--memory-obs` flags to
+`render_crawler_cart.py` and rendered two deterministic episodes
+(seeds 0 and 1) from R36's `final_model.zip`. Gemini description of
+seed 0: *"agent reaches but does not consistently contact the target;
+blue ball ignored entirely; repeats the same half-reach motion."*
+Matches the 6/20 both-touched eval.
+
+---
+
+# R37 — same config, β=0.03 (re-run on 2026-05-21 morning)
+
+## Why R37
+
+R36's diagnosis ("β=0.1 too high, KL collapsed before vision learned
+anything") suggested lower β might preserve task performance. R37 is
+R36 with one change: `--micoa-beta 0.03`. Same seed, same env, same
+80K step budget.
+
+## Headline numbers
+
+|                                   | R36 (β=0.1) | R37 (β=0.03) | Δ              |
+|-----------------------------------|-------------|--------------|----------------|
+| sigma_combined end                | 0.4516      | 0.4634       | ~equal         |
+| sigma trajectory                  | monotone    | non-monotone (0.40 → 0.46 wobble at 68K-80K) | R37 more data-responsive |
+| KL final                          | 0.0014      | 0.0147       | R37 ~10× higher |
+| KL noise                          | constant ~0.001 | oscillates 0.001–0.015 | R37 alive, R36 dead |
+| Eval @ 80K mean_reward            | -835        | +121         | +956           |
+| Eval @ 80K ep_length              | 1607        | 674          | -933           |
+| Deterministic both-touched (20 seeds) | **6/20**   | **18/20**    | +12            |
+| Vision ablation single-step delta | 0.00195     | 0.00225      | +0.0003        |
+| Episode-level both, pixels normal | 6/20        | 18/20        | +12            |
+| Episode-level both, pixels zeroed | 5/20        | 16/20        | +11            |
+| Pixel-zero delta                  | +1          | +2           | +1             |
+
+## What β=0.03 fixed
+
+**Task performance is fully preserved.** R37 hits 18/20 both-touched —
+matching the pre-MICOA 5K-best policy from R36 (also 18/20). The KL
+pressure no longer destroys the actor's task representation. Reward
+went from -835 to +121.
+
+R37 seed-0 video, Gemini description: *"agent reaches with right arm
+and grasps red sphere, then bends and reaches left toward blue sphere
+and grasps it. Loses balance after acquiring both."* The fall-over
+isn't a MICOA problem — it's the well-known cart-mode posture issue
+from Phase H.
+
+## What β=0.03 did NOT fix
+
+**Vision is still not load-bearing.** Single-step ablation delta went
+from 0.00195 → 0.00225 — a ~15% relative improvement, but still ~22×
+below the 0.05 success threshold. Episode-level pixels-zeroed both-
+touched is 16/20 vs 18/20 normal: zeroing every pixel changes outcomes
+in only 2/20 episodes. The policy navigates by proprio + memory_obs.
+
+## Diagnosis: confirmation ≠ anticipation
+
+The pattern that emerges across R36 and R37:
+
+- The PoE+KL mechanism *does* form a corner. σ shrinks; the two
+  Gaussians overlap.
+- But the corner forms on whatever proprio already encoded, because
+  proprio gets a strong RL gradient (it directly maps to task-relevant
+  body state) and vision does not.
+- Vision learns to mirror proprio's encoding — the cheapest way to
+  satisfy the KL pressure. Mirroring is parameter-free agreement,
+  it does not require pixels to mean anything.
+- Once vision mirrors proprio, ablation has no effect: the policy is
+  already getting the same Z from proprio alone.
+
+This is exactly the "anticipation" gap noted at the bottom of
+`micoa_architecture.py`:
+
+> Confirming what proprio already knows is not enough. Real visual
+> utility is ANTICIPATORY: vision should predict contact before it
+> happens, not just confirm it after.
+
+Symmetric KL between (μ_p(t), σ_p(t)) and (μ_v(t), σ_v(t)) at the same
+timestep has no asymmetry that would push vision to do anything proprio
+can't already do. The architecture needs vision to be trained against
+proprio's *future* state, not its present one.
+
+## Verdict and next moves
+
+R37 also fails the pre-approved success criterion (ablation > 0.05).
+Two coherent next experiments, ranked:
+
+1. **Temporal predictive loss (Phase II).** Train vision to encode now
+   the Gaussian that proprio will encode one step ahead. This is the
+   anticipation step from the original sketch. Requires storing
+   (μ_v(t), σ_v(t)) alongside transitions in the replay buffer so the
+   loss can be computed against (μ_p(t+1), σ_p(t+1)) sampled later.
+2. **β-ramp** (cheaper, but unlikely to be sufficient). β=0 for the
+   first 30K steps so vision learns whatever it can from the critic's
+   gradient alone, then ramp β to 0.03. May give vision time to develop
+   pixel-specific features before mirroring becomes the cheap option.
+   Worth trying as a one-night experiment; (1) is the architecturally
+   correct fix.
+
+A third option — accepting that RL signal alone is insufficient and
+introducing an explicit prediction loss (e.g. visual forward dynamics:
+given current frame, predict next-step proprio) — is essentially (1)
+expressed differently. Whichever framing makes the implementation
+cleaner is the one to pick.
+
+## Files (R37)
+
+- `alien_baby/results/mimo_phase_i_R37_micoa_beta0.03/final_model.zip`
+- `alien_baby/results/mimo_phase_i_R37_micoa_beta0.03.log`
+- `alien_baby/results/videos/R37_micoa_beta0.03_final_seed{0,1}_off0.15.mp4`
+- Eval JSON above; also re-runnable via
+  `python -m alien_baby.visualization.eval_phase_i --run-tag mimo_phase_i_R37_micoa_beta0.03 --ball-speed 0.0 --offset 0.15`
