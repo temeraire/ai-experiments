@@ -73,7 +73,7 @@ class ProprioEncoder(nn.Module):
     def forward(self, proprio: torch.Tensor):
         h = self.net(proprio)
         mu        = self.mu_head(h)
-        log_sigma = self.log_sigma_head(h).clamp(-4, 2)  # σ in [0.018, 7.4]
+        log_sigma = self.log_sigma_head(h).clamp(-2, 2)  # σ in [0.135, 7.4] (was -4,2 → 0.018; R38 hit precision blow-up)
         return mu, log_sigma.exp()
 
 
@@ -115,7 +115,7 @@ class VisionEncoder(nn.Module):
 
         h         = self.proj(self.cnn(img))
         mu        = self.mu_head(h)
-        log_sigma = self.log_sigma_head(h).clamp(-4, 2)
+        log_sigma = self.log_sigma_head(h).clamp(-2, 2)
         return mu, log_sigma.exp()
 
 
@@ -351,71 +351,111 @@ class MICOASAC(_SAC):
       sigma_combined decreases while kl_agreement is moderate → corner forming
     """
     def __init__(self, *args, micoa_beta: float = 0.1,
-                 micoa_pred_beta: float = 0.0, **kwargs):
+                 micoa_pred_beta: float = 0.0,
+                 micoa_pred_horizons=None, **kwargs):
         super().__init__(*args, **kwargs)
-        self.micoa_beta      = micoa_beta
-        self.micoa_pred_beta = micoa_pred_beta
+        self.micoa_beta = micoa_beta
+        # pred_horizons: list of (k, beta) tuples. Backwards-compat: if not
+        # given, fall back to single-horizon t+1 with weight micoa_pred_beta.
+        if micoa_pred_horizons is None:
+            self.pred_horizons = (
+                [(1, micoa_pred_beta)] if micoa_pred_beta > 0.0 else []
+            )
+        else:
+            self.pred_horizons = [(int(k), float(b)) for k, b in micoa_pred_horizons]
+
+    def _sample_kstep(self, k: int, batch_size: int):
+        """Return (obs_t, obs_t_plus_k) tensors from the replay buffer.
+
+        For k=1 we use SB3's standard sample() (which provides obs and
+        next_obs and handles VecNormalize correctly). For k>1 we index
+        directly into the buffer's observations array. Episode-boundary
+        crossings (where t+k lands in a different episode) are tolerated
+        as noise — they're a small fraction and average out.
+        """
+        buf = self.replay_buffer
+        if k == 1:
+            data = buf.sample(batch_size, env=self._vec_normalize_env)
+            return data.observations, data.next_observations
+
+        # k > 1 — custom indexing
+        valid = (buf.buffer_size if buf.full else buf.pos) - k
+        if valid <= 0:
+            # Buffer not full enough; fall back to k=1 for this batch
+            data = buf.sample(batch_size, env=self._vec_normalize_env)
+            return data.observations, data.next_observations
+
+        idx     = np.random.randint(0, valid, size=batch_size)
+        env_idx = np.random.randint(0, buf.n_envs, size=batch_size)
+        obs_t_np   = buf._normalize_obs(buf.observations[idx,     env_idx, :],
+                                        env=self._vec_normalize_env)
+        obs_tk_np  = buf._normalize_obs(buf.observations[idx + k, env_idx, :],
+                                        env=self._vec_normalize_env)
+        return (
+            torch.as_tensor(obs_t_np,  device=self.device, dtype=torch.float32),
+            torch.as_tensor(obs_tk_np, device=self.device, dtype=torch.float32),
+        )
 
     def train(self, gradient_steps: int, batch_size: int = 64) -> None:
         super().train(gradient_steps, batch_size)
 
-        # If both MICOA losses are disabled, nothing to do — the policy still
+        # If all MICOA losses are disabled, nothing to do — the policy still
         # uses the MICOAExtractor for inference but no agreement pressure is
         # applied to the encoder weights.
-        if self.micoa_beta == 0.0 and self.micoa_pred_beta == 0.0:
+        if self.micoa_beta == 0.0 and not self.pred_horizons:
             return
 
         extractor = _get_micoa_extractor(self.policy)
         if extractor is None:
             return
 
-        # Sample one batch and do two forward passes — at t and at t+1.
-        # The same batch carries both observations, so we get a consistent
-        # (o_t, o_{t+1}) pair for the predictive loss.
-        replay_data = self.replay_buffer.sample(
-            batch_size, env=self._vec_normalize_env
-        )
-        obs_t      = replay_data.observations
-        obs_t_next = replay_data.next_observations
-
         was_training = extractor.training
         extractor.train()
+        losses = []
+        logged = {}
+
         try:
             with torch.set_grad_enabled(True):
-                # Forward at t — populates last_mu_p/sigma_p/mu_v/sigma_v with t-distribution
-                _ = extractor(obs_t)
-                mu_p_t, sigma_p_t = extractor.last_mu_p, extractor.last_sigma_p
-                mu_v_t, sigma_v_t = extractor.last_mu_v, extractor.last_sigma_v
-
-                losses = []
-                logged = {}
-
-                # --- Same-time symmetric KL (Phase I) -----------------------
+                # --- Same-time symmetric KL (Phase I) ----------------------
+                # Uses standard (o_t, o_{t+1}) sample — only needs o_t here.
                 if self.micoa_beta > 0.0:
+                    obs_t, _ = self._sample_kstep(1, batch_size)
+                    _ = extractor(obs_t)
+                    mu_p_t, sigma_p_t = extractor.last_mu_p, extractor.last_sigma_p
+                    mu_v_t, sigma_v_t = extractor.last_mu_v, extractor.last_sigma_v
                     kl_sym = encoder_agreement_loss(
                         mu_p_t, sigma_p_t, mu_v_t, sigma_v_t,
                     )
                     losses.append(self.micoa_beta * kl_sym)
-                    logged["kl_agreement"] = float(kl_sym.item())
+                    logged["kl_sym"] = float(kl_sym.item())
 
-                # --- Predictive KL (Phase II) -------------------------------
-                # vision(t) should look like proprio(t+1). Detach the proprio
-                # side so this loss only updates vision encoder weights —
-                # vision learns to predict proprio's future, proprio is the
-                # ground truth and is unaffected by this loss.
-                if self.micoa_pred_beta > 0.0:
-                    # Second forward overwrites extractor's last_* attributes;
-                    # our locals (mu_v_t, mu_p_t, ...) keep pointing at the
-                    # t-tensors with their grad attached, so the symmetric KL
-                    # above already captured what it needs.
-                    _ = extractor(obs_t_next)
+                # --- Multi-horizon predictive KL (Phase II/III) ------------
+                # For each horizon k, sample fresh (o_t, o_{t+k}) pairs, do
+                # two forward passes through the extractor, compute
+                # KL(v(t) || p(t+k).detach()) and sum into the total loss.
+                # Each horizon's gradient flows only through the vision
+                # encoder (proprio side detached).
+                for (k, beta_k) in self.pred_horizons:
+                    if beta_k <= 0.0:
+                        continue
+                    obs_t, obs_tk = self._sample_kstep(k, batch_size)
+
+                    # Forward at t — capture vision side; the local refs
+                    # to mu_v_t survive the next forward pass.
+                    _ = extractor(obs_t)
+                    mu_v_t_k    = extractor.last_mu_v
+                    sigma_v_t_k = extractor.last_sigma_v
+
+                    # Forward at t+k — capture proprio side (detached)
+                    _ = extractor(obs_tk)
                     mu_p_next    = extractor.last_mu_p.detach()
                     sigma_p_next = extractor.last_sigma_p.detach()
-                    kl_pred = kl_gaussian(
-                        mu_v_t, sigma_v_t, mu_p_next, sigma_p_next,
+
+                    kl_pred_k = kl_gaussian(
+                        mu_v_t_k, sigma_v_t_k, mu_p_next, sigma_p_next,
                     ).mean()
-                    losses.append(self.micoa_pred_beta * kl_pred)
-                    logged["kl_predictive"] = float(kl_pred.item())
+                    losses.append(beta_k * kl_pred_k)
+                    logged[f"kl_pred_k{k}"] = float(kl_pred_k.item())
         finally:
             if not was_training:
                 extractor.eval()
@@ -427,7 +467,8 @@ class MICOASAC(_SAC):
         # With share_features_extractor=True, the extractor is shared between
         # actor and critic. SB3 SAC excludes the shared extractor params from
         # the actor optimizer (to avoid double-stepping with the critic), so
-        # we maintain our own optimizer over the extractor params.
+        # we maintain our own optimizer over the extractor params. All
+        # horizons' gradients accumulate in one .backward() call.
         ext_params = list(extractor.parameters())
         if not hasattr(self, "_micoa_opt"):
             try:
@@ -441,21 +482,16 @@ class MICOASAC(_SAC):
         total_loss.backward()
         self._micoa_opt.step()
 
-        # Logging — both TB record and stdout mirror
-        if "kl_agreement" in logged:
+        # Logging
+        if "kl_sym" in logged:
             self.logger.record("micoa/kl_agreement_loss",
-                               self.micoa_beta * logged["kl_agreement"])
-        if "kl_predictive" in logged:
-            self.logger.record("micoa/kl_predictive_loss",
-                               self.micoa_pred_beta * logged["kl_predictive"])
-        parts = []
-        if "kl_agreement" in logged:
-            parts.append(f"kl_sym={logged['kl_agreement']:.4f}")
-        if "kl_predictive" in logged:
-            parts.append(f"kl_pred={logged['kl_predictive']:.4f}")
+                               self.micoa_beta * logged["kl_sym"])
+        for key, val in logged.items():
+            if key.startswith("kl_pred_k"):
+                self.logger.record(f"micoa/{key}", val)
+        parts = [f"{k}={v:.4f}" for k, v in logged.items()]
         print(f"[MICOA] total_loss={total_loss.item():.4f}  "
-              f"(beta_sym={self.micoa_beta}  beta_pred={self.micoa_pred_beta}  "
-              + "  ".join(parts) + ")", flush=True)
+              + "  ".join(parts), flush=True)
 
 
 # ── Temporal prediction (Phase II — not yet implemented) ─────────────────────

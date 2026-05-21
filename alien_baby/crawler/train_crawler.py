@@ -385,6 +385,7 @@ def train(args):
             model = MICOASAC("MlpPolicy", train_env,
                              micoa_beta=args.micoa_beta,
                              micoa_pred_beta=args.micoa_pred_beta,
+                             micoa_pred_horizons=args.micoa_pred_horizons,
                              **sac_kwargs)
         else:
             model = SAC("MlpPolicy", train_env, **sac_kwargs)
@@ -409,8 +410,12 @@ def train(args):
     ]
     if getattr(args, "micoa", False):
         callback_list.append(MICOAConfirmationCallback(log_freq=500))
+        if args.micoa_pred_horizons:
+            horizon_str = ", ".join(f"k={k}:β={b}" for k, b in args.micoa_pred_horizons)
+        else:
+            horizon_str = f"k=1:β={args.micoa_pred_beta}"
         print(f"  MICOA: beta_sym={args.micoa_beta}  "
-              f"beta_pred={args.micoa_pred_beta}  "
+              f"pred_horizons=[{horizon_str}]  "
               f"latent_dim={LATENT_DIM}  features_dim={LATENT_DIM*3}")
     if getattr(args, "ent_anneal_end_val", None) is not None:
         if args.ent_coef == "auto" or (isinstance(args.ent_coef, str) and args.ent_coef.startswith("auto")):
@@ -526,11 +531,15 @@ if __name__ == "__main__":
                              "Start 0.1; raise to 0.3 then 1.0 if kl_agreement flat. "
                              "0.0 disables the KL step (PoE still active).")
     parser.add_argument("--micoa-pred-beta", type=float, default=0.0,
-                        help="Phase II: weight on the temporal predictive KL loss "
-                             "KL(N(mu_v(t), sigma_v(t)) || N(mu_p(t+1), sigma_p(t+1))). "
-                             "Vision is pulled toward predicting proprio's next-step "
-                             "distribution; proprio is detached so only vision's "
-                             "encoder is updated by this loss. 0.0 = off (Phase I only).")
+                        help="Phase II: weight on the single-horizon (t+1) temporal "
+                             "predictive KL loss. 0.0 = off. Ignored when "
+                             "--micoa-pred-horizons is set.")
+    parser.add_argument("--micoa-pred-horizons", default=None,
+                        help="Phase III: multi-horizon temporal predictive loss. "
+                             "Format: 'k1:beta1,k2:beta2,...' e.g. "
+                             "'1:0.03,5:0.05,25:0.1,50:0.15'. Each horizon "
+                             "contributes KL(v(t) || p(t+k).detach()) with its own "
+                             "weight. Overrides --micoa-pred-beta.")
     parser.add_argument("--learning-rate", type=float, default=1e-4,
                         help="SAC learning rate. DrQ-v2 recommends 1e-4 for pixel obs "
                              "(not 3e-4 which is for state obs). Higher causes actor to "
@@ -649,6 +658,15 @@ if __name__ == "__main__":
         if args.her:
             raise SystemExit("--micoa + --her not supported (HER uses Dict obs; "
                              "MICOAExtractor expects flat Box obs).")
+    # Parse --micoa-pred-horizons "k1:β1,k2:β2,..." into a list of tuples
+    if getattr(args, "micoa_pred_horizons", None):
+        pairs = []
+        for chunk in args.micoa_pred_horizons.split(","):
+            k_s, b_s = chunk.split(":")
+            pairs.append((int(k_s), float(b_s)))
+        args.micoa_pred_horizons = pairs
+    else:
+        args.micoa_pred_horizons = None
     # Parse fixed-ball-positions string into list of (x, y) tuples
     if args.fixed_ball_positions:
         balls = []
