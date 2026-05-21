@@ -307,6 +307,10 @@ def train(args):
             # Phase I: MICOA extractor. Each modality encodes to a Gaussian
             # over a shared latent Z; Product of Experts fuses them; the
             # downstream MLP sees [z_combined | mu_p | mu_v] (3 * LATENT_DIM).
+            # share_features_extractor=True: one MICOAExtractor instance
+            # serves both actor and critic. Required for MICOA's design:
+            # the corner-forming pressure must be applied to a single set
+            # of encoder weights, not two unrelated copies.
             effective_proprio_dim = PROPRIO_DIM + (2 if args.memory_obs else 0)
             in_channels = 3 if args.mono else 6
             policy_kwargs = dict(
@@ -317,6 +321,7 @@ def train(args):
                     in_channels=in_channels,
                     latent_dim=LATENT_DIM,
                 ),
+                share_features_extractor=True,
                 net_arch=[256, 256],
             )
         elif args.vision:

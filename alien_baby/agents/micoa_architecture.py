@@ -279,8 +279,8 @@ class MICOAConfirmationCallback(BaseCallback):
 
     def _on_step(self) -> bool:
         if self.n_calls % self.log_freq == 0:
-            extractor = self.model.policy.features_extractor
-            if not isinstance(extractor, MICOAExtractor):
+            extractor = _get_micoa_extractor(self.model.policy)
+            if extractor is None:
                 return True
             sigma = extractor.last_sigma_combined
             kl    = extractor.last_kl_agreement
@@ -297,6 +297,32 @@ class MICOAConfirmationCallback(BaseCallback):
                 print(f"[MICOA] t={t}  sigma_combined={sigma}  "
                       f"kl_agreement={kl}", flush=True)
         return True
+
+
+def _get_micoa_extractor(policy):
+    """
+    Return the MICOAExtractor used by the policy, or None.
+
+    SAC stores features_extractor differently depending on share_features_extractor:
+      - share=True:  policy.features_extractor is the shared MICOAExtractor.
+      - share=False: policy.features_extractor is None; actor and critic each
+                     have their OWN extractor at policy.actor.features_extractor
+                     and policy.critic.features_extractor. In that case we
+                     return the actor's — that is the one called during
+                     model.predict() / inference.
+
+    We accept either layout so MICOA still functions if SB3 changes its default
+    or if share_features_extractor is overridden.
+    """
+    ext = getattr(policy, "features_extractor", None)
+    if isinstance(ext, MICOAExtractor):
+        return ext
+    actor = getattr(policy, "actor", None)
+    if actor is not None:
+        ext = getattr(actor, "features_extractor", None)
+        if isinstance(ext, MICOAExtractor):
+            return ext
+    return None
 
 
 # ── SAC subclass that adds the KL agreement loss ──────────────────────────────
@@ -334,25 +360,52 @@ class MICOASAC(_SAC):
         if self.micoa_beta == 0.0:
             return
 
-        extractor = self.policy.features_extractor
-        if not isinstance(extractor, MICOAExtractor):
-            return
-        if extractor.last_mu_p is None:
+        extractor = _get_micoa_extractor(self.policy)
+        if extractor is None:
             return
 
-        # The stored tensors are still in the graph from the last forward()
-        # call that happened inside super().train(). Compute KL and step.
+        # Do a fresh forward pass with grad enabled on a replay-buffer sample
+        # so the KL loss has a valid autograd graph. The last_mu_* stored on
+        # the extractor cannot be reused: super().train() already consumed
+        # its grad graph via the actor/critic .backward() calls, and rollout
+        # forwards happen under torch.no_grad().
+        replay_data = self.replay_buffer.sample(
+            batch_size, env=self._vec_normalize_env
+        )
+        obs = replay_data.observations
+        was_training = extractor.training
+        extractor.train()
+        with torch.set_grad_enabled(True):
+            _ = extractor(obs)  # populates last_mu_p/sigma_p/mu_v/sigma_v with grad
+        if not was_training:
+            extractor.eval()
+
         kl = encoder_agreement_loss(
             extractor.last_mu_p, extractor.last_sigma_p,
             extractor.last_mu_v, extractor.last_sigma_v,
         )
         agreement_loss = self.micoa_beta * kl
 
-        self.policy.optimizer.zero_grad()
+        # With share_features_extractor=True, the extractor is shared between
+        # actor and critic. SB3 SAC excludes the shared extractor params from
+        # the actor optimizer (to avoid double-stepping with the critic). Build
+        # an explicit optimizer over the extractor's own params for the KL step.
+        ext_params = list(extractor.parameters())
+        if not hasattr(self, "_micoa_opt"):
+            # Match the actor optimizer's current LR (handles float or Schedule)
+            try:
+                lr = self.policy.actor.optimizer.param_groups[0]["lr"]
+            except Exception:
+                lr = 1e-4
+            self._micoa_opt = torch.optim.Adam(ext_params, lr=lr)
+        self._micoa_opt.zero_grad()
         agreement_loss.backward()
-        self.policy.optimizer.step()
+        self._micoa_opt.step()
 
         self.logger.record("micoa/kl_agreement_loss", agreement_loss.item())
+        # Mirror to stdout for log-parsing heartbeats
+        print(f"[MICOA] kl_agreement_loss={agreement_loss.item():.4f}  "
+              f"(beta={self.micoa_beta}  kl={kl.item():.4f})", flush=True)
 
 
 # ── Temporal prediction (Phase II — not yet implemented) ─────────────────────
