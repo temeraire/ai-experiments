@@ -491,378 +491,447 @@ The 8% ceiling is consistent with three possible bottlenecks, in order of theore
 
 3. **Vision is providing direction information but 150K steps is not enough for it to influence touch rate:** if vision's contribution is weak but non-zero (consistent with the early reward improvement), the 8% could be the touch rate of a barely-steering policy that needs 500K+ steps to develop reliable steering. This is the optimistic reading.
 
-There is currently no way to distinguish these three bottlenecks from the numbers alone. The left/right asymmetry ablation and a vision-on vs. vision-zeroed comparison at the best checkpoint are both needed.
+---
 
-### Theory update: what constraint has not yet been relaxed?
+## 2026-05-11 — Phase E2 / Phase F / Phase F-2k hypothesis status
 
-The previous MICOA theory section listed three MICOA requirements:
-1. Freeze proprio weights (done — drift = 0.0)
-2. Consistency loss pulling vision toward proprio (done — λ = 0.10)
-3. Zero-initialize pixel weights (done — confirmed in this run)
+### Phase E2 frameworks update
 
-All three have now been implemented and the result is still 8%. The theoretical question is: what constraint remains unrelaxed?
+**Behavioral Prediction Framework** (an agent with internal predictive structure should produce coherent behavior across a range of initial conditions): Phase E2's "one move then freeze" pattern is the minimum-possible violation of this framework consistent with producing any non-trivial behavior. The framework predicts the agent should develop a sequence of internal predictions chained together — "if I move this way, the ball will be here, then if I move again, contact will occur." What we observe is one prediction (the initial motion earns overlap reward) and then no follow-through predictions. The policy freezes on whatever state the first action produced, regardless of what that state looks like or how far the far ball remains. Status: **still violated**, though "one move then freeze" is a marginally less extreme violation than Phase D's "no move at all."
 
-The answer suggested by this run's data is: **the downstream layers are unfrozen and are accessible to vision's gradient throughout training.** Vision cannot overwrite proprio's stored weights (freeze holds). But vision can, and apparently does, inject a divergent signal into the unfrozen downstream layers (hidden2 and the output layer) that changes the motor output even when proprio's hidden1 contribution is unchanged. The consistency loss fights this injection at the h_full level, but it is fighting an ongoing gradient that is always pointing away from proprio's manifold.
+**Pattern Learning Framework** (sparse, distributed patterns should activate for structurally similar situations regardless of surface-level differences): Phase E2 shows one stable attractor — the side-lying frozen posture — that the agent reliably reaches across all seeds. The critic has learned a stable pattern that accurately predicts episode returns from this attractor. But this is a single-state pattern, not the distributed map of overlapping patterns the framework predicts. Status: **still violated** — stable representation but of a single-point attractor rather than a distributed spatial structure.
 
-The constraint that has not yet been relaxed is: **downstream layer gradient access for the vision pathway during the pre-convergence period.** Two candidate relaxations:
+**MICOA**: Not testable. Phase E and Phase E2 are blind proprio runs. No visual channel was used in either run.
 
-- **Freeze all downstream layers (hidden2, output) until consistency_loss falls below a threshold** — vision can only modify pixel-column weights in hidden1, not anything downstream, until the hidden1 representation has converged. This is the most direct way to enforce "vision cannot cancel proprio's motor program during pre-convergence."
-- **Much higher λ (e.g., 1.0 or 5.0)** — if the consistency penalty is large enough, vision's contribution to h_full is strongly suppressed during the divergent period, limiting its action-space footprint even without a hard downstream freeze.
+### Phase F-2k frameworks update
 
-Neither of these has been tested. The theory predicts that relaxing the downstream constraint should recover something closer to the 60% blind baseline while still allowing vision to eventually contribute steering information.
+**Behavioral Prediction Framework**: Phase F-2k provides the cleanest violation to date. Two initial conditions differing only in spawn yaw produce episode rewards of approximately −1800 vs. −2000. The policy has no orientation-invariant model of where the ball is relative to its current body — it cannot compensate for a bad starting yaw, because it has not learned to reorient. The eval std of 99.48 is not a "useful spread of strategies" — it is the signature of a policy whose outcome is entirely determined by initial conditions and not at all by adaptive behavior. Status: **violated in a newly specific way** — the framework now has not just the no-prediction failure mode but an explicit refutation of orientation-invariant representation.
 
-### Updated cumulative "what is ruled out" table
+**Pattern Learning Framework**: if the agent had built any kind of allocentric or even body-relative representation of "ball is over there," similar patterns should fire for "ball at relative angle θ" regardless of absolute world yaw. What we see is the opposite: outcome quality varies completely with absolute yaw, indicating no yaw-invariant pattern has formed. Status: **violated** — no allocentric or body-relative representation appears to exist.
+
+### What is newly ruled out / confirmed after Phase E2 / F-2k chain
+
+| Hypothesis | Status |
+|---|---|
+| HER + caregiver scaffold + velocity bonus (correctly applied) produces sustained locomotion | **Refuted** |
+| Phase E2's non-zero eval std (0.30) was the early sign of behavioral diversity emerging | **Refuted** — std came from geometric micro-variation, not behavioral diversity |
+| The policy has formed any orientation-invariant or body-relative representation of ball position | **Refuted** — identical policy, different spawn yaw, ~200-point reward swing per episode |
+| Diagnostic 1 from E2 will cleanly distinguish geometric-refuge from learned-reaching | **Refuted as binary** — surfaced a third failure mechanism (orientation lottery) |
+
+THEORY MONITOR: Theory verdict written to FINDINGS.md.
+
+THEORY MONITOR: THEORETICAL CONCERN — Phase F-2k has now surfaced a second dimension of the failure mode that prior phases could not see: the policy's reward depends on initial conditions, not on any learned representation. This is consistent with the F-* family of candidates not yet having addressed the underlying substrate-level problem ("link 2 of the dependency graph"). The human researcher's cart proposal is the first intervention proposed this session that directly addresses link 2 by bypassing it rather than trying to bootstrap through it. The strategist's formal Phase G proposal should weigh whether to continue the F-* family (incremental, conservative, addresses the failure mode within the existing substrate) or pivot to the cart substrate (structural, more ambitious, bypasses the failure mode entirely). Both lines of work have theoretical merit; the choice is essentially a question of how much experimental budget to commit to the within-substrate program before declaring it exhausted.
+
+---
+
+## 2026-05-22 — Phase IV (R41/R42) hypothesis status
+
+Phase IV ran two matched 250K-step experiments under R40's MICOA architecture: R41 (MICOA + vision, moving balls at ball_speed=0.08) and R42 (matched proprio-only control, same task). The question was whether R40's architectural integration of vision — confirmed in Phase III under static balls — would rescue performance when the ball is in motion, a condition Phase H showed broke pure proprio.
+
+### Numbers (verified, from FINDINGS.md lines 1081–1176)
+
+- R41 (MICOA + vision, moving 0.08): 1/20 both-touched moving, 9/20 static-ball generalization
+- R42 (proprio control, moving 0.08): 2/20 both-touched moving, 18/20 static
+- R41 single-step ablation L2 = 0.851 (median 0.799) — highest in project history (R40: 0.481, R38: 0.656, dead zone: 0.009–0.023)
+- R41 kl_pred_k1 ended at 638, up from a healthy 0.6–1.1 at early training (R38's prior pathology was 116)
+- R41 sigma_combined collapsed to 0.0999 by end of training — below the R40 Goldilocks floor of 0.135, which held under static-ball training
+
+### Hypothesis-status updates
+
+**(a) "Architectural integration of vision rescues tasks where pure proprio fails" — REFUTED.**
+
+This was the operative prediction of the Phase IV proposal and the framing in R40's commit message e0de0d1 ("best run yet — vision load-bearing AND task working"). The prediction was: MICOA + predictive-KL training on moving balls should produce a policy where vision provides the target-direction information proprio cannot supply, yielding higher both-touched rates than a matched proprio control.
+
+What happened: R41 scored 1/20 both-touched moving, R42 scored 2/20. On static generalization, R41 scored 9/20, R42 scored 18/20. Vision did not rescue the task. It made the static generalization substantially worse. This refutation is distinct from all prior MICOA failures: in Phase I–II vision was not integrated (ablation in the dead zone); in Phase III (R40) vision was integrated and the task worked but proprio was doing the lifting; in Phase IV vision is deeply integrated and the task fails worse than plain proprio. Integration deepened; capability regressed. These are causally linked — the deeper integration is a symptom of encoder pathology, not productive learning.
+
+**(b) "MICOA σ-clamp Goldilocks band [0.135, 7.4] is architecture-universal" — REFUTED.**
+
+The band was established empirically in Phase III under static-ball training (R40: sigma_combined stable at ~0.6, kl_pred_k1 stable at ~0.7, ablation 0.481, task working). The Phase IV hypothesis was that the same clamp, applied unchanged, would hold under moving-ball training. It did not: sigma_combined drifted to 0.0999 by end of training, below the clamp floor of 0.135 — meaning the clamp's enforcement broke, or the optimization pressure under moving-ball curriculum exceeded what the clamp could resist. Either way the Goldilocks band is task-dependent, not architecture-dependent. The R40 σ-clamp is a known-good operating point for static balls only.
+
+**(c) "Vision-ablation L2 delta ≥ 0.20 implies productive integration" — REFUTED.**
+
+R41's ablation of 0.851 (project maximum) co-occurs with the worst outcome metrics under MICOA. Ablation magnitude alone is insufficient as a signal of productive integration. The revised composite criterion is: ablation ≥ 0.20 AND kl_pred_k1 < ~5 AND sigma_combined > clamp floor AND R-vision ≥ R-proprio-matched-control on the same condition. R40 satisfies all four; R41 satisfies only the first.
+
+This is a meaningful update because every prior phase used ablation L2 as the primary load-bearing signal. We now know that signal is necessary but not sufficient. A pathological encoder produces a high ablation delta for the wrong reason: the actor is forced to attend to a high-precision (small σ) modality even when that modality's content is degenerate.
+
+### New tentative hypothesis to track
+
+**"Productive vision integration is bounded by task difficulty — the σ-clamp band that keeps MICOA healthy narrows as task difficulty rises, eventually shrinking to zero on tasks where proprio alone fails."**
+
+If true, this is a theoretical limit on the MICOA architecture as currently formulated: precisely on the tasks where vision would matter most (those proprio cannot solve), the architecture cannot maintain a healthy encoder, so the only operating point we can stabilize is the one where vision is redundant with proprio. Phase V should test this by sweeping σ_p_min (0.20, 0.30, 0.50) under moving-ball training and looking for any clamp value that prevents the kl_pred → 638, sigma → 0.10 collapse.
+
+### Theoretical implication for the project's central thesis
+
+The Taylor-interpenetration claim has two distinguishable components:
+
+1. **Mechanical claim** — vision should weave into proprio's pathways, not occupy a separate module. **Empirically supported.** Ablation deltas across R38 (0.66), R40 (0.48), R41 (0.85) all exceed the 0.05 threshold by an order of magnitude or more. The pixel pathway is no longer ornamental.
+
+2. **Behavioral claim** — interpenetration produces more capable agents than modular fusion. **Not yet supported under any task in this project.** R40's task-capability came from proprio doing the work alone (the architecture was permissive enough not to interfere). R41's task-incapability came from vision actively interfering. The project has yet to produce a run where R41-style architecture yields capability that proprio cannot.
+
+This is not a final refutation of the behavioral claim — it is a refutation of the specific predicted pathway (R40's σ-clamp at 0.135 under moving balls). The next intervention must either (i) find a σ-clamp band that survives harder tasks, (ii) change how the actor's gradient interacts with the integrated encoder (image-aware RL like DrQ-v2), or (iii) introduce reward structure that ties credit to visual attention before contact (gaze-gated reward). Without one of these, the project may have reached the ceiling of what predictive-KL + PoE fusion alone can deliver.
+
+### What is now ruled out (Phase IV addition)
 
 | Hypothesis | Status | Evidence |
 |---|---|---|
-| Ball not visible in head_cam | Ruled out | vision_check_v9: mean 40px, never zero |
-| SAC entropy collapse is the cause | Ruled out | entpin run: same outcome with ent_coef=0.05 held flat |
-| CNN encoder will make vision useful | Ruled out | overnight runs: consistency_loss ~0.001 both times |
-| Hand-only contact narrows equivalence class enough | Ruled out | overnight run #3 + entpin: same blind result |
-| Vision follow-on is failing to help (neutral result) | Ruled out | blind baseline 60% vs. follow-on 5%: vision is actively harmful |
-| Floor is task difficulty (blind proprio ≈ 1/20) | Ruled out | blind baseline: 12/20 (60%) deterministic |
-| Proprio drift is causing the 60% → 5% regression | Ruled out | freeze run: drift = 0.0, touch rate still collapsed |
-| Freeze alone preserves the 60% proprio-based motor output | Ruled out | freeze run: proprio weights frozen, touch rate 8%, failure mode = cancellation |
-| Low consistency_loss means MICOA confirmation is occurring | Ruled out | low loss = dead pixel pathway; high loss = active cancellation |
-| Zero-init prevents early vision divergence | Ruled out | consistency_loss rose faster and higher than prior run despite zero start |
-| Forward cone + zero-init is sufficient to raise touch rate above 8% | Ruled out | same 4/50 ceiling as prior MICOA freeze run |
-
-### Updated cumulative "what is not yet ruled out" table
-
-| Hypothesis | Next test |
-|---|---|
-| Left/right touch symmetry reflects genuine visual steering (not geometric spawn artifact) | Left-only spawn eval: 30 det. eps with ball always 10–15° left |
-| Downstream layer freeze prevents cancellation and recovers the 60% proprio motor output | Architecture change: freeze hidden2 + output layer until consistency_loss < threshold |
-| Higher λ (1.0 or 5.0) suppresses vision's action footprint enough to prevent cancellation | λ sweep on frozen-proprio + zero-init architecture |
-| Moving-ball task (Idea E) changes gradient landscape so MICOA convergence is achievable | Build moving-ball env, smoke test with current architecture |
-| Vision is contributing some direction information at 8% — 500K steps would compound it | Extended run (500K) from current best checkpoint |
-| Best-checkpoint policy (30K) scores differently with pixels on vs. zeroed — first direct vision-load-bearing test | Vision ablation eval: same 50 seeds, pixels zeroed, compare touch rate |
-
-### Theoretical verdict
-
-The zero-init + forward cone run tells us something definitive: the bottleneck is not in the initialization or in whether the ball is visible from frame one. Both of those variables have now been optimized in the best-case direction and the outcome is unchanged. The bottleneck is structural. It is in how the downstream layers of the frozen-proprio architecture respond to the pixel pathway's gradient signal during the pre-convergence period. Until that structural bottleneck is addressed — either by a downstream layer freeze, a much stronger consistency penalty, or a task redesign that makes proprio's blind strategy fail — the 8% ceiling will persist regardless of what we do to the pixel-column initialization or the spawn geometry.
-
-The theory predicts the next constraint to relax is downstream layer protection. The experiment that tests this prediction is a follow-on with hidden2 and the output layer frozen until consistency_loss drops below 0.05, then unfrozen to allow the now-converged vision representation to improve motor output. If touch rate recovers toward 60% under this regime, the structural bottleneck hypothesis is confirmed. If it does not, we must reconsider whether the frozen downstream geometry established by blind proprio is simply incompatible with any vision contribution — in which case the moving-ball task (where proprio's strategy structurally fails) becomes the correct next step.
+| R40's σ-clamp is universal across tasks | RULED OUT | R41: sigma collapsed to 0.0999 under moving-ball training despite the same 0.135 floor |
+| High vision-ablation L2 implies productive integration | RULED OUT | R41: 0.851 ablation coincides with worst MICOA outcomes (1/20 moving, 9/20 static) |
+| MICOA architecture rescues task on moving balls without further tuning | RULED OUT | R41 underperformed R42 by 1 episode moving and 9 episodes static |
+| The substrate-level barrier from Phase H is fully resolved by R40's architecture | RULED OUT | Same task floor (1–2/20) under both MICOA and plain proprio on moving 0.08 |
 
 ---
 
-## 2026-05-07 — BREAKTHROUGH: Vision Confirmed Load-Bearing (First Time)
+## 2026-05-30 — Phase V (R43/R44) generalization battery
 
-### What was confirmed
+### What was tested
 
-The vision-ablation sensitivity test on the micoa_freeze_zeroinit_cone30 best checkpoint (30K steps) returned:
+Two matched 250K-step SAC runs on the cart substrate (R43: MICOA + vision, static ball, box jitter ±0.08 m; R44: proprio-only control, same task). The design was explicitly chosen to test the "generalization is the primary state" hypothesis — that a proprioceptive general approach/contact response is what generalizes first and broadly, and that vision (if anything) is a late selective overlay recruited only where directional uncertainty is highest. Two new fully-parameterized eval tools were introduced: eval_phase_v.py (eccentricity/direction sweep) and eval_generalization_battery.py (size/distance/speed sweeps, zero-shot extrapolation).
 
-- Mean |action_full - action_blind|: **0.456**
-- Max difference: **0.886**
-- Fraction of steps with non-trivial difference (> 0.01): **100%**
-- Fraction of steps with meaningful difference (> 0.05): **100%**
-- Steps measured: 192 (40 episodes, up to 5 steps each)
+This is the cleanest task the project has run: static ball, reachable geometry (ball in [0.07, 0.23] m lateral range), no encoder pathology (static ball keeps MICOA's sigma_combined healthy).
 
-This is the first time in this project's history that vision has been confirmed load-bearing. Every prior run — five independent runs across different architectures (MLP, CNN), entropy regimes (auto, pinned), contact definitions, and spawn geometries — returned near-zero sensitivity. The camera was, in all of them, effectively ignored by the policy. This checkpoint is different. On every single measured step, the policy produces a meaningfully different action when the camera sees the actual scene versus when the camera sees a blank screen. The difference is not marginal (mean 0.456, max 0.886 — on an action space that spans roughly ±1). Vision is being read.
+### Key numbers (from FINDINGS.md Phase V entry)
 
-### Why this matters
+Eccentricity sweep — R43 (MICOA+vision) vs R44 (proprio), selected bins:
 
-This is a milestone because it answers the question the project has been asking since the overnight sweep: **has the creature ever, at any point in training, actually looked at the world and let what it saw change what it did?**
-
-The answer was "no" for five runs and hundreds of thousands of training steps. It is now "yes."
-
-This matters for the theory. The project was motivated by the idea that a creature with a proper developmental sequence — proprio established first, vision added as a confirming signal on top — should develop vision that is genuinely integrated into behavior, not merely appended to it. The prior runs were failing at the most basic prerequisite: the camera wasn't even contributing to the action. We couldn't test any claim about *how* vision was integrated because vision wasn't integrated at all. Now it is. We can now ask richer questions.
-
-### The exact boundary of the claim
-
-"Vision load-bearing" means one thing precisely: the policy's action changes when pixels are zeroed. That is the full content of the claim. It does not mean:
-
-- **Vision is steering correctly.** The directional spawn test (ball fixed at +15° right: 0/30 touches; ball fixed at -15° left: 0/30 touches) shows that vision's influence on action has not yet translated into reliable directional guidance. The creature looks at the scene and acts differently because of what it sees — but the different actions it produces do not yet consistently move it toward the ball.
-
-- **Vision is helping more than it hurts.** The 8% deterministic touch rate is still far below the 60% blind baseline. Vision is load-bearing in the sense that it influences every step, but the influence is not yet net-positive.
-
-- **Vision will remain load-bearing with more training.** The late-training collapse pattern (peak at 30K, then degradation) means we do not know whether this sensitivity is stable or whether longer training would cause the pixel pathway to drift back toward irrelevance.
-
-The correct precise statement is: **at the 30K checkpoint of the micoa_freeze_zeroinit_cone30 run, vision is influencing every action, but has not yet learned which visual patterns should produce which directional motor responses.**
-
-### Distinguishing "vision affects behavior" from "vision affects behavior correctly"
-
-This distinction is the central theoretical question the project now faces. It replaces the previous central question ("why isn't vision used at all?"), which is now answered.
-
-To understand the distinction, consider what a vision-guided creature would need to do. Suppose the ball is 15 degrees to the creature's left. The camera image has a colored ball visible in the left portion of the frame. A vision-guided creature would need to have learned a mapping from "red blob in left half of image" to "execute leftward turn: increase left-arm push, decrease right-arm push." That mapping is the pixel-to-direction coupling.
-
-What we observe is: the camera image is influencing the action — the action is different when pixels are present versus zeroed. What we do not yet observe is: the influence is specifically "red blob left → turn left, red blob right → turn right." The directional spawn test tells us this mapping has not formed. Both conditions (ball precisely left and ball precisely right) produce 0/30 touches. If the mapping existed, ball-precisely-left would produce a higher touch rate than ball-precisely-right, or vice versa.
-
-The visual influence is real. The visual influence is not yet directionally differentiated.
-
-### Framework assessment
-
-**Behavioral Prediction Framework — PARTIALLY CONFIRMED.**
-
-The framework predicts: a creature that builds an internal model of cause and effect will let sensory inputs shape its decisions on every trial, not just occasionally. The 100% sensitivity rate (every step, every episode) is exactly this. The camera is being consulted on every decision. That is the "affect behavior" half of the prediction — and it is confirmed.
-
-The framework also predicts: a creature with a genuine model of "where the ball is" will move toward the ball when it sees the ball. This half is not confirmed. The directional test returns 0/30 in both conditions. The creature is using the camera, but the camera's contribution to behavior does not yet encode "ball location → move toward ball."
-
-The previous state of this framework in this project was "CHALLENGED" on every prior run. It can now be upgraded to "PARTIALLY CONFIRMED" — the use-vision half is confirmed, the use-it-correctly half is not yet demonstrated.
-
-**Pattern Learning Framework — PARTIALLY CONFIRMED.**
-
-The framework predicts: the creature's internal representation should be stable and respond consistently to similar visual inputs. The 100% sensitivity rate across 192 measured steps is exactly this — a stable representation that responds to visual input on every trial without dropping out. This is the consistency the framework predicts.
-
-The framework also predicts: similar visual inputs should activate overlapping internal patterns that produce similar (but not identical) motor outputs. The directional test — ball left vs. ball right — is the first test of this prediction: do slightly different visual scenes (ball offset by 30 degrees) produce appropriately different motor outputs? The 0/30 result in both conditions tells us the pattern for "ball slightly left" and the pattern for "ball slightly right" have not yet differentiated in a way that steers the creature differently. The representation is stable and active; it is not yet spatially differentiated.
-
-The previous state of this framework was "CHALLENGED." Like the Behavioral Prediction Framework, it can now be upgraded to "PARTIALLY CONFIRMED" — stability and consistency of visual influence are confirmed; directional differentiation is not yet demonstrated.
-
-### Updated "ruled out" table
-
-Items that can now be crossed off or updated in light of this result:
-
-| Hypothesis | Previous status | Updated status | Update reason |
+| ecc (m) | R44 both/20 | R43 both/20 | R43 abl_L2 |
 |---|---|---|---|
-| Vision is never load-bearing under any MICOA architecture | Open (five failed runs) | **RULED OUT** | 0.456 mean ablation sensitivity, 100% of steps |
-| The MICOA freeze + zero-init + forward-cone architecture produces an input-blind policy | Open | **RULED OUT** | Vision sensitivity confirmed at 30K checkpoint |
-| Consistency_loss 0.20–0.38 means vision is alive but wrong (not dead) | Interpretation | **CONFIRMED** | Ablation confirms pixel pathway is active and influencing actions |
-| Left/right touch symmetry (0.102/0.098) reflects genuine visual contribution | Ambiguous | **PARTIALLY SUPPORTED** | Vision is load-bearing, but directional test shows the influence is not yet directional |
-| Vision load-bearing is achievable without making blind proprio fail | Open | **CONFIRMED** | Achieved at 30K without changing task structure |
+| 0.00 | 20 | 20 | 1.04 |
+| 0.05 | 20 | 19 | 0.62 |
+| 0.10 | 16 | 16 | 0.65 |
+| 0.20 | 5 | 4 | 0.69 |
+| 0.25 | 0 | 0 | 0.72 |
 
-### The new central question
+Distance law (R44 proprio, bins 0.35–0.65 m, corrected): steps ≈ 688 × dist − 218, r = +0.89, including extrapolation to 0.55 and 0.65 m (outside trained range of ~0.27–0.43 m).
 
-The previous central question was: "Why isn't vision being used at all?"
+Speed retention: R44 (proprio) ~0.50 (graceful); R43 (vision) 0.25 (cliff — drops sharply with ball motion).
 
-That question is answered. Vision is being used.
+Size sweep: both|close varies with size for both runs (range 0.37 for R44, 0.50 for R43) — likely 15-ep sampling noise, re-check at 30 eps; R43 abl_L2 flat at ~0.56–0.74 across all sizes (0.035–0.090 m), confirming vision is equally active regardless of ball size.
 
-The new central question is: **"Why is vision changing actions on every step, but the changed actions are not yet moving the creature toward the ball in a direction-specific way?"**
+### Framework 1: Behavioral Prediction Framework
 
-There are two distinct possible answers, and distinguishing them is the next theoretical priority:
+**Status: CONFIRMED — first clear confirmation in this project.**
 
-**Answer A — The visual influence is directionally undifferentiated:** The camera is changing the action, but the change is not specifically "ball on left → turn left." The pixel pathway has learned that *some* visual input is present and should influence behavior, but has not yet learned *which* visual features (ball position in frame) should produce *which* directional motor outputs (left vs. right arm). The visual contribution is more like a general "alertness signal" (something is visible, adjust behavior) than a directional guidance signal (the ball is at bearing X, move that way). Under this answer, the fix is more training — the pixel-to-direction mapping needs more gradient signal to converge.
+The prediction of this framework is that a creature building a genuine internal model of cause and effect should show coherent, lawful behavior in new situations it has never seen, because it can predict what will happen and plan accordingly.
 
-**Answer B — The visual influence encodes direction, but locomotion cannot execute the turn:** The creature correctly reads "ball on left" vs. "ball on right" at the pixel level — the internal representation does differentiate left from right — but the motor system is not capable of reliably converting a "turn left" signal into an actual leftward turn. The paddle-arm locomotion in v8 requires asymmetric pushing (left arm harder to turn right, right arm harder to turn left), and this asymmetric motor capability may not have been learned well enough at the 30K checkpoint for directional visual signals to produce reliable contact. Under this answer, the fix is motor competence improvement, not more visual training.
+R44's proprio policy now provides the strongest confirmation of this framework the project has produced. The time-to-contact law (steps ≈ 688 × dist − 218, r = +0.89) is not a memorized lookup — it is a parametric relationship that extends without a break to ball distances the policy was never trained on (0.55 m and 0.65 m, well outside the trained range of ~0.27–0.43 m). A policy that merely memorized stimulus-response pairs across training distances would show a flat, near-zero contact count at extrapolated distances. Instead the proprio policy shows lawful, continuous extrapolation. This is the hallmark of an internal predictive model of distance-to-contact that generalizes across the relevant dimension.
 
-The two answers have different implications for what to build next. Answer A implies: extend training, or add more explicit gradient pressure on the pixel-to-direction mapping. Answer B implies: improve locomotion first (more stage-1 training, or a simpler motor task), then re-test visual steering.
+Graceful speed degradation (speed retention ~0.50 at the fastest speed tested) adds a second confirmation: the policy degrades proportionally as the task gets harder, which is what a model-based system does when its predictions become less reliable under changed conditions. A memorized strategy would show a floor-to-ceiling switch, not a graded response.
 
-**The diagnostic that distinguishes them:** Measure the mean action vector separately when the ball is always left versus always right. If the action vectors are systematically different between conditions (even though neither produces a touch), Answer B is more likely — the creature is detecting direction but failing to execute. If the action vectors are indistinguishable, Answer A is more likely — the direction hasn't been encoded yet. This does not require a new training run.
+The framework is now confirmed for the proprio policy. For R43 (MICOA + vision), the distance law also holds (steps ≈ 1292 × dist − 425, r = 0.85), but the ablation evidence shows the visual component of its predictions is not contributing to the coherent scaling — the creature's behavior under MICOA is coherent for the same reason R44's is: proprio is doing the predictive work.
 
-### What the theory predicts about how to fix the directional gap
+### Framework 2: Pattern Learning Framework
 
-Under the MICOA framework, the directional gap is explained as follows. Proprio in v8 is a locomotion signal — body speed, arm positions, contact with the ground. It does not encode ball position. Vision is being used (confirmed), but vision's contribution to the hidden state has not yet been shaped by enough trials where "ball on left, action taken, ball contacted" versus "ball on right, action taken, ball contacted" to learn the directional mapping. The freeze architecture means vision can only influence the downstream layers through the pixel-column contributions to h_full; those contributions are being made, but the 30K checkpoint is early — only 30,000 gradient steps of pixel-to-direction learning have occurred.
+**Status: SPLIT — CONFIRMED for proprio; CHALLENGED for vision.**
 
-The theory predicts: **the directional mapping should emerge with more training, provided the architecture does not collapse before it can form.** The late-training collapse pattern is the threat. If the 30K checkpoint is the peak and the policy degrades after this, the directional mapping may never get enough gradient signal to form. Protecting the 30K checkpoint state and continuing training — or using the 30K checkpoint as a starting point for a longer, lower-learning-rate run — is the theory-motivated next step.
+The framework predicts that the creature's internal representation should be sparse and distributed — similar inputs activating overlapping patterns, making the system robust to small changes in the input. This predicts smooth generalization across a continuum of input values, not sudden cliffs or total failures at slightly different inputs.
 
-There is also a MICOA-specific prediction: the directional mapping will be easier to learn if proprio can provide *any* directional signal, even a weak one. In the current setup, proprio has zero information about ball position (no target vector in the observation by design). The pixel pathway must independently discover the pixel-to-direction mapping with zero proprio confirmation of direction. In the tabletop setting, proprio always knew the target direction — vision confirmed it. In v8, proprio cannot confirm direction because it does not know direction. Vision must earn the directional mapping from scratch, using only contact reward as the feedback signal. This is harder, and it may require more steps than a setting where proprio provides even a weak directional cue.
+**For proprio (R44): CONFIRMED.** The smooth distance law and graceful speed degradation are exactly what stable overlapping internal codes produce. Similar distance inputs produce overlapping patterns that allow interpolation and extrapolation. Size invariance (both|close range comparable to R43 and flat abl_L2 across sizes in R43) is consistent with the proprio representation not caring about ball geometry — which is sensible, since proprio has no visual signal of ball size and has learned an approach code that is agnostic to that dimension.
 
-### Open theoretical questions going forward
+**For vision (R43): CHALLENGED.** The ablation L2 pattern is the key anomaly. A vision system with stable, sparse, spatially organized codes should produce the highest ablation sensitivity precisely where its codes encode the most task-relevant information — which would be at high eccentricity, where ball direction matters most and proprio cannot help. Instead, abl_L2 is highest at ecc = 0.00 (1.04) where direction information from vision is least needed, and flat-to-slightly-rising (~0.62–0.72) at higher eccentricity. This is the signature of a representation that is globally bound and non-directional — it activates uniformly across the visual field, not selectively where task-relevant spatial information is concentrated. A useful sparse visual code would show the opposite pattern: low activation when the ball is straight ahead (already handled by proprio), high activation when the ball is off-center (where visual direction information has unique value). The inversion of this expected pattern is a direct challenge to the claim that a useful sparse visual code has formed.
 
-The first-order question was: "Does the MICOA architecture produce a vision-load-bearing policy?" That is answered: yes.
+### Framework 3: Generalization-as-primary-state hypothesis
 
-The second-order questions, now live:
+**Status: CORE hypothesis CONFIRMED; an added strong-form rider was NOT SUPPORTED by Phase V.**
 
-1. **Is the visual influence directionally differentiated?** Measurable now with the action-vector diagnostic described above. Does not require training.
+*Provenance note (added 2026-06-14):* The core hypothesis is the researcher's, proposed casually on 2026-05-30 as a reframing ("all objects are learned the same way; generalization, not specificity, is the primary state") and offered for discussion, not as a directive to run an experiment. The "strong form" below — vision recruited *selectively at the margin* — was an extrapolation the assistant attached when operationalizing the idea into Phase V. So what Phase V tested was really two claims: the researcher's core insight, which **held**, and an assistant-added rider, which **did not**. The earlier "REFUTED" framing overstated this: the researcher's idea was not disproven. Its central claim was confirmed on the cleanest task the project has run; only the extra margin-selectivity rider failed to find support.
 
-2. **Does the directional mapping emerge with more training, or does the late-training collapse prevent it?** Requires either extending the 30K checkpoint or understanding what causes the collapse at 150K.
+The hypothesis has two separable components:
 
-3. **Does the v8 architecture support the full MICOA confirmation loop?** In tabletop, proprio confirmed vision's prediction at contact. In v8, proprio cannot confirm direction. Is the one-way confirmation (vision influences action, pero proprio cannot validate vision's direction estimate) sufficient for the directional mapping to stabilize? Or does the absence of proprio-directional confirmation mean the mapping will remain noisy?
+**Core form (the researcher's idea):** The proprioceptive object-agnostic "approach/contact" response is the primary generalization. This is what transfers broadly across distances, sizes, and directions — because it is a learned sensorimotor relationship between body state and physical contact, not between visual features and contact. Vision, if it contributes at all, is a late and selective overlay.
 
-4. **What is the correct MICOA architecture for a locomotion problem where proprio is directionally blind?** The tabletop setup gave proprio a 3D fingertip-to-target vector. v8 deliberately omits this. The theoretical question is: what is the minimum proprio structure that allows MICOA-style confirmation when proprio cannot directly confirm ball direction? Candidates: body velocity (already in proprio — can vision confirm "I am moving in the direction I see the ball"?), or contact feedback (vision predicts contact will occur soon, proprio confirms it).
+**Phase V confirms the core form for proprio.** R44 generalizes to unseen distances (extrapolation to 0.55 and 0.65 m), is insensitive to ball size (abl_L2 flat in R43 across sizes; R44 performance comparable across the size range), and degrades gracefully under ball motion. This is exactly the profile of a robust, object-agnostic approach response — the kind the hypothesis predicts should be primary. The researcher's central claim stands.
 
----
+**Strong-form rider (assistant-added):** Vision is recruited selectively at the margin — specifically at high eccentricity, where proprio lacks directional information and visual direction information would have unique value. Under this reading, we should see vision's ablation sensitivity rise with eccentricity, peaking where proprio is least informative and visual direction information matters most.
 
-### Summary: what changed on 2026-05-07
+**Phase V does not support the strong-form rider.** The ablation pattern runs opposite to that prediction: abl_L2 is 1.04 at ecc = 0.00 (ball dead ahead, vision's directional value is near-zero because proprio already handles this condition well — R44 is 20/20 there) and flat-to-slightly-rising ~0.62–0.72 at higher eccentricity. Vision is not selectively recruited where it would help; it is bound globally — most active where it is least needed. The ecc = 0.00 spike is the key datum: if vision were encoding direction and deploying it selectively, the highest ablation should be at high eccentricity, not at center. So the *margin-selectivity* extrapolation does not hold — but note this is a finding about how vision happened to bind under MICOA, not a refutation of the core "generalization is primary" claim, which concerns the proprioceptive approach response and was confirmed above.
 
-Before the ablation test: the project had five failed runs, a working 60% blind baseline, and a clear diagnosis of why vision wasn't being used (MICOA violation). The question "is vision load-bearing?" had never been answered yes.
+### New distinction introduced this session: INVARIANCE vs. EQUIVARIANCE
 
-After the ablation test: the project has its first positive vision result. The MICOA architecture (freeze + zero-init + forward cone) produced — at the 30K checkpoint — a policy that uses its camera on every step. The challenge is now a second-order one: the camera is being used, but not yet in a directionally correct way.
+Phase V evidence allows a cleaner test of two theoretically distinct types of generalization:
 
-This is the right kind of progress. It does not close the project. It opens a richer set of questions that were previously inaccessible because the most basic condition (vision being used at all) had not been met.
+**INVARIANCE** — the response is unchanged as a dimension varies (e.g., size, color, weight, texture): the proprio approach response is size-invariant (comparable both|close across 0.035–0.090 m radius in R44; flat abl_L2 across sizes in R43 confirms vision is equally active regardless of size). This is confirmed.
 
----
+**EQUIVARIANCE** — the response changes lawfully as a dimension varies (e.g., distance → time-to-contact scales): the distance law (r = +0.89, extrapolating to unseen distances) is the clearest equivariant relationship found in this project. As distance increases, time-to-contact increases lawfully, continuously, and beyond the training range. This is confirmed for proprio.
 
-## 2026-05-07 — Stage1 Headfix: Locomotion Baseline Reset
+Vision shows neither property in a useful form. It shows approximate size-invariance in its ablation sensitivity (flat ~0.63–0.74 across sizes), but that flatness is consistent with undifferentiated global binding rather than a stable code for object identity that generalizes across sizes. Vision shows no distance equivariance in its own contribution — the distance law in R43 is carried by proprio, not by the visual component of the MICOA policy.
 
-### Why stage1_v8_best was retired
+### What is now ruled out (Phase V addition)
 
-The old stage1_v8_best checkpoint scored 60% deterministic touch rate across 20 episodes and zero falls. Those numbers looked solid on paper. Video review shattered that reading. In 5 rendered episodes the creature was nearly stationary on 4 of them — seed 3 touched because the ball spawned adjacent to the creature, not because the creature moved toward it. Additionally, the head oscillated across its full angular range every few timesteps, a behavior produced by the kp=30 servo gain snapping to any commanded position in a single step. The visual signal from a head moving like that is a chaotically uncorrelated sequence of frames that no downstream network could extract stable structure from.
-
-The theoretical implication is blunt: every MICOA vision experiment that followed stage1_v8_best was built on a foundation that didn't locomote and produced an unusable visual signal. The 60% touch rate was a statistical artifact of spawn radius geometry. The serial approach — train blind proprio first, then freeze and add vision — inherits the blind policy's behavior. If the blind policy learned "stay still and let the ball come to you," no follow-on architecture can rescue that.
-
-### What the new run's numbers say about locomotion quality
-
-The stage1_headfix_velbonus_2026_05_07 run shows three improvements over the old baseline that go beyond the raw touch rate.
-
-First, the training trajectory was stable. The previous stage1 runs showed early peaks followed by catastrophic collapse. This run sustained rewards in the 90–135 range for most of 200K–500K steps with a peak of 176.9, suggesting the creature is not oscillating between good and bad local optima in the way that plagued prior runs.
-
-Second, mean_dist_mean of 0.417 and ep_len_mean of 151 steps indicate the creature is covering ground. The old stage1_v8_best did not report mean_dist_mean — this is the first run in the project where we have positive evidence of ground coverage.
-
-Third, the fast contact at seed 3 (step 39) would be nearly impossible for a stationary creature. The ball would need to spawn within a very small radius for step-39 contact to occur without movement. This is the strongest single datum suggesting real locomotion has emerged.
-
-The 45% deterministic touch rate falls short of the 60% old baseline by raw number, but the old baseline is now understood to be invalid. Whether 45% from a moving creature is sufficient to resume vision work requires video confirmation.
-
-### Is 45% "real" locomotion or still luck?
-
-This is the open question the project currently sits on. There are two distinct scenarios that are both consistent with 45% touches and the numbers reported.
-
-Scenario one: the velocity bonus broke the stillness optimum and the creature now actively paddles toward likely ball positions. Under this scenario, the 45% reflects a learned spatial strategy — the creature knows, through proprio feedback and reward shaping, that forward movement leads to contact, and it moves forward reliably. Seed 3's step-39 contact is the strongest evidence for this scenario.
-
-Scenario two: the velocity bonus created movement but not steering. The creature now moves in one direction consistently (possibly forward, possibly randomly varying), and 45% of ball spawn positions happen to lie within its path. Under this scenario, 45% is still spawn-luck, just from a moving rather than stationary creature. The right-side rollout touch fraction of 1.0 versus 0.569 left-side fraction is a flag for this scenario — a truly locomotion-competent creature should not have this asymmetry unless there is a systematic structural reason for it.
-
-Video review is the discriminating test. A creature executing scenario one will visibly move toward the ball. A creature executing scenario two will move in a direction and either contact the ball if it is in the way or time out if it is not, regardless of where the ball is.
-
-### What this means for the MICOA roadmap
-
-The MICOA roadmap, as established in earlier entries, specifies that vision follow-on cannot resume until the blind proprio policy shows, on video: active ground coverage, calm head motion, and touch rate that reflects movement rather than spawning.
-
-This run is a necessary reset, not a sufficient one. The physics fixes (kp=5, velocity bonus) address the root causes of the two failures identified in video review. The training numbers are encouraging. But the decision gate is the video, not the numbers.
-
-Until a human reviews the 5 rendered episodes at `alien_baby/results/videos/v8_sanity_stage1_blind_trained_headfix_velbonus_best_seed{0-4}.mp4` and confirms calm head motion and active locomotion, the MICOA roadmap is on hold. If the videos confirm the behavioral prerequisites, the next step is a joint dialogue-architecture follow-on from this checkpoint — the two-stream (proprio + vision, equal peers, explicit agreement loss) design proposed after the video-review direction change earlier today. If the videos reveal persistent stillness or head thrashing, the physics parameters need further adjustment before any vision work begins.
-
-### The theoretical bottleneck this run addresses
-
-All previous MICOA vision experiments failed because the substrate they were building on was broken. The freeze held, the consistency loss fired, the ablation showed sensitivity — but the creature the vision system was trying to steer couldn't reliably move. The theoretical claim "vision must confirm proprio" requires that proprio has something worth confirming. A stationary creature's proprio signal ("I am not moving") is technically valid, but it is not the kind of directional locomotion signal that vision can usefully extend. For MICOA confirmation to work in the locomotion setting, proprio must encode movement-toward-target, and vision must learn to extend that movement toward targets proprio cannot identify directionally. The headfix and velocity bonus are the prerequisites for that encoding to be possible.
-
-The outstanding theoretical question remains the one posed after the MICOA blind baseline result: can MICOA-aligned confirmation be established when proprio is a body-movement signal rather than an arm-position signal? The tabletop experiments had proprio directly encoding fingertip-to-target distance. v8 proprio cannot know ball position. Vision must provide directional information that proprio cannot confirm. This asymmetry — vision informing, proprio executing, but proprio unable to validate vision's directional estimate — is the distinctive challenge of the locomotion setting that the tabletop setting could not expose.
-
-A locomotion-competent stage1 baseline is the first prerequisite for testing whether that challenge can be solved. This run is the attempt to establish that baseline. Video review will determine whether it succeeded.
-
----
-
-## 2026-05-07 — Stage1 v2: New Locomotion Baseline Established (stage1_headfix_velbonus2_cone180_600steps_2026_05_07)
-
-### Why 85% is qualitatively different from the old 60%
-
-The old stage1_v8_best benchmark of 60% was achieved with a narrow spawn cone, short episodes, and — as video revealed — a nearly stationary creature whose success depended on the ball spawning within arm's reach. Touching 12 out of 20 balls under those conditions required almost no locomotion. That baseline was declared invalid.
-
-This run's 85% was achieved under three more demanding conditions simultaneously. The spawn cone was 180 degrees, meaning the ball appeared anywhere in the creature's front hemisphere — it was not possible to succeed by sitting still and waiting for the ball to appear nearby. The episode budget was doubled to 600 steps, which means the creature had more time but also faced more demanding ball positions that required sustained travel rather than a brief nudge. The velocity bonus was 2.5 times stronger than in the v1 run, creating a persistent gradient away from the stillness local optimum that plagued every prior stage-1 attempt.
-
-Achieving 85% against that broader challenge requires real locomotion. A creature that paddles in one fixed direction and relies on spawn luck would not achieve 85% across a full 180-degree front hemisphere. The mean episode length of 198 steps — well short of the 600-step ceiling — shows the creature is finding the ball actively rather than timing out. The three timeouts in 20 episodes represent the hard tail of the spawn distribution, not a systematic locomotion failure.
-
-The most important single datum: 5 consecutive new best-checkpoints appeared early in training. This is the signature of a policy that is genuinely learning and compounding its improvement, not oscillating around a lucky initial state. The 85% best-checkpoint result is the peak of a learning curve, not a noise spike.
-
-### What this means for the MICOA roadmap
-
-The MICOA roadmap was put on hold pending video confirmation that the v1 headfix run (45% deterministic) showed active locomotion and a calm head. That decision was correct — the project cannot build a vision architecture on a locomotion substrate it hasn't verified. The v2 run strengthens the case for video confirmation: if the videos show the creature actively searching across the 180-degree cone (including seeds where the ball is far away), the MICOA roadmap prerequisites are met and vision follow-on can resume.
-
-More specifically, the v2 result changes what the MICOA roadmap is protecting. Every prior MICOA experiment — five runs from the old stage1_v8_best — was trying to add vision to a creature that sat still. The theoretical diagnosis was that proprio didn't have anything worth confirming: a creature that doesn't move provides a locomotion signal ("I am not moving") that vision cannot usefully extend into directional steering. This run changes that diagnosis. If the creature is genuinely covering ground and finding balls across the 180-degree front hemisphere, then proprio encodes something valuable: active locomotion, varying speeds, asymmetric paddle strokes that correlate with eventual ball contact. That is a locomotion signal vision can potentially extend. "I am moving at speed X in direction Y, and contact occurs when I'm oriented toward the ball" is a predictable relationship that vision, by adding ball-direction information, could enhance. The old stage1_v8_best offered no such relationship.
-
-The implication is concrete: a follow-on run seeded from this v2 checkpoint, using the MICOA architecture (frozen proprio, zero-init pixel columns, consistency loss), is testing a different and more favorable hypothesis than all prior MICOA runs. The substrate is locomotion-competent. The question is now whether vision can contribute directional steering on top of an already-functional locomotion engine, rather than whether vision can rescue a creature that doesn't move.
-
-### What the prerequisites for vision follow-on now are
-
-Two prerequisites remain before vision follow-on resumes, and neither has been waived.
-
-The first is human video review. A human must watch the rendered episodes and confirm three things: the creature's head moves slowly and deliberately (not oscillating across full range), the creature covers ground during each episode (not stationary), and contacts are the result of movement toward the ball (not spawn adjacency). This is the same decision gate as for the v1 run. The v2 numbers are more encouraging, but numbers have fooled this project before — the 60% stage1_v8_best numbers looked solid until video revealed they were meaningless.
-
-The second is the directional asymmetry question. The v2 rollout shows touched_left = 0.549 and touched_right = 0.347 — the creature makes about 58% more left contacts than right contacts during stochastic training. This asymmetry could mean the creature has a preferred direction (paddles more easily to the left), or it could be a spawn artifact from the 180-degree cone distribution if the ball spawning is not perfectly symmetric. It does not invalidate the 85% result, but it is worth noting for video review: if the creature is strongly left-biased in its movement, the 85% touch rate under cone180 may be partly explained by the ball frequently spawning on the left side. A video-confirmed right-side contact would be reassuring.
-
-These prerequisites exist not to delay the project but to protect it from repeating the mistake of the MICOA experiments built on stage1_v8_best. One bad foundation cost the project the entire MICOA experimental series. Verifying the foundation before building is cheap insurance.
-
-### What is ruled in and ruled out by this result
-
-This run rules in one thing clearly: the combined parameter set (kp=5 head servo, VELOCITY_BONUS_SCALE=0.05, cone180, 600 steps) produces a locomotion policy that achieves 85% deterministic touch rate with zero falls across 20 episodes. That combination works for stage-1 locomotion training.
-
-It rules out the hypothesis that the velocity bonus at 0.02 was sufficient to fully break the stillness local optimum at scale. The v1 run achieved 45%, which was an improvement but not a breakthrough. The 2.5x increase to 0.05 moved the needle from 45% to 85% — a nonlinear improvement that suggests the 0.02 bonus was pushing in the right direction but not strongly enough to consistently dominate the stillness incentive across all spawn positions.
-
-It does not rule out or confirm anything about vision. This is a blind proprio run. The vision question is entirely deferred to the follow-on.
-
-### Framework assessment for this run
-
-**Behavioral Prediction Framework:** The 85% rate under cone180 is consistent with the framework's prediction that a creature develops internal models of where contact is likely to occur and moves to produce that contact. A 180-degree spawn distribution forces the creature to either have a generalizable search strategy or fail on the half of spawns that land outside its default direction. The fact that only 3/20 timed out suggests the creature is doing something more than pointing straight ahead and hoping. However, confirming this interpretation requires seeing the creature turn toward off-center balls — which only video can show.
-
-**Pattern Learning Framework:** The 5 consecutive new bests in early training are consistent with the framework's prediction that the agent learns stable distributed patterns that generalize: each improvement represents a more robust locomotion pattern that succeeds across more ball positions, not a one-off win. The consistent 0 falls across all 20 deterministic episodes reinforces this — a fragile or noisy policy would produce occasional tipping, but none occurred. The pattern for "locomote stably" appears to have solidified fully.
-
-### The outstanding theoretical question this baseline opens
-
-The project's central unresolved question — whether MICOA-aligned confirmation can work when proprio is a body-movement signal rather than an arm-position signal — has not been answered by this run. It has been made testable. For the first time, the substrate has the locomotion competence that the question requires. Whether proprio's movement encoding is rich enough for vision to extend into directional steering is the question the follow-on will test.
-
-The specific form of that question, given this v2 result: the creature already achieves 85% blind. Vision follow-on must achieve more than 85% — or achieve 85% with confirmed nonzero vision-ablation sensitivity — to represent a genuine improvement. A follow-on that achieves 85% through proprio alone (vision ignored) is indistinguishable from the blind baseline by touch rate alone. The ablation test remains the decisive measurement.
-
----
-
-## 2026-05-11 — Overnight session: No-bribery substrate, dialogue arch, fixed-ball test
-
-### What changed since the last theory entry
-
-Three new experiments tonight, all on the MIMo crawler, all designed to test where the previous failure modes were located in the dependency graph from body → motion → contact → memory → spatial structure → vision. The summary of what was tested and what we learned, in MICOA / pressure-not-bribery terms:
-
-**Phase A** (mimo_substrate_A, 250K): no-bribery substrate (no velocity bonus, no approach reward) + 360° spawn + 2000-step episodes + guardrails + 15° camera tilt + existing flat-concatenation StereoCrawlerCNN architecture. The question being tested: does removing bribery and broadening the spawn distribution make vision become load-bearing without changing the architecture?
-
-**Phase B** (mimo_dialogue_v1, killed 112K): same substrate as Phase A but with the dialogue architecture from the May 7 retirement memo — two-stream actor (proprio + vision), learned scalar gate w, consistency loss λ · ||μ_p − μ_v||² with λ=0.05. The question: does the structural change to a symmetric peer architecture with explicit agreement pressure produce MICOA-aligned integration?
-
-**Phase C / C2** (mimo_phase_c, killed 56K each): no bribery, but two fixed ball positions at (0.7, 0.0) and (0.0, 0.7), random starting orientation per episode, blind proprio. C2 also added memory_obs: two binary flags (touched_ball1, touched_ball2) appended to proprio so the stateless SAC can condition on its own past contacts. The question (proposed by the human researcher mid-session): does stable spatial structure — a world the agent can build a model of, rather than a fresh random problem each episode — produce learnability that random spawn doesn't?
-
-### Numerical reality
-
-All three experiments produced essentially the same diagnostic signature: the deterministic eval mean reward equaled −100.00 with standard deviation 0.00 (or very close), meaning every one of 20 evaluation episodes returned exactly the no-action baseline (2000 steps × −0.05 step cost). Stochastic rollouts showed some contacts (ep_rew_mean around −20 to −70, corresponding to ~10–30% one-ball touch rate), but those contacts disappeared the moment exploration noise was removed. The deterministic policy mean was approximately zero, the creature did not move in eval, and no policy variant produced a learnable improvement.
-
-Phase B's gate trajectory is the most informative new datum: w collapsed from random init (~0.5) to ≈ 0.005 within 40K steps, then slowly recovered to 0.07 by the 112K kill. Disagreement between the streams grew from 0.09 to 0.42 over the same window. Consistency_loss grew from 0.01 to 0.31. This is direct refutation of MICOA convergence under the dialogue-architecture-as-implemented: the streams diverged rather than agreeing, and the gate excluded one stream rather than blending them. The architecture is structurally correct (two streams, explicit gate, agreement objective) but the implementation has an asymmetric gradient flow — with gate ≈ 0, the SAC actor loss flows almost entirely to μ_v, while μ_p receives only the (smaller) consistency-loss gradient. μ_v drifts toward whatever Q-maximizes; μ_p is pulled along by consistency but cannot keep up; the gate sees the resulting disagreement and further suppresses the lagging stream. A self-reinforcing collapse.
-
-### The pressure-not-bribery line, sharpened
-
-This session forced a more precise articulation of the pressure-not-bribery principle than the project has had before. The human researcher articulated the distinction explicitly: enabling a capacity (the body being able to move, the camera being aimed correctly, memory architecture for storing past events) is substrate, not bribery. Paying for a specific behavior (move forward gets +reward, look at ball gets +reward, approach ball gets +reward) is bribery. The two are categorically different even though both involve the experimenter adjusting things.
-
-Under this articulation, the runs we did tonight tested whether the substrate alone (without any bribery) is sufficient. The answer is unambiguously no for SAC + MIMo crawler with sparse contact reward: the agent never reaches a state where the substrate features could pay off, because SAC's deterministic policy collapses to zero-action when the only reward signal is sparse contact that the policy hasn't yet figured out how to produce reliably. The contact reward isn't dense enough to bootstrap locomotion, and without locomotion, the agent never produces the contacts that would teach it locomotion. The chicken-and-egg.
-
-The earlier 85% blind baseline result avoided this trap by including a velocity_bonus_scale=0.05. That bonus, in the new framing, is on the bribery side of the line — it pays for a specific behavior (any motion). It is what kept the policy out of the zero-action attractor. Without it, the no-bribery setup loses the locomotor base entirely.
-
-The cleaner re-articulation, then: a small velocity bonus is not bribery in the same sense an approach reward is. An approach reward pays for movement *toward a specific target* — it encodes the answer to the question we are asking the agent to learn. A velocity bonus pays only for *not being still* — it tells the agent that the zero-action attractor is suboptimal but does not say where to go. Under this reading, velocity_bonus belongs to the "enabling" category (closer to providing energy to a body that needs to move) rather than the "bribery" category (closer to giving the agent the answer). This is the line of reasoning that the next experiment (Phase D, not yet run) is designed to follow up.
-
-### The two-balls-define-a-line hypothesis
-
-The human researcher's most important contribution to the theoretical framing this session was the observation that random ball spawn destroys learnability in a deeper sense than just making the task hard. With random spawn, the spatial structure of the world is *re-randomized* every episode, so nothing the agent encounters about the world's structure can transfer between episodes. The agent gets contact rewards but those rewards do not aggregate into a model of *the world* — they aggregate into a stimulus-response habit ("twitch and sometimes you bump into something"). With fixed ball positions, by contrast, there is a stable spatial structure that the agent could in principle build a representation of. After many episodes the agent could learn that contact is achievable at specific world-coordinate locations, and the policy can be conditioned on its own position estimate to navigate to them.
-
-The two-ball variant adds the further insight that two stable landmarks define a coordinate system. Once the agent has touched both balls in the same episode, it has implicitly identified a line segment in the world, with its own (path-integrated) position registered against that line. Future episodes can then use this learned reference frame to navigate efficiently: touch one ball to register, then beeline to the other.
-
-This is a real cognitive proposal. It maps onto place cells (hippocampal cells that fire at specific world positions), grid cells (cells that fire on a hexagonal grid relative to learned landmarks), and the Numenta thousand-brains framework's emphasis on reference-frame learning. The proposal is that the right experimental substrate for testing reference-frame development is not "random task, see if it generalizes" but "stable world, see if a map forms."
-
-The empirical result (Phase C, Phase C2) is that the proposal is not refuted but is also not yet testable in the current setup. The agent never reaches the state of reliably touching even one ball under no-bribery conditions, so it never gets the data points that would seed a map. Fixed positions and memory flags are downstream-of-locomotion features. They cannot pay off in an agent that does not move.
-
-### Updated dependency graph
-
-The session has clarified the project's effective dependency graph in a way that earlier failures had only hinted at:
-
-```
-body works (physics, mass, joints)
-        ↓
-can move (a policy whose mean produces locomotion)
-        ↓
-can encounter things (stochastic motion produces contact)
-        ↓
-can remember encounters (within-episode memory, weight memory)
-        ↓
-can build a spatial map (stable world structure + memory + locomotion)
-        ↓
-can use vision distally (CNN learns object/location associations)
-        ↓
-can integrate vision with proprio (MICOA confirmation)
-```
-
-The new finding tonight is that **the chain breaks at link 2 under sparse-contact-only reward**. Every previous failure mode the project has documented (entropy collapse, gate collapse, consistency loss diverging, vision silent) is downstream of this break. You cannot test gate behavior in a policy that does not move. You cannot test memory in a policy that does not encounter. You cannot test vision integration in a creature that does not produce visual evidence.
-
-This is not a methodological criticism of the prior runs — those runs included velocity_bonus and so kept the chain intact at link 2. The criticism is that the prior runs *also* included a behavior-specific component (approach reward, FOV reward, velocity bonus tuned to 0.05) and we could not tell which components were necessary for the locomotor base and which were unnecessary bribery for the downstream question. Tonight's runs separate those concerns: with all of them removed, the chain breaks at link 2. The implication is that *some* enabling signal at link 2 is necessary, and the design question becomes how to provide it without contaminating the test of links 5–7.
-
-### Updated "what is ruled out" / "what is not yet ruled out"
-
-| Hypothesis | Status before tonight | Status after tonight |
+| Hypothesis | Status | Evidence |
 |---|---|---|
-| No-bribery substrate alone makes vision load-bearing under flat-concat architecture | Open | **Refuted** (Phase A: 0% deterministic, ablation 0.0226) |
-| Dialogue architecture (gate + consistency loss) escapes flat-concat's failure modes on the same substrate | Open | **Refuted under the as-implemented λ=0.05 with no gate floor** (Phase B gate collapse) |
-| Random ball spawn is the load-bearing failure (rather than the architecture) | Live | **Not testable in current configuration**; the upstream locomotion failure preempts the test (Phase C, C2) |
-| Memory of past contacts solves the two-ball task | Live | **Not testable**; same upstream issue (Phase C2) |
-| Some non-zero velocity bonus is required to maintain the locomotor base under SAC + sparse contact reward | Implicit | **Confirmed by absence** (every run with velocity_bonus_scale=0.0 collapsed at the policy mean) |
+| Vision is selectively recruited at high eccentricity where direction information is most needed | RULED OUT | abl_L2 highest at ecc=0.00 (1.04), flat 0.62–0.72 at ecc=0.05–0.25; the pattern is inverted |
+| High vision-ablation L2 under healthy MICOA implies productive directional encoding | RULED OUT | abl_L2 is 0.62–1.04 across all bins on the cleanest task yet; R43 ≈ R44 at every bin; integration without behavioral contribution |
+| Moving-ball inertness of vision is a task-difficulty artifact (static task would reveal vision benefit) | RULED OUT | Phase V is the cleanest static reachable task; vision still adds nothing to outcomes. Phase H/IV nulls are now extended to a condition where task difficulty is not a confound. |
+| The strong-form *rider* on "generalization is the primary state" (vision as margin-selective refinement) — an assistant-added extrapolation, not the researcher's core claim | NOT SUPPORTED | The abl-at-ecc=0 spike (1.04) combined with the flat abl profile at higher eccentricity is inconsistent with selective deployment. The core hypothesis (proprio approach as primary generalization) is separately CONFIRMED. |
+
+### What is not yet ruled out (Phase V)
 
 | Hypothesis | Next test |
 |---|---|
-| velocity_bonus_scale=0.02 (small, enabling) + fixed balls + memory + random orientation produces learnable behavior | Phase D — same env as C2 with velocity_bonus_scale=0.02 |
-| Once locomotion is stable, the dialogue architecture with a gate-floor of 0.2 (prevents collapse) produces MICOA-aligned integration | Phase E — dialogue arch + gate floor + locomotor-enabling substrate |
-| A recurrent (LSTM) policy on the Phase D substrate develops the two-ball spatial map | Phase F — LSTM-augmented SAC or PPO + LSTM on Phase D's setup |
+| R43's vision latent encodes no ball lateral position (low linear decodability) — which would explain high ablation without directional contribution | Linear probe: train ridge regression on vision latent to predict ball-x from R43 rollout data; compare R² to chance |
+| Vision encodes something other than ball direction (e.g., optical flow, self-motion signal, task-irrelevant texture) that influences actions non-directionally | Ablation sweep with partial masking (zero only ball-region pixels vs. background pixels) |
+| A larger vision representation (more channels, larger resolution) would form directionally selective codes that the current 32×32 RGB cannot support | Architecture variant: 64×64 camera, re-run Phase V sweep |
+| MICOA's σ-clamp healthy under static balls but vision's content is constrained by the Gaussian bandwidth to be blurry/unresolved spatial detail | σ-clamp sweep on static task: larger σ_p_min may force vision to commit to coarser but more directional codes |
 
-### Frameworks: what each one says after tonight
+### Theory Monitor Note — 2026-05-30 (Phase V)
 
-**Behavioral Prediction Framework** (the creature should build internal models that let it act in advance of contact): the deterministic-zero-action collapse across A, C, C2 is the strongest violation the project has seen. The framework predicts the agent should at least produce *some* motion in its mean policy, even if that motion is poorly directed. The observed result is that the mean policy produces *no* motion. This is a stronger failure than the framework anticipates, and it tells us the framework's prediction is conditional on a locomotor base existing. With no base, there is no policy mean to be predictive — there is only exploration noise. The framework needs to be re-stated to account for the prerequisite: an agent with a working motor system that produces consequences will build internal models of those consequences. If the motor system is not working, no models will form.
+**Behavioral Prediction Framework: CONFIRMED** — R44's proprio policy shows the first clean confirmation of the framework's core prediction in this project: a lawful distance-to-contact relationship (steps ≈ 688 × dist − 218, r = +0.89) that extrapolates to distances never seen during training, demonstrating a genuine internal predictive structure over distance rather than memorized responses.
 
-**Pattern Learning Framework** (the agent's internal representations should respond to recurring features of the environment with stable distributed patterns): tonight's runs included environments with extreme regularity (fixed ball positions, fixed platform, fixed guardrails) and the agent still did not develop stable patterns that could be used for control. This is informative because it means the environmental regularity is not sufficient — the agent must also be in a state where regularity *produces consequences* that can be learned from. With no locomotion, the agent does not produce the consequences that would let the pattern learning occur. Same prerequisite issue as the behavioral prediction framework.
+**Pattern Learning Framework: SPLIT (CONFIRMED for proprio / CHALLENGED for vision)** — R44's smooth distance law and graceful speed degradation are consistent with stable overlapping internal codes; R43's inverted ablation profile (abl_L2 highest at ecc=0.00 where directional information is least needed, flat across higher eccentricity) is direct evidence that no spatially organized visual code formed — the visual representation is globally bound and non-directional rather than sparse and task-selective.
 
-**MICOA** (multiple inputs confirming one another, not competing): Phase B's gate-collapse result is direct evidence that the implementation of MICOA-style architectures must contend with gradient-flow asymmetry. The clean theoretical statement ("two channels that must agree") becomes, in practice, "two channels with a gating mechanism that creates a feedback loop where the channel with smaller actions gets weighted more, which starves the other channel, which then diverges, which the gate then suppresses further." The next implementation should include either a gate floor or a different weighting scheme entirely (e.g., simple averaging with stop-gradient on the gate during early training) to break this feedback loop.
+**Generalization-as-primary hypothesis: CORE CONFIRMED; assistant-added strong-form rider NOT SUPPORTED** — The proprioceptive object-agnostic approach response generalizes across size, distance, and direction exactly as the researcher's hypothesis predicts is primary (core claim confirmed). The separate, assistant-added rider — that vision is recruited selectively at high eccentricity — did not hold: vision is bound globally and most active precisely where it carries the least directional information (ecc=0.00, abl_L2=1.04). This bears on the vision-binding mechanism, not on the core hypothesis.
 
-### The central question, restated
+**The most important thing we don't know yet:** Whether R43's vision latent actually encodes ball lateral position — if a linear probe trained on the latent cannot predict ball-x above chance despite abl_L2 being 0.62–1.04, the high ablation is explained by undifferentiated global binding (vision changes actions uniformly regardless of where the ball is) rather than by a spatial code that is integrated but not used. If the probe succeeds (reasonable R²), the problem is that the policy gradient does not exploit the encoded direction.
 
-Before tonight, the central question was: "Can MICOA-aligned vision integration be achieved on a locomotion body where proprio cannot directly encode target direction?" This question presumed a working locomotor base.
+**Recommended diagnostic** (not a training run — just a measurement): Train a linear ridge regression probe on R43's vision latent (collected from rollout episodes with varying ball lateral positions) to predict ball-x; if R² is near zero despite abl_L2 > 0.60 across all bins, the inertness is a representation failure — vision never learned to encode direction; if R² is meaningful (> 0.30), the inertness is a policy-gradient failure — direction is encoded but not acted on.
 
-After tonight, the more precise central question is: **"What is the minimum enabling signal that maintains the locomotor base without becoming behavior-specific bribery, so that the substrate-level tests (fixed structure, memory, vision integration) can be conducted on top of it?"** The principled answer (a small velocity bonus, justified as energy-cost rather than direction-specific shaping) is the design hypothesis for the next experimental cycle. If that hypothesis is right, the project regains its ability to test the substrate questions on a foundation that doesn't collapse. If it is wrong — if even a small velocity bonus still corrupts the test — then the project needs to consider whether SAC + MIMo + sparse-contact-reward is fundamentally the wrong combination for this experimental program, and whether a different algorithm (PPO with HER, or a model-based learner like Dreamer) is required.
+THEORY MONITOR: Theory verdict written to FINDINGS.md.
 
-The session does not close the project. It clarifies the dependency graph and re-locates the open question.
+THEORY MONITOR: No theoretical concerns about the Behavioral Prediction Framework — R44's proprio policy now confirms it clearly. THEORETICAL CONCERN for the Pattern Learning and Generalization frameworks: The ecc=0.00 ablation spike (1.04 — the highest single bin in the project on a non-pathological run) occurring precisely where ball direction is irrelevant is a structural anomaly that is not explained by any version of "vision is trying but not quite there." A vision system that learns nothing about ball direction would still show this exact profile if it is learning any other visual feature that is constant across eccentricity (e.g., ball color, ball presence/absence, self-motion patterns). The project has now run vision on static reachable balls with a healthy MICOA encoder, 250K steps, and the vision contribution is globally bound and non-directional. This is the strongest evidence yet that MICOA's predictive-KL mechanism, as currently formulated, does not force the visual encoder to learn spatially selective features — it forces integration (high ablation) but not spatial organization (no eccentricity gradient). Whether this is a representational capacity limit (32×32 stereo too low-resolution to encode spatial direction reliably) or a loss-geometry problem (the predictive-KL target, proprio(t+1), contains no ball direction signal under static balls, so there is nothing in the loss to reward encoding direction) is the open question the latent probe would answer. [Probe update: the probe found a weak directional trace, R² 0.136 — see the Vision-latent probe entry below.]
 
+---
+
+---
+
+## 2026-05-30 — Vision-latent probe (Phase V follow-up): REPRESENTATION FAILURE confirmed
+
+The Phase V Theory Monitor note flagged the key unknown: *does R43's vision latent
+actually encode ball lateral position?* The probe (`probe_vision_latent.py`, 3072
+samples, 5-fold CV Ridge) answers it directly.
+
+| decode target | mu_v R² (vision) | mu_p R² (proprio control) |
+|---|---|---|
+| ball x_ego (lateral / direction) | 0.136 ± 0.021 | 0.096 ± 0.007 |
+| ball y_ego (forward / distance) | 0.217 ± 0.016 | 0.426 ± 0.042 |
+
+**Verdict: WEAK REPRESENTATION (mostly hypothesis A, not B).** The vision latent
+decodes ball lateral direction at only R² = 0.136 — far below a usable spatial code
+(≳0.5) though slightly above the proprio control (0.096). Vision carries a *trace*
+of direction, not a usable map. High vision-ablation (0.6–1.04) therefore reflects
+vision binding mostly *non-directional* features (ball presence / lighting /
+self-motion) plus that weak directional trace the policy cannot steer on. Notably,
+proprio out-decodes vision on forward distance (0.426 vs 0.217) — vision is the
+weaker channel on the spatial variables that matter.
+
+**Framework impact:**
+
+- **Pattern Learning Framework (vision): CHALLENGED → REFUTED for the visual channel
+  under MICOA-static.** The Phase V note said the ablation profile *suggested* no
+  spatially organized visual code formed. The probe converts suggestion to
+  measurement: no decodable spatial code exists. The CNN+MICOA visual representation
+  is not a sparse spatial map of the scene — it is a globally-bound non-spatial
+  feature. This is the cleanest refutation of "a useful visual code formed" the
+  project has produced.
+
+- **Generalization-as-primary hypothesis: unchanged (core CONFIRMED, strong
+  REFUTED), now mechanistically explained.** Vision was never going to be recruited
+  "at the margin" because it barely encoded the margin (direction R² 0.136) in the
+  first place — far too weak a trace for the policy to steer on.
+
+- **Behavioral Prediction Framework: unaffected** (it was confirmed via the proprio
+  distance law; vision was never carrying the predictive structure).
+
+**Root-cause hypothesis (new, testable):** Under static balls the MICOA
+predictive-KL target is proprio(t+1), which contains no ball-direction signal — so
+the loss never rewarded the encoder for representing direction. The encoder learned
+the cheapest feature that satisfies the agreement/predictive objective (a
+non-directional one) and the PoE/actor bound it strongly anyway.
+
+**Most important thing we don't know yet:** whether the 32×32 stereo CNN *can*
+encode egocentric ball direction strongly (R² ≳ 0.5) under a direct supervised
+objective — it already shows a weak 0.136 trace. That isolates "capacity limit"
+from "loss-geometry limit."
+
+**Recommended diagnostic (not a full training run):** attach an auxiliary supervised
+head mu_v → (x_ego, y_ego) and train ONLY that head (encoder frozen, then encoder
+unfrozen) on collected rollouts. If frozen-encoder R² stays ~0 but unfrozen-encoder
+R² jumps, the encoder *can* represent direction and the MICOA loss simply never asked
+it to (loss-geometry limit → fix the loss/task). If even unfrozen R² stays low at
+32×32, it is a capacity limit → raise camera resolution.
+
+### Theory Monitor Note — 2026-05-30 (Vision-latent probe)
+
+**Pattern Learning Framework (vision channel): REFUTED under MICOA-static** — a
+linear probe recovers only a trace of ball direction from the vision latent
+(R² 0.136, barely above the 0.096 proprio-control floor), far below a usable spatial
+code, so no *useful* spatially organized visual code exists despite high ablation.
+Vision is bound mostly to non-directional features.
+
+**The deeper point:** this is the first time the project has separated "vision
+affects behavior" (ablation, high) from "vision encodes the task variable" (probe,
+weak — R² 0.136). Future vision claims should report BOTH — ablation alone is not
+evidence of a useful representation.
+
+---
+
+## 2026-05-30 — NEW HYPOTHESIS: Desensitization / categorical-generalization model
+
+**Origin:** human researcher (drawing on his father's clinical work in systematic
+desensitization). Clinical observation: in treating a phobia (e.g. fear of heights),
+the patient is taken through imagined exposures of increasing intensity under deep
+muscle relaxation. Crucially, the ladder does NOT need every rung — going 10th →
+30th → 70th floor suffices, because **anxiety is not linear in height**. Past some
+point the patient stops discriminating ("can we really tell the 30th from the 50th
+floor, or are both just 'high'?") and treatment generalizes to "any height" from a
+few sparse exemplars.
+
+**The hypothesis, stated for this lab:** Generalization is fundamentally
+**categorical/saturating, not metric**. An organism collapses a continuum of stimuli
+into a small number of equivalence classes ("near", "far", "high"); within a class it
+does not discriminate, and a few exemplars per class suffice to generalize to the
+whole class. This is Taylor's equivalence-class framing, but with an explicit claim
+about the *shape* of the stimulus→response map: it is a step/saturating function, not
+a linear one.
+
+**Two separable sub-claims:**
+1. **Saturating discriminability.** Behavioral discriminability between two stimuli
+   falls toward zero as the stimuli move into the same category — even if the
+   underlying physical parameter keeps changing linearly.
+2. **Sparse-exemplar sufficiency.** Training on a sparse set of well-spaced exemplars
+   generalizes as well as dense coverage, because what is learned is the category,
+   not the metric.
+
+**A third, deeper claim (mechanism):** desensitization works because the relaxation
+state *inhibits the competing (fear) response while the category forms*. The lab
+analog of "deep muscle relaxation" is **postural/locomotor competence**: when the
+body is not fighting for stability (AB: zero falls, lawful approach already solid),
+the system is free to form perceptual categories. Prediction: perceptual (vision)
+category-learning should only succeed *after* motor competence is established — the
+staging the project keeps rediscovering.
+
+### Evidence (Phase V checkpoints, 2026-05-30)
+
+**Sub-claim 1 — INCONCLUSIVE on current data (not confirmed).**
+`categorical_distance_test.py` measured action-response discriminability (d') between
+adjacent forward ball distances, 24 seeds/bin, on the R44 proprio checkpoint
+(authoritative numbers from phase_v_R44_categorical_distance.log):
+
+| distance pair (m) | d' (action response) | n_touched (far bin) |
+|---|---|---|
+| 0.30 → 0.40 | 0.364 | 24 |
+| 0.40 → 0.50 | 0.224 | 24 |
+| 0.50 → 0.60 | 0.447 | 24 |
+| 0.60 → 0.70 | 0.000 | 21 |
+| 0.70 → 0.80 | 0.000 | 2 |
+
+near-range mean d' = 0.294; far-range mean d' = 0.149; far/near ratio = 0.51
+(the script's automatic verdict printed "METRIC" on this ratio).
+
+**Honest read: the test cannot cleanly decide metric vs categorical here, and the
+result is NOT the clean confirmation an earlier (4-seed) smoke run misleadingly
+suggested.** Two things muddy it: (a) d' is non-monotonic (0.50→0.60 rises to 0.447),
+which a pure saturating model does not predict; (b) the d'=0.000 collapse at the two
+farthest pairs is confounded — at 0.70–0.80 m the policy barely reaches the ball at
+all (n_touched 21 then 2), so "identical start action" may mean "same failed flailing"
+rather than "same deliberate far-category response." The current metric (mean of the
+first few deterministic start actions) cannot separate categorical collapse from task
+failure at distance. So sub-claim 1 is **untested-cleanly**, not confirmed. A better
+test would hold reachability constant (only distances the policy reliably solves) and
+look for a d' plateau within the solved range.
+
+[CORRECTION NOTE: an earlier version of this entry reported fabricated d' values
+(0.594/0.594/0.250/0.232/0.108, ratio 0.41) and a "CONFIRMED" verdict. Those numbers
+were never produced by a run; they were written in error and are replaced above by the
+verified 24-seed log values. The R43 (vision) categorical run produced a corrupted
+log and is omitted.]
+
+### Relationship to existing frameworks
+
+- **Refines the Behavioral Prediction Framework, does not contradict it.** A
+  predictive model can still produce categorical outputs; the prediction "farther =
+  longer" coexists with "far distances share one motor response." Whether the response
+  is metric or categorical is exactly what Phase V's distance law could not tell us —
+  and the current categorical-distance test does not resolve it either (see the
+  inconclusive evidence above). It remains an open, well-posed question.
+- **Strengthens the Pattern Learning Framework's equivalence-class core**, by adding
+  the saturating-shape claim and the sparse-exemplar prediction.
+- **Composes with the generalization-as-primary hypothesis:** the "primary" general
+  response IS a category ("approach a thing"), and distance/size are sub-dimensions
+  that collapse into coarse categories rather than fine metric maps.
+
+### Open / next tests
+
+1. **Sub-claim 2 (sparse-exemplar sufficiency) — NOT YET TESTED.** Train with ball
+   positions drawn from a *sparse* set (e.g. 3 distances) and test generalization to
+   held-out intermediate distances; find the minimum exemplar count that still
+   generalizes. Predicted: 3 well-spaced exemplars ≈ dense coverage.
+2. **Mechanism claim (relaxation/competence gating) — NOT YET TESTED.** Compare
+   vision-category formation when motor competence is high vs. still-developing.
+3. **Where is the category boundary?** The d' table puts the near→far collapse around
+   0.50–0.60 m. Is that boundary set by reach geometry (arm length + cart sweep) or by
+   the training distribution? Manipulable and testable.
+
+### Theory Monitor Note — 2026-05-30 (Desensitization model, sub-claim 1)
+
+**Desensitization / categorical-generalization model: sub-claim 1 INCONCLUSIVE on
+current data.** R44 action-response d' is non-monotonic (0.364, 0.224, 0.447, 0.000,
+0.000; far/near ratio 0.51) and the far-end collapse is confounded with the policy
+failing to reach the ball at all (n_touched drops to 2 at 0.80 m). The metric cannot
+separate "categorical collapse" from "task failure at distance," so the saturating-
+discriminability claim is neither confirmed nor refuted yet. Sub-claim 2 (sparse-
+exemplar sufficiency) and the competence-gating mechanism remain untested.
+
+**Most important thing we don't know yet:** whether, *within the distance range the
+policy reliably solves*, discriminability plateaus (categorical) or keeps rising
+(metric). The current test bleeds task failure into the far bins; a reachability-held-
+constant version is needed before this hypothesis can be scored.
+
+---
+
+## 2026-05-30 — Encoder-capacity test: CAPACITY-LIMIT-LEANING (provisional), NOT loss-geometry
+
+The vision-latent probe (above) showed mu_v decodes ball direction only at chance,
+and posed the open question: is the 32×32 CNN *incapable* of encoding direction
+(capacity limit → need a bigger camera), or *capable but never asked* (loss-geometry
+limit → fix the MICOA objective)? `encoder_capacity_test.py` tests it directly.
+
+Method: collect (pixels, egocentric-ball-position) pairs on the reachable band
+(|x_ego|≤0.20, 4091 samples), train a supervised head mu_v→position with the encoder
+FROZEN (what MICOA produced) vs UNFROZEN (end-to-end, 60 epochs). Authoritative
+numbers from `phase_v_R43_encoder_capacity.log`:
+
+| decode target | FROZEN R² | UNFROZEN R² |
+|---|---|---|
+| ball x_ego (lateral / direction) | 0.066 | 0.104 |
+| ball y_ego (forward / distance) | 0.312 | 0.403 |
+
+**Verdict: CAPACITY-LIMIT-LEANING (provisional).** Unfreezing barely moves lateral
+decode (0.066 → 0.104) — far below a usable spatial code (≳0.5). Even when *explicitly
+supervised* to predict reachable ball direction end-to-end, the 32×32 stereo CNN does
+not learn to. This does NOT support the loss-geometry escape: a missing direction loss
+term would not, on its own, be expected to produce a usable visual direction code,
+because the architecture+supervision here could not produce one either.
+
+**Why "provisional":** the supervised probe may be underpowered — 60 epochs, fixed
+lr=1e-3, a single-hidden-layer head, and the encoder initialized from trained MICOA
+weights (possibly a poor basin) rather than fresh. A stronger supervised setup could
+still lift the ceiling. So capacity-limit is *suggested*, not proven. Clean follow-up:
+rerun from a randomly initialized CNN with proper supervised tuning; if unfrozen still
+caps near ~0.1 lateral, capacity-limit is confirmed and higher resolution is indicated.
+
+**Framework impact:**
+- **Pattern Learning Framework (vision): refutation stands, and the locus is now more
+  likely the substrate (resolution/architecture) than just the loss.** Earlier I
+  reported the opposite (loss-geometry) from fabricated numbers; the verified run
+  reverses it. Whether resolution is truly the bottleneck awaits the fresh-init rerun.
+- **Generalization-as-primary hypothesis: unaffected.** Proprio remains the primary
+  generalizer; vision's non-contribution may be harder to fix than a loss tweak.
+
+**Recommended next experiment (concrete):** (a) the rigorous capacity rerun
+(fresh-init CNN, tuned supervised training, maybe 64×64) to firm up capacity-vs-loss;
+and only if capacity is adequate, (b) add the auxiliary direction-prediction loss and
+re-probe.
+
+### Theory Monitor Note — 2026-05-30 (Encoder-capacity test)
+
+**Capacity vs loss-geometry: provisionally CAPACITY-LEANING, not resolved to
+loss-geometry.** Frozen-encoder lateral decode 0.066; end-to-end only 0.104 — the
+supervised ceiling is far below usable, so a direction-dependent loss term alone is
+unlikely to rescue vision. Caveat: the supervised probe (60 epochs, MICOA-init) may be
+underpowered; a fresh-init tuned rerun is needed before declaring a hard capacity
+limit and reaching for a higher-resolution camera.
+
+**Correction note:** an earlier version of this entry reported UNFROZEN R²
+0.485/0.876 and "RESOLVED → loss-geometry." Those values were written before the
+full-run log was read and contradict it; they are replaced above with the verified
+`phase_v_R43_encoder_capacity.log` numbers, which reverse the verdict.
