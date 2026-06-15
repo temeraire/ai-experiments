@@ -357,6 +357,16 @@ def train(args):
         else:
             policy_kwargs = dict(net_arch=[256, 256])
 
+        # Phase W: DroQ critic regularization.
+        # When --droq is set, inject dropout_rate into policy_kwargs so
+        # DroQSACPolicy can pass it through to DroQCritic. Actor unchanged.
+        use_droq = getattr(args, "droq", False)
+        if use_droq:
+            from alien_baby.crawler.droq_policy import DroQSACPolicy
+            policy_kwargs["dropout_rate"] = getattr(args, "dropout_rate", 0.01)
+            print(f"  DroQ: dropout_rate={policy_kwargs['dropout_rate']}  "
+                  f"utd={getattr(args, 'utd', 4)}")
+
         sac_kwargs = dict(
             learning_rate=args.learning_rate,
             buffer_size=args.buffer_size,
@@ -371,6 +381,10 @@ def train(args):
             seed=args.seed,
             device="mps" if args.mps else "cpu",
         )
+
+        # Phase W: higher update-to-data ratio (gradient_steps per env step).
+        if use_droq:
+            sac_kwargs["gradient_steps"] = getattr(args, "utd", 4)
 
         if args.her:
             # HER: dict obs → MultiInputPolicy; relabel failed transitions
@@ -387,6 +401,8 @@ def train(args):
                              micoa_pred_beta=args.micoa_pred_beta,
                              micoa_pred_horizons=args.micoa_pred_horizons,
                              **sac_kwargs)
+        elif use_droq:
+            model = SAC(DroQSACPolicy, train_env, **sac_kwargs)
         else:
             model = SAC("MlpPolicy", train_env, **sac_kwargs)
 
@@ -641,6 +657,19 @@ if __name__ == "__main__":
                              "ball gets a per-episode random heading and integrates "
                              "pos += vel * dt each env step, bouncing off platform edges. "
                              "Ball velocity is NOT exposed in proprio.")
+    # Phase W: DroQ critic regularization flags (all default OFF — existing runs bit-identical)
+    parser.add_argument("--droq", action="store_true",
+                        help="Phase W: enable DroQ critic regularization. Adds LayerNorm + "
+                             "Dropout after each hidden layer in the Q-networks (actor untouched). "
+                             "Combines with --utd for a higher update-to-data ratio. "
+                             "Default OFF — all existing runs are bit-identical without this flag.")
+    parser.add_argument("--dropout-rate", type=float, default=0.01,
+                        help="Phase W: Dropout rate for DroQ critic (default 0.01). "
+                             "Ignored unless --droq is set.")
+    parser.add_argument("--utd", type=int, default=4,
+                        help="Phase W: update-to-data ratio — gradient steps per env step "
+                             "(maps to SAC gradient_steps). Default 4. "
+                             "Ignored unless --droq is set.")
     parser.add_argument("--force-dummy-vec-env", action="store_true",
                         help="Force DummyVecEnv (single-process) even without --vision. "
                              "Used for controlled comparisons against vision runs (which must "

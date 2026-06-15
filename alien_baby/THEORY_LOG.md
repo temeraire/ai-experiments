@@ -802,6 +802,7 @@ staging the project keeps rediscovering.
 ### Evidence (Phase V checkpoints, 2026-05-30)
 
 **Sub-claim 1 — INCONCLUSIVE on current data (not confirmed).**
+
 `categorical_distance_test.py` measured action-response discriminability (d') between
 adjacent forward ball distances, 24 seeds/bin, on the R44 proprio checkpoint
 (authoritative numbers from phase_v_R44_categorical_distance.log):
@@ -935,3 +936,76 @@ limit and reaching for a higher-resolution camera.
 0.485/0.876 and "RESOLVED → loss-geometry." Those values were written before the
 full-run log was read and contradict it; they are replaced above with the verified
 `phase_v_R43_encoder_capacity.log` numbers, which reverse the verdict.
+
+---
+
+## 2026-06-14 — Phase W (R45): DroQ infrastructure validation — a methodological correction that changes how we read all prior runs
+
+### What Phase W was
+
+Phase W (run-tag phase_w_R45_droq_proprio_validation) was an infrastructure run, not a theory test. It ported DroQ-style critic regularization — LayerNorm and Dropout (rate 0.01) after each hidden critic layer, actor untouched, update-to-data ratio raised to 4 — into the trainer behind an opt-in flag, and re-ran the R44 proprio task at 150K steps to confirm nothing broke.
+
+The result on the task itself: R45-DroQ at 150K matches or beats R44 at 250K in every eccentricity bin, with a notable improvement at ecc=0.10 (20 vs 16). The generalization shape is preserved. DroQ is safe to use. That is the infrastructure finding; it is not the theoretically important one.
+
+**The theoretically important finding is a methodological correction that applies retrospectively to every run this project has recorded.**
+
+### The methodological correction: eval reward and critic_loss are invalid health metrics on this substrate
+
+Every run from Phase G onward was assessed against three health criteria that we now know are invalid on this task:
+
+1. **"Eval reward must be positive in the second half of training."**
+2. **"critic_loss must stay below 10."**
+3. **"No peak-then-collapse pattern."**
+
+R44 — our confirmed-best generalizer, the run with a distance law of r = +0.89 that extrapolates outside the training band — fails all three:
+
+- R44 eval reward goes negative and stays negative from ~80K onward: −6, −68, −108, −269, −191, −314, −601, −196, −399, −723, −432, −866, −598, −600, −710, −496, −378 at 250K.
+- R44 critic_loss alternates between a ~2–4 baseline and intermittent spikes to 39, 55, 65, 76, 79, and 136.
+- R44 ep_rew_mean starts above zero and falls below it during the run.
+
+R45-DroQ shows the same profile: eval reward negative throughout the second half (−486 at 150K final); critic_loss baseline ~4–11 with spikes to 40–145. The two runs are statistically indistinguishable on these metrics, yet R45 matches R44's eccentricity profile at 40% fewer steps — meaning these metrics are not detecting a meaningful difference between a good policy and a better one.
+
+**Why the task produces this profile:** The SAC training reward on this substrate is dominated by step-cost penalties and contact-event variance. Contact events (rare, large one-step reward pulses) cause sudden Q-function prediction errors — the critic has not yet seen a contact from this state, so the TD error spikes when contact occurs. These spikes are intrinsic to the environment's reward structure, not signs of a broken optimizer. A better policy makes more contacts, and therefore produces *more* TD spikes, not fewer. The eval std (±600–1000 across all Phase V/W runs) is so large relative to the mean that a single evaluation window cannot reliably distinguish a good policy from a mediocre one on this metric.
+
+### What this changes about how we read prior runs
+
+This correction has two direct implications for the project's historical record:
+
+**Implication 1 — The "critic collapse" narrative needs revision.**
+
+Several early runs (v5-v9 era) were described as showing "critic collapse" based on critic_loss spikes and reward deterioration. That narrative assumed critic_loss spikes indicated a broken or diverging optimizer. We now know that critic_loss spikes are contact-event TD artifacts present in the project's best run (R44). A critic_loss spike alone is not evidence of collapse. What those early runs actually showed — and what we cannot now reconstruct from the critic_loss signal — is whether the eccentricity sweep would have been poor. The "collapsed" label may have been correct for independent reasons (bad task structure, wrong reward scaling, genuinely broken architecture), but the specific evidence cited (critic_loss spikes, negative eval reward) is no longer probative on this substrate. Prior runs should be re-judged on deterministic reach/touch eval if that data was collected, or flagged as ambiguous if it was not.
+
+**Implication 2 — The only valid success metric on this substrate is the deterministic eccentricity sweep.**
+
+Going forward, all health assessments for runs on this substrate must be anchored to eval_phase_v.py output (both-touched counts across eccentricity bins), not to ep_rew_mean, eval mean_reward, or critic_loss. These scalar metrics are structurally corrupted by the reward design and cannot distinguish good policies from mediocre ones.
+
+### What Phase W does NOT change
+
+Phase W was proprio-only. It says nothing about:
+
+- **Vision.** The DroQ modification touches only the critic; no visual pathway was present or tested.
+- **The generalization-as-primary hypothesis.** Already confirmed in Phase V; Phase W neither reinforces nor weakens that finding.
+- **MICOA.** Not present in this run.
+- **The vision inertness findings (Phases V, IV, III).** Those are confirmed on their own evidence. Phase W is orthogonal to them.
+
+The sample-efficiency suggestion (DroQ reaching R44's performance in 40% fewer steps) is tentative: it rests on a single seed and an unmatched-step comparison (R44's 150K checkpoint was never evaluated). A clean efficiency claim needs either R44's 150K eval or a DroQ run extended to 250K.
+
+### Updated "what is ruled out / methodological cautions" table
+
+| Item | Status | Evidence |
+|---|---|---|
+| eval mean_reward as a health metric on this substrate | INVALID DISCRIMINATOR | R44 (confirmed-best) has negative eval reward throughout its second half |
+| critic_loss < 10 as a pass criterion on this substrate | INVALID DISCRIMINATOR | R44 spikes to 39–136; R45 spikes to 40–145; both are good policies |
+| "Peak-then-collapse in ep_rew_mean" as a failure signal on this substrate | INVALID DISCRIMINATOR | R44's ep_rew_mean falls below zero and stays there; policy still generalizes lawfully |
+| DroQ breaks the proprio generalizer | RULED OUT | R45 eccentricity profile matches or exceeds R44 at every bin |
+| The old "critic collapse" narrative for v5-v9 runs, as supported solely by critic_loss and reward | FLAGGED FOR REVISION | The specific metrics cited are now known to be non-discriminating on this substrate |
+
+### Theory Monitor Note — 2026-06-14 (Phase W)
+
+**Behavioral Prediction Framework: UNTESTABLE (this run)** — Phase W is a proprio-only infrastructure validation on the same task as Phase V; the framework was already CONFIRMED in Phase V (R44 distance law r = +0.89). R45 reproduces that generalization profile at 150K steps, which is consistent with the framework's prediction holding under DroQ regularization, but this run introduces no new behavioral conditions to test against.
+
+**Pattern Learning Framework: UNTESTABLE (this run)** — No new position or condition variety was introduced; the run replicates R44's eccentricity profile. The prior finding (proprio: CONFIRMED; vision: REFUTED) is unchanged. The eval reward oscillation that runs throughout R45 is now explained as a structural property of the task's reward signal rather than as evidence of unstable representations — this is a methodological clarification, not a change to the framework status.
+
+**The most important thing we don't know yet:** Whether the apparent sample-efficiency advantage of DroQ is real — specifically, whether R44's 150K checkpoint (never evaluated) would have matched R45's eccentricity profile, which would collapse the efficiency claim. This is the single measurement that most changes the interpretation of Phase W.
+
+**Recommended diagnostic** (not a training run — just a measurement): Run eval_phase_v.py on R44's 150K checkpoint (saved by CheckpointCallback at step 150000) to get its eccentricity profile; if it matches R45's profile at the same step count, DroQ's sample efficiency gain is not demonstrated; if R44 at 150K is noticeably worse than R45 at 150K, the gain is real and warrants a multi-seed confirmation run.

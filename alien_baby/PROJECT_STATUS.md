@@ -110,63 +110,71 @@ v9 splits the class. Specific candidate: **moving target env**. The ball spawns 
 
 Theoretical framing: in Taylor's notation, M (forward-paddle) must FAIL unless modified by visual evidence of the ball's trajectory. Same critical state D (contact drive), same sensory surface Q, but now Q's visual component is the only way to derive the right M. Engrams for "ball-left" and "ball-right" must become conditioned to asymmetric paddle strokes. Pure pressure, no bribery.
 
+**UPDATE — Phase H result (2026-05-20):** The moving-ball hypothesis was tested as Phase H (R32–R35, ball speeds 0.05 and 0.08 m/s, cart substrate). The result was REFUTED — see Current Best Numbers and Last Run sections below. Moving balls at these speeds make the task too hard for any policy rather than creating pressure that only vision can relieve. The hypothesis that ball motion forces visual learning is now tested and closed.
+
+
+**UPDATE — Phase I/II/III result (2026-05-21):** After Phase H closed the substrate-level avenue, the project pivoted to an architectural intervention: MICOA (Multimodal Inference via Coupled Objectives Across modalities) — wire proprio and vision encoders as a Product-of-Experts Gaussian and add a KL-based agreement loss between them. Phase I (R36/R37) confirmed MICOA worked mechanically, but vision remained inert (ablation in the 0.002–0.023 dead zone). Phase II (R38) replaced symmetric agreement with a one-sided *predictive* KL — vision pulled toward proprio(t+1).detach() — and **broke the ablation barrier for the first time**: single-step action delta 0.66, 350× R36, 13× threshold. Vision was *active* but not *productive* (6/20 with or without pixels) and σ_p instability hurt task performance. Phase III R39 changed three knobs at once (multi-horizon + tighter σ clamp + higher β) and regressed on load-bearing. **R40 isolated the σ clamp variable** (single-horizon t+1 like R38, tightened σ clamp like R39) and is the first run where vision is load-bearing AND the task is mostly solved (ablation 0.481, 15/20 both-touched, mean reward −234). Goldilocks reading: σ_p ∈ [0.018, 7.4] (R38) too permissive; σ_p ∈ [0.135, 7.4] (R40) prevents extreme precision while still letting vision broadcast useful signal. Remaining limit: action-level ablation is big (0.48) but outcome-level delta is only +1 episode (R40 15 vs R38-substrate 14) — proprio is still good enough to solve mostly alone. Next: re-introduce ball-speed > 0 to give vision a job proprio cannot do, now from an architecture where vision is actually integrated.
+
 ---
 
 ## Current best numbers
 
 | Metric | Value | Run |
 |--------|-------|-----|
-| Peak ep_rew_mean (eval) | 61.73 | entpin_005_3_hand_only_cone_2026_05_07 (160K step checkpoint) |
-| Best deterministic touch rate (vision follow-on) | 4/50 (8%) | micoa_freeze_zeroinit_cone30 (30K checkpoint) — tied with previous MICOA freeze run |
-| Best deterministic touch rate (blind proprio) | 12/20 (60%) | stage1_v8_best — this remains the baseline to beat |
-| Falls (all runs) | 0/50 | All runs — body is stable |
-| Proprio-column drift (MICOA freeze runs) | 0.00e+00 | Both MICOA runs — freeze held perfectly |
-| consistency_loss (this run) | 0.20–0.38 | micoa_freeze_zeroinit_cone30 — higher early activity than previous MICOA run |
-| Rollout left/right touch symmetry | 0.102 / 0.098 | micoa_freeze_zeroinit_cone30 — first near-symmetric result (all prior runs biased left) |
-| Vision load-bearing? | Not yet confirmed | Rollout symmetry is first weak positive signal; ablation test needed |
+| Peak ep_rew_mean (stage1, eval) | 176.9 at 270K | stage1_headfix_velbonus_2026_05_07 (v1) |
+| Best deterministic touch rate (blind proprio) | **17/20 (85%)** | stage1_headfix_velbonus2_cone180_600steps_2026_05_07 — AWAITING HUMAN VIDEO REVIEW |
+| Previous best deterministic touch rate (blind proprio, v1) | 9/20 (45%) | stage1_headfix_velbonus_2026_05_07 — pending video confirmation |
+| Best deterministic touch rate (vision follow-on) | 4/50 (8%) | micoa_freeze_zeroinit_cone30 (30K checkpoint) — built on old invalid stage1 |
+| Mean ground coverage (blind proprio) | 0.417 mean_dist_mean | stage1_headfix_velbonus_2026_05_07 (consistent across both velbonus runs) |
+| Falls (all runs) | 0/20 | stage1_headfix_velbonus2_cone180_600steps_2026_05_07 — body stable under new physics |
+| Vision load-bearing? | Not yet confirmed | Phases E/E2 are blind proprio; vision not yet tested under corrected wrapper |
+| Best HER ep_rew_mean | −1899 ± 0.34 (Phase E2, 250K) | First time any HER run has left the −2000 floor |
+| Eval std (HER runs) | 0.30–0.42 (Phase E2) | First non-zero eval std in months; prior phases all returned std = 0.00 |
+| Wrapper bug status | FIXED (her_wrapper.py line ~150) | Phase D and E both ran with effective velocity bonus = 0; Phase E2 is first valid test |
+| **Phase G best (cart substrate, ent=0.5 + vel_bonus=0.10)** | **+380 ± 7.8, 20/20 hits** | **R19 (mimo_phase_g_R19_ent05_velbonus) at t=14976; also 20/20 maintained at t=19968** |
+| Phase G previous best (cart substrate, blind proprio + ent=0.5) | +366 ± 14, 20/20 hits | R3 (mimo_phase_g_R3_ent050) at t=14976 |
+| Reach radius of R3-best | ~0.20-0.25m (graceful 0.15→0.20, hard cutoff 0.25→0.30) | R3-best generalizes 15/20 both-touched at offset=0.20, 0/20 at 0.30 |
+| Vision load-bearing? | **No** — vision-ablation delta = 0.023; episode ablation produces identical 14/20 → 14/20 | R14 vs R15 ablation comparison, R10/R12 longer vision attempts |
+| Vision under random ball positions? | **Still no** — R17 (vision) 34/40 both-touched, R18 (proprio control) 36/40; pixel-zero ablation IMPROVES R17 from 16/20 to 17/20 | R17/R18 random_ball_box test, 04:30 |
+| Vision under disappearing balls (timeout=300)? | **Still no** — R26 vision 3/20 both-touched, R27 proprio 5/20 | 2nd overnight, R26/R27 |
+| Vision under disappearing balls (timeout=150)? | **Still no** — R28 vision 15/20 ball1 + 5/20 ball2; R29 proprio identical | 2nd overnight, R28/R29 |
+| Three-seed validation of R20 mechanism | Robust: peak 361-388 across seeds 42, 1, 2 | R20, R22, R23 |
+| Buffer-preserving warm-start works? | **No** — R24 (with buffer load) still collapses on curriculum 0.15→0.20 (off-policy gradient inconsistency) | R24 |
+| Direct training at offset=0.20 with strength=1.0? | **Yes** — R30 gets 14/20 both-touched (matches R3 transfer's 15/20) | R30 |
+| Direct training at offset=0.25? | **No** — even strength=1.0 + R20 recipe collapses (R31: 0/20 at 0.25) | R31 |
+| **Phase H best vision policy (moving balls)** | **0/20 both-touched (speed=0.08), 1/20 (speed=0.05)** | **R33 (vision, 0.08), R35 (vision, 0.05) — see PHASE_H_RESULTS_RAW.md** |
+| **Phase H best proprio policy (moving balls)** | **1/20 both-touched (both speeds)** | **R32 (proprio, 0.08), R34 (proprio, 0.05)** |
+| **Vision under moving balls (speed 0.05/0.08)?** | **No — REFUTED.** Ablation 0.020–0.024 (dead zone, same as Phase G). Vision and proprio equally destroyed by ball motion. | **Phase H, R32–R35, 2026-05-20** |
+| Phase I best (MICOA PoE + symmetric KL agreement) | Vision still inert: ablation 0.0019 (R36), 0.0023 (R37); task preserved | R36 (β=0.10), R37 (β=0.03) |
+| Phase II best (MICOA + temporal predictive KL, β_pred=0.10) | **First ablation-barrier break**: action L2 delta 0.6563 (350× R36, 13× threshold). Vision active but not productive: 6/20 with or without pixels. Task regressed (−757, 6/20). | R38 |
+| **Phase III R40 (single-horizon t+1 + tightened σ clamp)** | **Ablation 0.481, both-touched 15/20, mean reward −234. First run with vision load-bearing AND task solved.** | **R40, 2026-05-21** |
+| Phase III R39 (multi-horizon t+1/t+5/t+25/t+50 + tightened σ clamp) | Regressed on load-bearing; confounded (3 knobs changed at once). 3× total β likely deformed actor gradient; possible cross-horizon interference. | R39 |
+| **Phase IV R41 (MICOA+vision, moving balls @ 0.08)** | **Ablation 0.8511 (highest ever). Task: 1/20 both-touched moving, 9/20 static. MICOA encoder pathology: kl_pred_k1 exploded to 638, sigma_combined collapsed to 0.10. Vision over-integrated but behaviorally harmful.** | **R41, 2026-05-22** |
+| **Phase IV R42 (proprio only, moving balls @ 0.08)** | **2/20 both-touched moving, 18/20 static — best proprio result yet on moving balls. Outperformed matched MICOA+vision run on both conditions.** | **R42, 2026-05-22** |
+| **Vision load-bearing under MICOA + moving balls?** | **Action-level YES (ablation 0.85). Outcome-level NO — R41 worse than proprio control on both metrics. High ablation ≠ useful encoding.** | **Phase IV R41 vs R42, 2026-05-22** |
+| **Vision load-bearing (architectural intervention)?** | **Yes (action level): R40 ablation 0.481 ≫ 0.05 threshold.** Episode-outcome lift small (+1 episode vs proprio-dominant baseline) — proprio still does most of the work. | **Phase III R40, 2026-05-21** |
+| **Phase V R43 (MICOA+vision, static reachable, eccentricity sweep)** | **Ablation 0.62–1.04 across eccentricity bins (integrated). Task: 20/20 at ecc=0.00, 0/20 at ecc=0.25. Identical to proprio control at every bin. Vision integrated but non-directional.** | **R43, 2026-05-30** |
+| **Phase V R44 (proprio only, static reachable, eccentricity sweep)** | **20/20 at ecc=0.00, 0/20 at ecc=0.25. Distance law r=+0.96, extrapolates outside training band. Speed retention ~0.50 (graceful).** | **R44, 2026-05-30** |
+| **Phase W R45 (DroQ proprio validation, 150K steps)** | **20/20 at ecc=0.05, 20/20 at ecc=0.10 (beats R44 16/20). Matches R44 at all other bins. DroQ infra validated; no degradation.** | **R45, 2026-06-14** |
+| **Methodological finding (Phase W)** | **eval mean_reward and critic_loss are INVALID health metrics on this substrate. Only deterministic eccentricity sweep (eval_phase_v.py) is valid.** | **Phase W, 2026-06-14** |
+| **Vision load-bearing on cleanest static reachable task?** | **Action-level YES (abl_L2 0.62–1.04). Outcome-level NO — R43 ≈ R44 at every eccentricity bin. Strongest null result in project history. Vision bound globally, not recruited where it carries directional information.** | **Phase V R43 vs R44, 2026-05-30** |
 
 ## Last run
 
-- **Tag:** micoa_freeze_zeroinit_cone30_2026_05_07
-- **Date:** 2026-05-07
-- **Result:** Peak 55.6 at 30K (earlier than previous MICOA run's 60K peak). Final -9.1 at 150K. Best checkpoint (30K): 4/50 (8%) deterministic touches, 46/50 timeouts, 0/50 falls. Zero-init pixel columns and ±15° forward spawn cone are the two new changes. Rollout symmetry (0.102L / 0.098R) is the first behavioral signature consistent with directed visual steering. Ablation test needed to confirm vision is load-bearing.
+- **Tag:** Phase W R45 (DroQ critic-stabilization infrastructure validation, proprio only)
+- **Date:** 2026-06-14
+- **Setup:** Identical to Phase V R44 (proprio only, cart constant_velocity_bouncer speed 0.15, ball_speed=0.0, box jitter +/-0.08, hip off, memory obs, strength 1.0, entropy anneal 0.5->0.2, vel-bonus 0.10, curriculum warmup 2000/ramp 15000/offset 0.15, seed 42, n_envs=16). Single change: --droq flag (LayerNorm + Dropout rate 0.01 on critic hidden layers; UTD=4). 150K steps.
+- **Key results:**
+  - ep_rew_mean: +413 (start) -> -115 (end)
+  - Eval mean_reward at 150K: -486 +/- 857 (negative throughout second half, same as R44 -- see methodological finding)
+  - Eccentricity sweep (20 eps/bin) at 150K vs R44 at 250K: R45 matches or beats R44 at every bin; ecc=0.10 notably 20 vs 16
+  - critic_loss: baseline ~4-11 with spikes to 40-145 -- identical profile to R44 (spikes are contact-event TD artifacts, not pathology)
+  - **METHODOLOGICAL FINDING:** Pre-registered pass/fail criteria (eval reward must be positive, critic_loss must stay below 10) are invalid discriminators on this task. R44 -- the confirmed-best generalizer -- fails both checks too. The only valid metric is the deterministic eccentricity sweep.
+  - DroQ safe to use as opt-in; sample-efficiency gain tentative (needs matched-step check)
+- See FINDINGS.md Phase W entry for full eval table and verified numbers.
 
+### Previous run (Phase V R43/R44, 2026-05-30)
+- R43 (MICOA+vision, static reachable): 20/20 at ecc=0.00, 0/20 at ecc=0.25. Ablation 0.62-1.04. Vision integrated but non-directional.
+- R44 (proprio, static reachable): 20/20 at ecc=0.00, 0/20 at ecc=0.25. Distance law r=+0.96. Speed retention 0.50 (graceful).
+- See FINDINGS.md Phase V entry for full tables.
 ---
-
-## Direction Change — 2026-05-07
-
-### What we observed that prompted this
-
-Video review of the stage1_v8_best checkpoint (the 60% blind policy, our best result) revealed two fundamental problems that no amount of vision architecture work can fix:
-
-1. **The creature barely moves.** In 5 rendered episodes it was nearly stationary on 4 of them. The one touch (seed 3) succeeded because the ball spawned almost touching the creature — not because the creature moved to find it. This is the "stillness local optimum": the creature learned that not moving avoids ctrl_cost and pays only the small hunger penalty.
-
-2. **Head motion is extreme.** The head oscillates wildly across its full range every few timesteps — what was described as "panic attack" behavior. With `kp=30` and no damping override, the position servo snaps the head to any commanded position in a single timestep. A policy free to command full-range head positions every step can produce this behavior trivially. A head moving this way cannot produce a useful visual signal for any downstream learning.
-
-These are not vision integration problems. They are foundational locomotion and physics problems. The serial approach (train blind proprio → freeze → add vision) cannot recover from them because the broken foundation carries forward.
-
-### Decision: rebuild from scratch
-
-The serial training approach (stage 1 blind → freeze → vision follow-on) is **retired**. The new approach is:
-
-1. **Fix the physics first**: reduce head servo gain from kp=30 to kp=5 in both XML files. This makes the head track commanded positions slowly over multiple timesteps instead of snapping instantly. (Done — 2026-05-07)
-
-2. **Fix the reward to incentivize movement**: add a small velocity bonus (`VELOCITY_BONUS_SCALE=0.02 × torso_speed`) to break the stillness optimum. Moving is now strictly better than standing still, regardless of direction. (Done — 2026-05-07)
-
-3. **Train a new stage1** from scratch under the fixed physics and reward. Target: smooth locomotion, active ground coverage, calm head motion. Blind touch rate should remain ≥ 60%.
-
-4. **Joint training with dialogue architecture**: replace the serial freeze/unfreeze approach with a jointly-trained two-stream model where vision and proprio are equal peers. Neither has structural priority. Both propose an action; a learned agreement layer combines them. Disagreement is explicitly logged. The architecture enforces that the two channels must reach agreement, not that one defers to the other.
-
-### What is preserved from prior work
-
-- The MICOA insight (channels must confirm each other, not compete) remains the theoretical foundation.
-- The vision-ablation sensitivity test (does zeroing pixels change actions?) remains the key measurement.
-- The 30K breakthrough checkpoint (`micoa_freeze_zeroinit_cone30_2026_05_07_best/best_model.zip`) is preserved on disk as the first confirmed vision-load-bearing result.
-- The success criterion remains: touch rate ≥ blind baseline AND nonzero vision-ablation sensitivity.
-
-### Files changed in this reset
-
-- `envs/platform_creature.xml`: head actuator `kp` 30 → 5
-- `envs/platform_creature_v9.xml`: same
-- `envs/platform_creature_env.py`: added `VELOCITY_BONUS_SCALE=0.02` velocity bonus, logged as `velocity_bonus_sum` in episode info
-- `todo.md`: full rebuild plan (Phases 1–5)
