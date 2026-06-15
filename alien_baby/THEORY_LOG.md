@@ -166,8 +166,6 @@ Comparison to all vision follow-on checkpoints run to date:
 
 This answers the question posed in the previous entry's "what is not yet ruled out" table. The blind proprio floor is not ~1/20. It is 60%. Every vision follow-on run has degraded that 60% to 5% — a 12× regression — across five independent runs varying architecture (MLP / CNN), entropy regime (auto / pinned), contact definition (any-body / hand-only), and spawn geometry (cone / no cone). The regression is not stochastic. It is consistent. It is structural.
 
-The previous theoretical picture assumed that vision follow-ons were failing to help. The blind baseline reveals the more precise and more alarming diagnosis: they are actively overwriting a working solution.
-
 ### Why this is not explained by existing frameworks
 
 The Behavioral Prediction Framework and Pattern Learning Framework both predict that adding a new, informative sensory channel to an already-capable agent should either improve performance or leave it neutral. They have no natural account for why adding vision should produce a 12× degradation in the capability the agent already had.
@@ -252,7 +250,7 @@ The sketch below is not a training plan — it is a theoretical specification of
 |---|---|---|
 | Ball not visible in head_cam | Ruled out | vision_check_v9: mean 40px, never zero |
 | SAC entropy collapse is the cause | Ruled out | entpin run: same outcome with ent_coef=0.05 held flat |
-| CNN encoder will make vision useful | Ruled out | overnight run #2 + entpin: consistency_loss ~0.001 both times |
+| CNN encoder will make vision useful | Ruled out | overnight runs: consistency_loss ~0.001 both times |
 | Hand-only contact narrows equivalence class enough | Ruled out | overnight run #3 + entpin: same blind result |
 | Vision follow-on is failing to help (neutral result) | Ruled out | blind baseline 60% vs. follow-on 5%: vision is actively harmful |
 | Floor is task difficulty (blind proprio ≈ 1/20) | Ruled out | blind baseline: 12/20 (60%) deterministic |
@@ -493,40 +491,40 @@ The 8% ceiling is consistent with three possible bottlenecks, in order of theore
 
 ---
 
-## 2026-05-11 — Phase E2 / Phase F / Phase F-2k hypothesis status
+## 2026-05-11 — Phase V.2 / Phase VI / Phase VI.2 hypothesis status
 
-### Phase E2 frameworks update
+### Phase V.2 frameworks update
 
-**Behavioral Prediction Framework** (an agent with internal predictive structure should produce coherent behavior across a range of initial conditions): Phase E2's "one move then freeze" pattern is the minimum-possible violation of this framework consistent with producing any non-trivial behavior. The framework predicts the agent should develop a sequence of internal predictions chained together — "if I move this way, the ball will be here, then if I move again, contact will occur." What we observe is one prediction (the initial motion earns overlap reward) and then no follow-through predictions. The policy freezes on whatever state the first action produced, regardless of what that state looks like or how far the far ball remains. Status: **still violated**, though "one move then freeze" is a marginally less extreme violation than Phase D's "no move at all."
+**Behavioral Prediction Framework** (an agent with internal predictive structure should produce coherent behavior across a range of initial conditions): Phase V.2's "one move then freeze" pattern is the minimum-possible violation of this framework consistent with producing any non-trivial behavior. The framework predicts the agent should develop a sequence of internal predictions chained together — "if I move this way, the ball will be here, then if I move again, contact will occur." What we observe is one prediction (the initial motion earns overlap reward) and then no follow-through predictions. The policy freezes on whatever state the first action produced, regardless of what that state looks like or how far the far ball remains. Status: **still violated**, though "one move then freeze" is a marginally less extreme violation than Phase IV's "no move at all."
 
-**Pattern Learning Framework** (sparse, distributed patterns should activate for structurally similar situations regardless of surface-level differences): Phase E2 shows one stable attractor — the side-lying frozen posture — that the agent reliably reaches across all seeds. The critic has learned a stable pattern that accurately predicts episode returns from this attractor. But this is a single-state pattern, not the distributed map of overlapping patterns the framework predicts. Status: **still violated** — stable representation but of a single-point attractor rather than a distributed spatial structure.
+**Pattern Learning Framework** (sparse, distributed patterns should activate for structurally similar situations regardless of surface-level differences): Phase V.2 shows one stable attractor — the side-lying frozen posture — that the agent reliably reaches across all seeds. The critic has learned a stable pattern that accurately predicts episode returns from this attractor. But this is a single-state pattern, not the distributed map of overlapping patterns the framework predicts. Status: **still violated** — stable representation but of a single-point attractor rather than a distributed spatial structure.
 
-**MICOA**: Not testable. Phase E and Phase E2 are blind proprio runs. No visual channel was used in either run.
+**MICOA**: Not testable. Phase V and Phase V.2 are blind proprio runs. No visual channel was used in either run.
 
-### Phase F-2k frameworks update
+### Phase VI.2 frameworks update
 
-**Behavioral Prediction Framework**: Phase F-2k provides the cleanest violation to date. Two initial conditions differing only in spawn yaw produce episode rewards of approximately −1800 vs. −2000. The policy has no orientation-invariant model of where the ball is relative to its current body — it cannot compensate for a bad starting yaw, because it has not learned to reorient. The eval std of 99.48 is not a "useful spread of strategies" — it is the signature of a policy whose outcome is entirely determined by initial conditions and not at all by adaptive behavior. Status: **violated in a newly specific way** — the framework now has not just the no-prediction failure mode but an explicit refutation of orientation-invariant representation.
+**Behavioral Prediction Framework**: Phase VI.2 provides the cleanest violation to date. Two initial conditions differing only in spawn yaw produce episode rewards of approximately −1800 vs. −2000. The policy has no orientation-invariant model of where the ball is relative to its current body — it cannot compensate for a bad starting yaw, because it has not learned to reorient. The eval std of 99.48 is not a "useful spread of strategies" — it is the signature of a policy whose outcome is entirely determined by initial conditions and not at all by adaptive behavior. Status: **violated in a newly specific way** — the framework now has not just the no-prediction failure mode but an explicit refutation of orientation-invariant representation.
 
 **Pattern Learning Framework**: if the agent had built any kind of allocentric or even body-relative representation of "ball is over there," similar patterns should fire for "ball at relative angle θ" regardless of absolute world yaw. What we see is the opposite: outcome quality varies completely with absolute yaw, indicating no yaw-invariant pattern has formed. Status: **violated** — no allocentric or body-relative representation appears to exist.
 
-### What is newly ruled out / confirmed after Phase E2 / F-2k chain
+### What is newly ruled out / confirmed after Phase V.2 / VI.2 chain
 
 | Hypothesis | Status |
 |---|---|
 | HER + caregiver scaffold + velocity bonus (correctly applied) produces sustained locomotion | **Refuted** |
-| Phase E2's non-zero eval std (0.30) was the early sign of behavioral diversity emerging | **Refuted** — std came from geometric micro-variation, not behavioral diversity |
+| Phase V.2's non-zero eval std (0.30) was the early sign of behavioral diversity emerging | **Refuted** — std came from geometric micro-variation, not behavioral diversity |
 | The policy has formed any orientation-invariant or body-relative representation of ball position | **Refuted** — identical policy, different spawn yaw, ~200-point reward swing per episode |
-| Diagnostic 1 from E2 will cleanly distinguish geometric-refuge from learned-reaching | **Refuted as binary** — surfaced a third failure mechanism (orientation lottery) |
+| Diagnostic 1 from V.2 will cleanly distinguish geometric-refuge from learned-reaching | **Refuted as binary** — surfaced a third failure mechanism (orientation lottery) |
 
 THEORY MONITOR: Theory verdict written to FINDINGS.md.
 
-THEORY MONITOR: THEORETICAL CONCERN — Phase F-2k has now surfaced a second dimension of the failure mode that prior phases could not see: the policy's reward depends on initial conditions, not on any learned representation. This is consistent with the F-* family of candidates not yet having addressed the underlying substrate-level problem ("link 2 of the dependency graph"). The human researcher's cart proposal is the first intervention proposed this session that directly addresses link 2 by bypassing it rather than trying to bootstrap through it. The strategist's formal Phase G proposal should weigh whether to continue the F-* family (incremental, conservative, addresses the failure mode within the existing substrate) or pivot to the cart substrate (structural, more ambitious, bypasses the failure mode entirely). Both lines of work have theoretical merit; the choice is essentially a question of how much experimental budget to commit to the within-substrate program before declaring it exhausted.
+THEORY MONITOR: THEORETICAL CONCERN — Phase VI.2 has now surfaced a second dimension of the failure mode that prior phases could not see: the policy's reward depends on initial conditions, not on any learned representation. This is consistent with the F-* family of candidates not yet having addressed the underlying substrate-level problem ("link 2 of the dependency graph"). The human researcher's cart proposal is the first intervention proposed this session that directly addresses link 2 by bypassing it rather than trying to bootstrap through it. The strategist's formal Phase VII proposal should weigh whether to continue the F-* family (incremental, conservative, addresses the failure mode within the existing substrate) or pivot to the cart substrate (structural, more ambitious, bypasses the failure mode entirely). Both lines of work have theoretical merit; the choice is essentially a question of how much experimental budget to commit to the within-substrate program before declaring it exhausted.
 
 ---
 
-## 2026-05-22 — Phase IV (R41/R42) hypothesis status
+## 2026-05-22 — Phase XII (R41/R42) hypothesis status
 
-Phase IV ran two matched 250K-step experiments under R40's MICOA architecture: R41 (MICOA + vision, moving balls at ball_speed=0.08) and R42 (matched proprio-only control, same task). The question was whether R40's architectural integration of vision — confirmed in Phase III under static balls — would rescue performance when the ball is in motion, a condition Phase H showed broke pure proprio.
+Phase XII ran two matched 250K-step experiments under R40's MICOA architecture: R41 (MICOA + vision, moving balls at ball_speed=0.08) and R42 (matched proprio-only control, same task). The question was whether R40's architectural integration of vision — confirmed in Phase XI under static balls — would rescue performance when the ball is in motion, a condition Phase VIII showed broke pure proprio.
 
 ### Numbers (verified, from FINDINGS.md lines 1081–1176)
 
@@ -540,13 +538,13 @@ Phase IV ran two matched 250K-step experiments under R40's MICOA architecture: R
 
 **(a) "Architectural integration of vision rescues tasks where pure proprio fails" — REFUTED.**
 
-This was the operative prediction of the Phase IV proposal and the framing in R40's commit message e0de0d1 ("best run yet — vision load-bearing AND task working"). The prediction was: MICOA + predictive-KL training on moving balls should produce a policy where vision provides the target-direction information proprio cannot supply, yielding higher both-touched rates than a matched proprio control.
+This was the operative prediction of the Phase XII proposal and the framing in R40's commit message e0de0d1 ("best run yet — vision load-bearing AND task working"). The prediction was: MICOA + predictive-KL training on moving balls should produce a policy where vision provides the target-direction information proprio cannot supply, yielding higher both-touched rates than a matched proprio control.
 
-What happened: R41 scored 1/20 both-touched moving, R42 scored 2/20. On static generalization, R41 scored 9/20, R42 scored 18/20. Vision did not rescue the task. It made the static generalization substantially worse. This refutation is distinct from all prior MICOA failures: in Phase I–II vision was not integrated (ablation in the dead zone); in Phase III (R40) vision was integrated and the task worked but proprio was doing the lifting; in Phase IV vision is deeply integrated and the task fails worse than plain proprio. Integration deepened; capability regressed. These are causally linked — the deeper integration is a symptom of encoder pathology, not productive learning.
+What happened: R41 scored 1/20 both-touched moving, R42 scored 2/20. On static generalization, R41 scored 9/20, R42 scored 18/20. Vision did not rescue the task. It made the static generalization substantially worse. This refutation is distinct from all prior MICOA failures: in Phase IX–X vision was not integrated (ablation in the dead zone); in Phase XI (R40) vision was integrated and the task worked but proprio was doing the lifting; in Phase XII vision is deeply integrated and the task fails worse than plain proprio. Integration deepened; capability regressed. These are causally linked — the deeper integration is a symptom of encoder pathology, not productive learning.
 
 **(b) "MICOA σ-clamp Goldilocks band [0.135, 7.4] is architecture-universal" — REFUTED.**
 
-The band was established empirically in Phase III under static-ball training (R40: sigma_combined stable at ~0.6, kl_pred_k1 stable at ~0.7, ablation 0.481, task working). The Phase IV hypothesis was that the same clamp, applied unchanged, would hold under moving-ball training. It did not: sigma_combined drifted to 0.0999 by end of training, below the clamp floor of 0.135 — meaning the clamp's enforcement broke, or the optimization pressure under moving-ball curriculum exceeded what the clamp could resist. Either way the Goldilocks band is task-dependent, not architecture-dependent. The R40 σ-clamp is a known-good operating point for static balls only.
+The band was established empirically in Phase XI under static-ball training (R40: sigma_combined stable at ~0.6, kl_pred_k1 stable at ~0.7, ablation 0.481, task working). The Phase XII hypothesis was that the same clamp, applied unchanged, would hold under moving-ball training. It did not: sigma_combined drifted to 0.0999 by end of training, below the clamp floor of 0.135 — meaning the clamp's enforcement broke, or the optimization pressure under moving-ball curriculum exceeded what the clamp could resist. Either way the Goldilocks band is task-dependent, not architecture-dependent. The R40 σ-clamp is a known-good operating point for static balls only.
 
 **(c) "Vision-ablation L2 delta ≥ 0.20 implies productive integration" — REFUTED.**
 
@@ -558,7 +556,7 @@ This is a meaningful update because every prior phase used ablation L2 as the pr
 
 **"Productive vision integration is bounded by task difficulty — the σ-clamp band that keeps MICOA healthy narrows as task difficulty rises, eventually shrinking to zero on tasks where proprio alone fails."**
 
-If true, this is a theoretical limit on the MICOA architecture as currently formulated: precisely on the tasks where vision would matter most (those proprio cannot solve), the architecture cannot maintain a healthy encoder, so the only operating point we can stabilize is the one where vision is redundant with proprio. Phase V should test this by sweeping σ_p_min (0.20, 0.30, 0.50) under moving-ball training and looking for any clamp value that prevents the kl_pred → 638, sigma → 0.10 collapse.
+If true, this is a theoretical limit on the MICOA architecture as currently formulated: precisely on the tasks where vision would matter most (those proprio cannot solve), the architecture cannot maintain a healthy encoder, so the only operating point we can stabilize is the one where vision is redundant with proprio. Phase XIII should test this by sweeping σ_p_min (0.20, 0.30, 0.50) under moving-ball training and looking for any clamp value that prevents the kl_pred → 638, sigma → 0.10 collapse.
 
 ### Theoretical implication for the project's central thesis
 
@@ -570,18 +568,18 @@ The Taylor-interpenetration claim has two distinguishable components:
 
 This is not a final refutation of the behavioral claim — it is a refutation of the specific predicted pathway (R40's σ-clamp at 0.135 under moving balls). The next intervention must either (i) find a σ-clamp band that survives harder tasks, (ii) change how the actor's gradient interacts with the integrated encoder (image-aware RL like DrQ-v2), or (iii) introduce reward structure that ties credit to visual attention before contact (gaze-gated reward). Without one of these, the project may have reached the ceiling of what predictive-KL + PoE fusion alone can deliver.
 
-### What is now ruled out (Phase IV addition)
+### What is now ruled out (Phase XII addition)
 
 | Hypothesis | Status | Evidence |
 |---|---|---|
 | R40's σ-clamp is universal across tasks | RULED OUT | R41: sigma collapsed to 0.0999 under moving-ball training despite the same 0.135 floor |
 | High vision-ablation L2 implies productive integration | RULED OUT | R41: 0.851 ablation coincides with worst MICOA outcomes (1/20 moving, 9/20 static) |
 | MICOA architecture rescues task on moving balls without further tuning | RULED OUT | R41 underperformed R42 by 1 episode moving and 9 episodes static |
-| The substrate-level barrier from Phase H is fully resolved by R40's architecture | RULED OUT | Same task floor (1–2/20) under both MICOA and plain proprio on moving 0.08 |
+| The substrate-level barrier from Phase VIII is fully resolved by R40's architecture | RULED OUT | Same task floor (1–2/20) under both MICOA and plain proprio on moving 0.08 |
 
 ---
 
-## 2026-05-30 — Phase V (R43/R44) generalization battery
+## 2026-05-30 — Phase XIII (R43/R44) generalization battery
 
 ### What was tested
 
@@ -589,7 +587,7 @@ Two matched 250K-step SAC runs on the cart substrate (R43: MICOA + vision, stati
 
 This is the cleanest task the project has run: static ball, reachable geometry (ball in [0.07, 0.23] m lateral range), no encoder pathology (static ball keeps MICOA's sigma_combined healthy).
 
-### Key numbers (from FINDINGS.md Phase V entry)
+### Key numbers (from FINDINGS.md Phase XIII entry)
 
 Eccentricity sweep — R43 (MICOA+vision) vs R44 (proprio), selected bins:
 
@@ -631,23 +629,23 @@ The framework predicts that the creature's internal representation should be spa
 
 ### Framework 3: Generalization-as-primary-state hypothesis
 
-**Status: CORE hypothesis CONFIRMED; an added strong-form rider was NOT SUPPORTED by Phase V.**
+**Status: CORE hypothesis CONFIRMED; an added strong-form rider was NOT SUPPORTED by Phase XIII.**
 
-*Provenance note (added 2026-06-14):* The core hypothesis is the researcher's, proposed casually on 2026-05-30 as a reframing ("all objects are learned the same way; generalization, not specificity, is the primary state") and offered for discussion, not as a directive to run an experiment. The "strong form" below — vision recruited *selectively at the margin* — was an extrapolation the assistant attached when operationalizing the idea into Phase V. So what Phase V tested was really two claims: the researcher's core insight, which **held**, and an assistant-added rider, which **did not**. The earlier "REFUTED" framing overstated this: the researcher's idea was not disproven. Its central claim was confirmed on the cleanest task the project has run; only the extra margin-selectivity rider failed to find support.
+*Provenance note (added 2026-06-14):* The core hypothesis is the researcher's, proposed casually on 2026-05-30 as a reframing ("all objects are learned the same way; generalization, not specificity, is the primary state") and offered for discussion, not as a directive to run an experiment. The "strong form" below — vision recruited *selectively at the margin* — was an extrapolation the assistant attached when operationalizing the idea into Phase XIII. So what Phase XIII tested was really two claims: the researcher's core insight, which **held**, and an assistant-added rider, which **did not**. The earlier "REFUTED" framing overstated this: the researcher's idea was not disproven. Its central claim was confirmed on the cleanest task the project has run; only the extra margin-selectivity rider failed to find support.
 
 The hypothesis has two separable components:
 
 **Core form (the researcher's idea):** The proprioceptive object-agnostic "approach/contact" response is the primary generalization. This is what transfers broadly across distances, sizes, and directions — because it is a learned sensorimotor relationship between body state and physical contact, not between visual features and contact. Vision, if it contributes at all, is a late and selective overlay.
 
-**Phase V confirms the core form for proprio.** R44 generalizes to unseen distances (extrapolation to 0.55 and 0.65 m), is insensitive to ball size (abl_L2 flat in R43 across sizes; R44 performance comparable across the size range), and degrades gracefully under ball motion. This is exactly the profile of a robust, object-agnostic approach response — the kind the hypothesis predicts should be primary. The researcher's central claim stands.
+**Phase XIII confirms the core form for proprio.** R44 generalizes to unseen distances (extrapolation to 0.55 and 0.65 m), is insensitive to ball size (abl_L2 flat in R43 across sizes; R44 performance comparable across the size range), and degrades gracefully under ball motion. This is exactly the profile of a robust, object-agnostic approach response — the kind the hypothesis predicts should be primary. The researcher's central claim stands.
 
 **Strong-form rider (assistant-added):** Vision is recruited selectively at the margin — specifically at high eccentricity, where proprio lacks directional information and visual direction information would have unique value. Under this reading, we should see vision's ablation sensitivity rise with eccentricity, peaking where proprio is least informative and visual direction information matters most.
 
-**Phase V does not support the strong-form rider.** The ablation pattern runs opposite to that prediction: abl_L2 is 1.04 at ecc = 0.00 (ball dead ahead, vision's directional value is near-zero because proprio already handles this condition well — R44 is 20/20 there) and flat-to-slightly-rising ~0.62–0.72 at higher eccentricity. Vision is not selectively recruited where it would help; it is bound globally — most active where it is least needed. The ecc = 0.00 spike is the key datum: if vision were encoding direction and deploying it selectively, the highest ablation should be at high eccentricity, not at center. So the *margin-selectivity* extrapolation does not hold — but note this is a finding about how vision happened to bind under MICOA, not a refutation of the core "generalization is primary" claim, which concerns the proprioceptive approach response and was confirmed above.
+**Phase XIII does not support the strong-form rider.** The ablation pattern runs opposite to that prediction: abl_L2 is 1.04 at ecc = 0.00 (ball dead ahead, vision's directional value is near-zero because proprio already handles this condition well — R44 is 20/20 there) and flat-to-slightly-rising ~0.62–0.72 at higher eccentricity. Vision is not selectively recruited where it would help; it is bound globally — most active where it is least needed. The ecc = 0.00 spike is the key datum: if vision were encoding direction and deploying it selectively, the highest ablation should be at high eccentricity, not at center. So the *margin-selectivity* extrapolation does not hold — but note this is a finding about how vision happened to bind under MICOA, not a refutation of the core "generalization is primary" claim, which concerns the proprioceptive approach response and was confirmed above.
 
 ### New distinction introduced this session: INVARIANCE vs. EQUIVARIANCE
 
-Phase V evidence allows a cleaner test of two theoretically distinct types of generalization:
+Phase XIII evidence allows a cleaner test of two theoretically distinct types of generalization:
 
 **INVARIANCE** — the response is unchanged as a dimension varies (e.g., size, color, weight, texture): the proprio approach response is size-invariant (comparable both|close across 0.035–0.090 m radius in R44; flat abl_L2 across sizes in R43 confirms vision is equally active regardless of size). This is confirmed.
 
@@ -655,25 +653,25 @@ Phase V evidence allows a cleaner test of two theoretically distinct types of ge
 
 Vision shows neither property in a useful form. It shows approximate size-invariance in its ablation sensitivity (flat ~0.63–0.74 across sizes), but that flatness is consistent with undifferentiated global binding rather than a stable code for object identity that generalizes across sizes. Vision shows no distance equivariance in its own contribution — the distance law in R43 is carried by proprio, not by the visual component of the MICOA policy.
 
-### What is now ruled out (Phase V addition)
+### What is now ruled out (Phase XIII addition)
 
 | Hypothesis | Status | Evidence |
 |---|---|---|
 | Vision is selectively recruited at high eccentricity where direction information is most needed | RULED OUT | abl_L2 highest at ecc=0.00 (1.04), flat 0.62–0.72 at ecc=0.05–0.25; the pattern is inverted |
 | High vision-ablation L2 under healthy MICOA implies productive directional encoding | RULED OUT | abl_L2 is 0.62–1.04 across all bins on the cleanest task yet; R43 ≈ R44 at every bin; integration without behavioral contribution |
-| Moving-ball inertness of vision is a task-difficulty artifact (static task would reveal vision benefit) | RULED OUT | Phase V is the cleanest static reachable task; vision still adds nothing to outcomes. Phase H/IV nulls are now extended to a condition where task difficulty is not a confound. |
+| Moving-ball inertness of vision is a task-difficulty artifact (static task would reveal vision benefit) | RULED OUT | Phase XIII is the cleanest static reachable task; vision still adds nothing to outcomes. Phase VIII/XII nulls are now extended to a condition where task difficulty is not a confound. |
 | The strong-form *rider* on "generalization is the primary state" (vision as margin-selective refinement) — an assistant-added extrapolation, not the researcher's core claim | NOT SUPPORTED | The abl-at-ecc=0 spike (1.04) combined with the flat abl profile at higher eccentricity is inconsistent with selective deployment. The core hypothesis (proprio approach as primary generalization) is separately CONFIRMED. |
 
-### What is not yet ruled out (Phase V)
+### What is not yet ruled out (Phase XIII)
 
 | Hypothesis | Next test |
 |---|---|
 | R43's vision latent encodes no ball lateral position (low linear decodability) — which would explain high ablation without directional contribution | Linear probe: train ridge regression on vision latent to predict ball-x from R43 rollout data; compare R² to chance |
 | Vision encodes something other than ball direction (e.g., optical flow, self-motion signal, task-irrelevant texture) that influences actions non-directionally | Ablation sweep with partial masking (zero only ball-region pixels vs. background pixels) |
-| A larger vision representation (more channels, larger resolution) would form directionally selective codes that the current 32×32 RGB cannot support | Architecture variant: 64×64 camera, re-run Phase V sweep |
+| A larger vision representation (more channels, larger resolution) would form directionally selective codes that the current 32×32 RGB cannot support | Architecture variant: 64×64 camera, re-run Phase XIII sweep |
 | MICOA's σ-clamp healthy under static balls but vision's content is constrained by the Gaussian bandwidth to be blurry/unresolved spatial detail | σ-clamp sweep on static task: larger σ_p_min may force vision to commit to coarser but more directional codes |
 
-### Theory Monitor Note — 2026-05-30 (Phase V)
+### Theory Monitor Note — 2026-05-30 (Phase XIII)
 
 **Behavioral Prediction Framework: CONFIRMED** — R44's proprio policy shows the first clean confirmation of the framework's core prediction in this project: a lawful distance-to-contact relationship (steps ≈ 688 × dist − 218, r = +0.89) that extrapolates to distances never seen during training, demonstrating a genuine internal predictive structure over distance rather than memorized responses.
 
@@ -693,9 +691,9 @@ THEORY MONITOR: No theoretical concerns about the Behavioral Prediction Framewor
 
 ---
 
-## 2026-05-30 — Vision-latent probe (Phase V follow-up): REPRESENTATION FAILURE confirmed
+## 2026-05-30 — Vision-latent probe (Phase XIII follow-up): REPRESENTATION FAILURE confirmed
 
-The Phase V Theory Monitor note flagged the key unknown: *does R43's vision latent
+The Phase XIII Theory Monitor note flagged the key unknown: *does R43's vision latent
 actually encode ball lateral position?* The probe (`probe_vision_latent.py`, 3072
 samples, 5-fold CV Ridge) answers it directly.
 
@@ -716,7 +714,7 @@ weaker channel on the spatial variables that matter.
 **Framework impact:**
 
 - **Pattern Learning Framework (vision): CHALLENGED → REFUTED for the visual channel
-  under MICOA-static.** The Phase V note said the ablation profile *suggested* no
+  under MICOA-static.** The Phase XIII note said the ablation profile *suggested* no
   spatially organized visual code formed. The probe converts suggestion to
   measurement: no decodable spatial code exists. The CNN+MICOA visual representation
   is not a sparse spatial map of the scene — it is a globally-bound non-spatial
@@ -799,7 +797,7 @@ the system is free to form perceptual categories. Prediction: perceptual (vision
 category-learning should only succeed *after* motor competence is established — the
 staging the project keeps rediscovering.
 
-### Evidence (Phase V checkpoints, 2026-05-30)
+### Evidence (Phase XIII checkpoints, 2026-05-30)
 
 **Sub-claim 1 — INCONCLUSIVE on current data (not confirmed).**
 
@@ -841,7 +839,7 @@ log and is omitted.]
 - **Refines the Behavioral Prediction Framework, does not contradict it.** A
   predictive model can still produce categorical outputs; the prediction "farther =
   longer" coexists with "far distances share one motor response." Whether the response
-  is metric or categorical is exactly what Phase V's distance law could not tell us —
+  is metric or categorical is exactly what Phase XIII's distance law could not tell us —
   and the current categorical-distance test does not resolve it either (see the
   inconclusive evidence above). It remains an open, well-posed question.
 - **Strengthens the Pattern Learning Framework's equivalence-class core**, by adding
@@ -939,11 +937,11 @@ full-run log was read and contradict it; they are replaced above with the verifi
 
 ---
 
-## 2026-06-14 — Phase W (R45): DroQ infrastructure validation — a methodological correction that changes how we read all prior runs
+## 2026-06-14 — Phase XIV (R45): DroQ infrastructure validation — a methodological correction that changes how we read all prior runs
 
-### What Phase W was
+### What Phase XIV was
 
-Phase W (run-tag phase_w_R45_droq_proprio_validation) was an infrastructure run, not a theory test. It ported DroQ-style critic regularization — LayerNorm and Dropout (rate 0.01) after each hidden critic layer, actor untouched, update-to-data ratio raised to 4 — into the trainer behind an opt-in flag, and re-ran the R44 proprio task at 150K steps to confirm nothing broke.
+Phase XIV (run-tag phase_w_R45_droq_proprio_validation) was an infrastructure run, not a theory test. It ported DroQ-style critic regularization — LayerNorm and Dropout (rate 0.01) after each hidden critic layer, actor untouched, update-to-data ratio raised to 4 — into the trainer behind an opt-in flag, and re-ran the R44 proprio task at 150K steps to confirm nothing broke.
 
 The result on the task itself: R45-DroQ at 150K matches or beats R44 at 250K in every eccentricity bin, with a notable improvement at ecc=0.10 (20 vs 16). The generalization shape is preserved. DroQ is safe to use. That is the infrastructure finding; it is not the theoretically important one.
 
@@ -951,7 +949,7 @@ The result on the task itself: R45-DroQ at 150K matches or beats R44 at 250K in 
 
 ### The methodological correction: eval reward and critic_loss are invalid health metrics on this substrate
 
-Every run from Phase G onward was assessed against three health criteria that we now know are invalid on this task:
+Every run from Phase VII onward was assessed against three health criteria that we now know are invalid on this task:
 
 1. **"Eval reward must be positive in the second half of training."**
 2. **"critic_loss must stay below 10."**
@@ -965,7 +963,7 @@ R44 — our confirmed-best generalizer, the run with a distance law of r = +0.89
 
 R45-DroQ shows the same profile: eval reward negative throughout the second half (−486 at 150K final); critic_loss baseline ~4–11 with spikes to 40–145. The two runs are statistically indistinguishable on these metrics, yet R45 matches R44's eccentricity profile at 40% fewer steps — meaning these metrics are not detecting a meaningful difference between a good policy and a better one.
 
-**Why the task produces this profile:** The SAC training reward on this substrate is dominated by step-cost penalties and contact-event variance. Contact events (rare, large one-step reward pulses) cause sudden Q-function prediction errors — the critic has not yet seen a contact from this state, so the TD error spikes when contact occurs. These spikes are intrinsic to the environment's reward structure, not signs of a broken optimizer. A better policy makes more contacts, and therefore produces *more* TD spikes, not fewer. The eval std (±600–1000 across all Phase V/W runs) is so large relative to the mean that a single evaluation window cannot reliably distinguish a good policy from a mediocre one on this metric.
+**Why the task produces this profile:** The SAC training reward on this substrate is dominated by step-cost penalties and contact-event variance. Contact events (rare, large one-step reward pulses) cause sudden Q-function prediction errors — the critic has not yet seen a contact from this state, so the TD error spikes when contact occurs. These spikes are intrinsic to the environment's reward structure, not signs of a broken optimizer. A better policy makes more contacts, and therefore produces *more* TD spikes, not fewer. The eval std (±600–1000 across all Phase XIII/XIV runs) is so large relative to the mean that a single evaluation window cannot reliably distinguish a good policy from a mediocre one on this metric.
 
 ### What this changes about how we read prior runs
 
@@ -979,14 +977,14 @@ Several early runs (v5-v9 era) were described as showing "critic collapse" based
 
 Going forward, all health assessments for runs on this substrate must be anchored to eval_phase_v.py output (both-touched counts across eccentricity bins), not to ep_rew_mean, eval mean_reward, or critic_loss. These scalar metrics are structurally corrupted by the reward design and cannot distinguish good policies from mediocre ones.
 
-### What Phase W does NOT change
+### What Phase XIV does NOT change
 
-Phase W was proprio-only. It says nothing about:
+Phase XIV was proprio-only. It says nothing about:
 
 - **Vision.** The DroQ modification touches only the critic; no visual pathway was present or tested.
-- **The generalization-as-primary hypothesis.** Already confirmed in Phase V; Phase W neither reinforces nor weakens that finding.
+- **The generalization-as-primary hypothesis.** Already confirmed in Phase XIII; Phase XIV neither reinforces nor weakens that finding.
 - **MICOA.** Not present in this run.
-- **The vision inertness findings (Phases V, IV, III).** Those are confirmed on their own evidence. Phase W is orthogonal to them.
+- **The vision inertness findings (Phases XIII, IV, III).** Those are confirmed on their own evidence. Phase XIV is orthogonal to them.
 
 The sample-efficiency suggestion (DroQ reaching R44's performance in 40% fewer steps) is tentative: it rests on a single seed and an unmatched-step comparison (R44's 150K checkpoint was never evaluated). A clean efficiency claim needs either R44's 150K eval or a DroQ run extended to 250K.
 
@@ -1000,12 +998,66 @@ The sample-efficiency suggestion (DroQ reaching R44's performance in 40% fewer s
 | DroQ breaks the proprio generalizer | RULED OUT | R45 eccentricity profile matches or exceeds R44 at every bin |
 | The old "critic collapse" narrative for v5-v9 runs, as supported solely by critic_loss and reward | FLAGGED FOR REVISION | The specific metrics cited are now known to be non-discriminating on this substrate |
 
-### Theory Monitor Note — 2026-06-14 (Phase W)
+### Theory Monitor Note — 2026-06-14 (Phase XIV)
 
-**Behavioral Prediction Framework: UNTESTABLE (this run)** — Phase W is a proprio-only infrastructure validation on the same task as Phase V; the framework was already CONFIRMED in Phase V (R44 distance law r = +0.89). R45 reproduces that generalization profile at 150K steps, which is consistent with the framework's prediction holding under DroQ regularization, but this run introduces no new behavioral conditions to test against.
+**Behavioral Prediction Framework: UNTESTABLE (this run)** — Phase XIV is a proprio-only infrastructure validation on the same task as Phase XIII; the framework was already CONFIRMED in Phase XIII (R44 distance law r = +0.89). R45 reproduces that generalization profile at 150K steps, which is consistent with the framework's prediction holding under DroQ regularization, but this run introduces no new behavioral conditions to test against.
 
 **Pattern Learning Framework: UNTESTABLE (this run)** — No new position or condition variety was introduced; the run replicates R44's eccentricity profile. The prior finding (proprio: CONFIRMED; vision: REFUTED) is unchanged. The eval reward oscillation that runs throughout R45 is now explained as a structural property of the task's reward signal rather than as evidence of unstable representations — this is a methodological clarification, not a change to the framework status.
 
-**The most important thing we don't know yet:** Whether the apparent sample-efficiency advantage of DroQ is real — specifically, whether R44's 150K checkpoint (never evaluated) would have matched R45's eccentricity profile, which would collapse the efficiency claim. This is the single measurement that most changes the interpretation of Phase W.
+**The most important thing we don't know yet:** Whether the apparent sample-efficiency advantage of DroQ is real — specifically, whether R44's 150K checkpoint (never evaluated) would have matched R45's eccentricity profile, which would collapse the efficiency claim. This is the single measurement that most changes the interpretation of Phase XIV.
 
 **Recommended diagnostic** (not a training run — just a measurement): Run eval_phase_v.py on R44's 150K checkpoint (saved by CheckpointCallback at step 150000) to get its eccentricity profile; if it matches R45's profile at the same step count, DroQ's sample efficiency gain is not demonstrated; if R44 at 150K is noticeably worse than R45 at 150K, the gain is real and warrants a multi-seed confirmation run.
+
+---
+
+## 2026-06-15 — Phase XV (R46/R47/R48): Object variety deepens the proprioceptive equivalence class
+
+### What was tested
+
+Three proprio-only DroQ runs (250K steps each, same config as Phase XIV R45), each varying training object diversity: R46 (three ball sizes, radii 0.040/0.053/0.075), R47 (three ball shapes: sphere/box/cylinder), R48 (all six size × shape combinations). Held-out eval: R46/R48 tested on interpolation size 0.047 and extrapolation size 0.090; R47/R48 tested on ellipsoid and capsule. All evals on deterministic eccentricity sweep (eval_phase_v.py). No visual channel in any run.
+
+The theoretical question: does exposing the proprio generalizer to a wider class of objects during training deepen or damage its generalization capability? And does a wider training distribution allow zero-shot transfer to objects never seen in training?
+
+### What the data show
+
+**Zero-shot transfer is real.** Held-out interpolation size 0.047: R46 17/20, R48 19/20. Held-out extrapolation size 0.090: R46 16/20, R48 15/20. Held-out ellipsoid: R47 20/20, R48 20/20 at ecc=0.00. Held-out capsule: R47 17/20, R48 20/20 at ecc=0.00. These numbers are nearly identical to the runs' own trained-object performance — the policy does not notice that it is reaching a held-out object. The proprio approach program (move-until-contact, driven by joint-state and touch-sensor signals that do not encode object shape or size directly) is object-agnostic by construction.
+
+**Combined variety (R48) improves direction generalization at the margins.** At ecc=0.15 (the first bin where all runs start to fall off): R44 10/20, R45 11/20, R46 15/20, R47 8/20, R48 13/20. The improvement in R46 and R48 over R44/R45 is the notable result: training on more objects did not cost the center-approach performance and modestly widened the directional margin. R47 (shape-only, no size variety) slightly regressed high-ecc performance, consistent with shape variety alone introducing some variability into the approach program that slightly limits the eccentricity ceiling, while size variety or combined variety tightens that program without hurting it.
+
+**The 0.075 anomaly is reproducible and flagged for investigation.** Trained radius 0.075 scores 10/20 in R46 (mean_R −679) and 6/20 in R48 (mean_R −1214), while adjacent sizes score 15–20/20. The same size, two independent runs, the same hard dip. This is not noise. The most likely cause is a geometric interaction between the larger ball and the constantly-sweeping cart (the constant_velocity_bouncer oscillates across the workspace), which may push a larger ball out of normal reach geometry or create a contact-geometry mismatch at this specific radius. This anomaly inflates the full-sweep invariance metric (range 0.50–0.67, flagged SENSITIVE) but does not affect the held-out-only range (0.17, INVARIANT in R46) because 0.075 is a trained size.
+
+**Direction limit at ecc=0.25 is not an object-variety effect.** All runs — R44, R45, R46, R47, R48 — score 0/20 at ecc=0.25. This is a universal limit intrinsic to the creature's reach mechanics or training task geometry, unrelated to object variety.
+
+### Framework updates
+
+**Behavioral Prediction Framework: CONFIRMED (deepened).** The framework predicts that a creature with an internal model of how reaching works should show coherent behavior in novel conditions. R46/R47/R48 extend this prediction to a new dimension: the lawful time-to-contact relationship (r=+0.84 in R46, r=+0.87 in R48) holds when the ball is a shape or size the policy never encountered in training. The policy is not running a lookup table ("I know how to reach size 0.053") — it is running a reach program that extracts approach-relevant information (contact distance, body displacement) that generalizes across objects. The zero-shot transfer to ellipsoid and capsule is particularly striking: these shapes have no analog in the training distribution, yet the policy reaches them at 17–20/20. This is the strongest direct confirmation yet that the proprioceptive reach response is genuinely object-agnostic, not shape-memorized.
+
+**Pattern Learning Framework: CONFIRMED (extended, with caveat).** The framework predicts that similar inputs activate overlapping patterns, making the system robust to small perturbations in the input (including novel object sizes and shapes). The near-perfect held-out transfer scores are exactly what stable overlapping internal codes produce: the pattern for "object nearby, move to contact" does not distinguish held-out ellipsoid from trained sphere at the representation level, because the proprio signal (joint state, contact bit) that actually drives the approach is the same regardless of object geometry. The caveat is that the 0.075 anomaly shows the representation is not uniformly smooth — something about that specific ball size disrupts the pattern. Whether this is a genuine representation boundary (the large ball sits in a different basin for the approach code) or an environmental artifact (cart-ball collision geometry) cannot be determined without a targeted diagnostic.
+
+**Generalization-as-primary-state hypothesis: DEEPENED from one-object to an object class.** Phase XIII established that the proprio approach response generalizes broadly across distance, speed, and direction for a single object. Phase XV extends this to a full class of objects. The Taylor object-agnostic equivalence-class claim — that the animal reaches "any object" in fundamentally the same way because reaching is a body-relative sensorimotor program, not an object-recognition program — now has its first direct experimental support in this project. Held-out sizes and held-out shapes transfer zero-shot with minimal performance cost. The equivalence class "reachable solid object" is functionally a single category for this creature's proprioceptive policy.
+
+This finding also sets up the next theoretical test cleanly. The project now has a stable, broad-based proprioceptive generalizer (trained on six size × shape combinations, generalizing zero-shot across an object class). This is exactly the "broad proprio base" that makes a future vision experiment clean: when vision is later added to R48's policy, any gap in task performance between the vision policy and the proprio baseline will be unambiguously attributable to a failure of the visual channel to contribute, not to a weak or narrow proprio base. The "force vision to matter" test is now better set up than it has ever been.
+
+### What is now ruled out / confirmed / flagged (Phase XV additions)
+
+| Item | Status | Evidence |
+|---|---|---|
+| Taylor object-agnostic equivalence-class claim (any object is reached the same way) | FIRST DIRECT SUPPORT | R46/R47/R48: held-out sizes 15–19/20, held-out ellipsoid 20/20, held-out capsule 17–20/20 at ecc=0.00 — matching trained-object performance |
+| Object variety during training damages the core proprio generalizer | RULED OUT | R46/R48 match or beat R44/R45 at ecc=0.00–0.10; R46 exceeds R44 at ecc=0.15 (15 vs 10) |
+| Zero-shot transfer to held-out object sizes possible on proprio alone | CONFIRMED | R46 17/20 (interp), 16/20 (extrap); R48 19/20 (interp), 15/20 (extrap) |
+| Zero-shot transfer to held-out object shapes (ellipsoid, capsule) possible on proprio alone | CONFIRMED | Ellipsoid 20/20 (R47, R48); capsule 17/20 (R47), 20/20 (R48) at ecc=0.00 |
+| Combined size+shape variety improves direction generalization at ecc=0.15 | CONFIRMED (tentative, single-seed) | R48 13/20 vs R44 10/20 at ecc=0.15; consistent across all five shapes including held-out |
+| The ecc=0.25 direction limit is object-related | RULED OUT | 0/20 at ecc=0.25 in ALL runs (R44, R45, R46, R47, R48); universal, not object-specific |
+| Radius 0.075 anomaly (10/20 in R46, 6/20 in R48 despite being a trained size) | OPEN — flag for investigation | Reproducible across two independent runs; most likely cart-ball geometric interaction; investigate by re-running 0.075 bin with cart disabled or at different speed |
+
+### Theory Monitor Note — 2026-06-15 (Phase XV)
+
+**Behavioral Prediction Framework: CONFIRMED (deepened)** — Zero-shot transfer of the lawful time-to-contact relationship (r=+0.84/+0.87 in R46/R48) to held-out object sizes and shapes never seen in training is the strongest confirmation yet that the proprio policy holds a genuine internal model of reaching, not a lookup table of trained objects: a lookup-table policy would fail at novel shapes, but this one does not.
+
+**Pattern Learning Framework: CONFIRMED (extended) with one open anomaly** — Near-perfect held-out transfer scores (ellipsoid 20/20, capsule 17–20/20, interpolation size 17–19/20) are consistent with stable overlapping internal codes that do not distinguish held-out objects from trained ones at the representation level; the reproducible 0.075 anomaly (10/20 and 6/20 across two independent runs on a trained size) is the one location where the pattern breaks, and its cause is unresolved.
+
+**Generalization-as-primary hypothesis: CONFIRMED for an object CLASS, not just one object** — Phase XIII confirmed object-agnostic generalization for a single object configuration; Phase XV extends it to a class: held-out sizes and shapes transfer zero-shot with minimal performance cost, providing the first direct experimental support for the Taylor equivalence-class claim ("any object is reached the same way") in this project.
+
+**The most important thing we don't know yet:** Whether the 0.075-radius anomaly is an environmental artifact (cart-ball collision geometry at this specific size) or a genuine representation boundary (the approach code learned on 0.040/0.053/0.075 has a gap precisely at 0.075 for a task-structural reason). A single diagnostic — re-running the 0.075 eval bin with the cart disabled — would separate these two explanations cleanly.
+
+**Recommended diagnostic** (not a training run — just a measurement): Re-run the deterministic size sweep on R46 and R48 with the cart velocity set to 0 (or the cart removed) for the 0.075-radius bin only; if that bin recovers to 17+/20, the anomaly is a cart-ball geometric interaction, not a representation failure; if it stays at 10/20 or below, the approach code itself has a gap at this radius that needs investigation.

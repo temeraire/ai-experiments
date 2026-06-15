@@ -71,7 +71,7 @@ Worth distinguishing:
 
 Crucially, KL is **asymmetric**: `KL(P || Q) ≠ KL(Q || P)` in general. The asymmetry matters. `KL(P || Q)` heavily penalizes P putting probability mass anywhere Q assigns near-zero probability — informally, "P should be careful never to claim things Q rules out." The direction you write the KL in expresses *which* distribution is the reference. When neither side should be treated as ground truth, you average both directions and call it **symmetric KL**.
 
-In Phase I MICOA we use symmetric KL between the proprio and vision encoder distributions (neither is ground truth, both are penalized for disagreement). In Phase II we use the asymmetric form `KL(vision(t) || proprio(t+1))` with proprio detached — vision is pulled toward proprio's future, but proprio is unaffected by the loss (proprio is the ground truth for what vision should be predicting).
+In Phase IX MICOA we use symmetric KL between the proprio and vision encoder distributions (neither is ground truth, both are penalized for disagreement). In Phase X we use the asymmetric form `KL(vision(t) || proprio(t+1))` with proprio detached — vision is pulled toward proprio's future, but proprio is unaffected by the loss (proprio is the ground truth for what vision should be predicting).
 
 ---
 
@@ -101,7 +101,7 @@ In Phase I MICOA we use symmetric KL between the proprio and vision encoder dist
 
 ## MICOA (Multiple Inputs Confirming One Another)
 
-The architecture we built in Phase I and Phase II to address the problem that vision was never load-bearing across 7 prior experiments (Phase G/H). The diagnosis was structural: concatenating proprio and pixels into one flat vector for SAC is "welding two tubes end-to-end" — it makes a longer rod, not a box. SAC just follows whichever gradient is easier (always proprio), and the pixel encoder gets no useful training signal. To make a box, the architecture needs a component whose job is to *detect* when two independent streams are constraining the same world-state simultaneously. That detector is what MICOA adds.
+The architecture we built in Phase IX and Phase X to address the problem that vision was never load-bearing across 7 prior experiments (Phase VII/VIII). The diagnosis was structural: concatenating proprio and pixels into one flat vector for SAC is "welding two tubes end-to-end" — it makes a longer rod, not a box. SAC just follows whichever gradient is easier (always proprio), and the pixel encoder gets no useful training signal. To make a box, the architecture needs a component whose job is to *detect* when two independent streams are constraining the same world-state simultaneously. That detector is what MICOA adds.
 
 **Product of Experts (PoE).** The parameter-free math at the heart of MICOA. Each modality's encoder outputs a Gaussian distribution `(μ, σ)` over a shared 64-dim latent space `Z` instead of a single point. The PoE fuses them with Bayesian precision-weighted averaging:
 ```
@@ -114,23 +114,23 @@ When both encoders point at the same region of Z, the precisions add and σ_comb
 
 **MICOASAC.** A SAC subclass that adds the MICOA agreement loss(es) on top of SAC's normal actor/critic gradients. Each gradient step, after SAC's own backward pass, MICOASAC samples a fresh batch from the replay buffer and runs an extra forward + backward over the encoder's parameters with `_micoa_opt` (a separate Adam optimizer over the extractor only). The SAC training loop itself is untouched — the auxiliary loss only shapes the encoders.
 
-**Symmetric KL agreement loss (Phase I).** The first MICOA loss term, weighted by `--micoa-beta`:
+**Symmetric KL agreement loss (Phase IX).** The first MICOA loss term, weighted by `--micoa-beta`:
 ```
 loss_sym = β_sym * 0.5 * (KL(p || v) + KL(v || p))
 ```
 where `p = N(μ_p, σ_p)` and `v = N(μ_v, σ_v)` come from the same observation at the same timestep. Symmetric so neither encoder is treated as ground truth — both are equally penalized for outputting different distributions. This is "confirmation" — the two encoders agree about *now*. **Result across R36/R37: vision learned to mirror proprio's encoding (cheapest way to satisfy the loss) and remained inert in behavior.** This is the "confirmation without anticipation" failure mode.
 
-**Temporal predictive KL loss (Phase II).** The second MICOA loss term, weighted by `--micoa-pred-beta`:
+**Temporal predictive KL loss (Phase X).** The second MICOA loss term, weighted by `--micoa-pred-beta`:
 ```
 loss_pred = β_pred * KL(N(μ_v(t), σ_v(t)) || N(μ_p(t+1), σ_p(t+1)).detach())
 ```
 Vision at time `t` is pulled toward the distribution proprio will encode at `t+1`. Asymmetric and one-sided: the `.detach()` on proprio's future means only the vision encoder is updated by this loss. Vision is the predictor; proprio is the ground truth. This is "anticipation" — vision must learn to see *what proprio is about to feel*. Mirroring proprio(t) won't satisfy this loss because in general proprio(t) ≠ proprio(t+1); vision has to actually predict the change. Whether this gets vision over the load-bearing threshold is what R38 tests.
 
-**The "corner" vs "tube" framing.** A flat MLP over `[proprio | pixels]` builds a longer tube. Two encoders + PoE builds a corner: σ_combined shrinks precisely when both encoders are constraining the same Z, which is what makes the corner rigid. The empirical question is whether SAC's task gradient is strong enough — combined with MICOA's KL pressure — to make the corner load-bearing for behavior, not just present as a representation. Phase I result: corner forms, behavior doesn't change. Phase II is the test of whether temporal asymmetry breaks that pattern.
+**The "corner" vs "tube" framing.** A flat MLP over `[proprio | pixels]` builds a longer tube. Two encoders + PoE builds a corner: σ_combined shrinks precisely when both encoders are constraining the same Z, which is what makes the corner rigid. The empirical question is whether SAC's task gradient is strong enough — combined with MICOA's KL pressure — to make the corner load-bearing for behavior, not just present as a representation. Phase IX result: corner forms, behavior doesn't change. Phase X is the test of whether temporal asymmetry breaks that pattern.
 
 **σ_combined and kl_agreement.** The two diagnostic scalars MICOA logs every 500 steps (look for `[MICOA]` lines in the training log). σ_combined falling = corner is forming. kl_agreement near zero = encoder distributions overlap. We learned to read these *together*: σ_combined falling while kl_agreement stays moderate-and-falling = healthy corner formation. σ_combined falling while kl_agreement crashes to zero in the first 4K steps = forced collapse (β too high; what R36 did).
 
-**Ablation delta (the real success metric).** How much the agent's action changes when we zero all pixel inputs at inference time. Measured as the L2 norm of `action(full_obs) - action(blind_obs)`. The pre-approved success threshold for Phase I/II is `> 0.05`. Across 9 prior runs (Phase G/H, R36, R37) the number sits around 0.001–0.002 — vision has been silently inert. Whether MICOA + temporal prediction can push this above 0.05 is the question that breaks the pattern.
+**Ablation delta (the real success metric).** How much the agent's action changes when we zero all pixel inputs at inference time. Measured as the L2 norm of `action(full_obs) - action(blind_obs)`. The pre-approved success threshold for Phase IX/X is `> 0.05`. Across 9 prior runs (Phase VII/VIII, R36, R37) the number sits around 0.001–0.002 — vision has been silently inert. Whether MICOA + temporal prediction can push this above 0.05 is the question that breaks the pattern.
 
 ---
 
@@ -167,3 +167,39 @@ Vision at time `t` is pulled toward the distribution proprio will encode at `t+1
 **Interpenetration (Ch. 5).** "Properties of the perceptual field determined by one set are incorporated in the perceptual field determined by the other set." Our operational reading: vision's representation should inherit and extend proprio's, not overwrite it. v5's consistency loss is an explicit test of this reading.
 
 **Unconditioned vs conditioned response.** Unconditioned = reflexive, built-in (e.g., contact → grasp). Conditioned = learned to fire from a previously-neutral cue (e.g., the *sight* of an object → grasp, after learning that seeing precedes touching).
+
+---
+
+## Generalization, robustness & recent methods (Phase XII–XV)
+
+**DroQ (Dropout Q-functions).** A tweak to SAC's critics: add dropout + layer-norm inside the critic networks and raise the update-to-data ratio. The regularization lets you do many gradient updates per environment step without the critic overfitting/diverging, so the agent learns more per unit of experience. Introduced in Phase XIV (R45) as critic regularization; we run it with `--droq --dropout-rate 0.01 --utd 4`. Validated as a no-regression infrastructure change before being used as the Phase XV workhorse.
+
+**UTD (update-to-data ratio).** How many gradient updates the agent does per environment step. Vanilla SAC is UTD=1 (one update per step); DroQ lets us push it higher (we use UTD=4) for more learning per sample. Higher UTD = more compute per step but faster learning in samples — only stable with regularization like DroQ.
+
+**Critic dropout.** Randomly zeroing a fraction of critic-network activations during training (`--dropout-rate 0.01`). A standard regularizer that, in DroQ, is what keeps the high-UTD critic from over-trusting its own estimates.
+
+**Eccentricity (ecc).** How far off-center the target is from AB straight ahead, in meters of lateral offset. ecc=0.00 = ball dead ahead (easiest); larger ecc = ball further to the side (harder to reach). Our standard bins run 0.00, 0.05, 0.10, 0.15, 0.20, 0.25.
+
+**Eccentricity sweep.** The deterministic eval that scores both-touched success at each eccentricity bin (e.g. "20,20,19,13,5,0" across the six bins). Per the Phase XIV methodological finding this is the *only* valid health metric on this substrate — eval mean_reward and critic_loss are invalid here.
+
+**Vision-ablation sensitivity (ablation L2 / abl_L2).** Our primary measure of "does vision matter to behavior?": zero out the pixel columns of the observation and measure how much the policy's action vector changes (L2 distance). High = the policy depends on vision; near-zero = vision is inert ("dead zone" ≈ 0.002–0.024). Preferred over task-success because AB can solve the task by proprio-grope alone — ablation directly asks whether vision is load-bearing. Caveat learned across phases: high action-level ablation does NOT imply vision is *useful* (R41 had the highest ablation ever, 0.85, yet performed worse than the proprio control).
+
+**Load-bearing vs productive.** Two different bars for vision. *Load-bearing* (action-level): zeroing pixels changes the action (ablation > threshold). *Productive* (outcome-level): having vision actually makes AB succeed more often than a matched proprio-only control. The whole project's recurring finding is that vision keeps clearing the first bar without clearing the second.
+
+**Generalization-as-primary.** Our reframing of the project's thesis after Phase XIII: the interesting claim is not "vision helps" but that AB builds a representation that *generalizes* — lawful behavior on object/target configurations it was never trained on. The acid test is zero-shot transfer to held-out objects, not raw task success. Confirmed (core) for proprio; the strong form (vision recruited at the margin) was refuted.
+
+**Zero-shot transfer.** Performance on objects/conditions AB was never trained on, with no extra training. Phase XV's central test: train on a subset of an equivalence class (e.g. ball radii {0.040, 0.053, 0.075}) and measure both-touched on held-out members ({0.047, 0.090}).
+
+**Held-out / interpolation vs extrapolation.** A *held-out* value is deliberately excluded from training so it can test transfer. *Interpolation* = the held-out value sits inside the trained range (e.g. 0.047 between 0.040 and 0.075); *extrapolation* = outside it (e.g. 0.090 beyond 0.075). Extrapolation is the harder, more telling test.
+
+**Distance law / time-to-contact.** The empirical finding that steps-to-reach scales lawfully with target distance (Phase XIII: R44 proprio ≈ 688·d − 218, r≈0.89), and crucially *extrapolates* to untrained distances — evidence the representation is metric, not memorized. Confound: the autonomously-sweeping cart logs spurious ~1-step contacts that add scatter, so the exact slope is noisier than a clean reach task would give.
+
+**Equivalence-class test (object variety).** The Phase XV paradigm: treat "ball" as a class with members varying along a dimension (size, shape, …), train on some members, hold others out, and ask whether AB treats the held-out members as the same class (still reaches them). Directly operationalizes the source theory's equivalence-class construct.
+
+**The 0.075 anomaly.** A reproducible dip in both-touched success at the *trained* ball radius 0.075 (≈6/20) seen in both R46 and R48, even though smaller and larger sizes do better. Anomalous because a trained size should be easy; flagged for a focused diagnostic rather than explained.
+
+**constant_velocity_bouncer (cart mode).** The substrate AB sits on: a cart that drifts at constant speed and bounces off the arena walls (`--cart-speed 0.15`), giving gentle ongoing motion. Distinct from a static base or a ball that itself moves (`--ball-speed`, set to 0 in Phase XIV/XV).
+
+**Velocity bonus.** A small shaping reward (`--velocity-bonus-scale 0.10`) for moving toward the target rather than freezing — counters AB's tendency to collapse into stillness (the "floor episode" attractor).
+
+**Curriculum (warmup / ramp / offset).** Easing AB into difficulty: start with the target arranged in its favor and quietly move it out of reach over training. Controlled by `--curriculum-warmup` (steps before difficulty starts rising), `--curriculum-ramp-end` (step where it reaches full difficulty), and `--curriculum-final-offset` (how far the prize ends up displaced).

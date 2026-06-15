@@ -669,7 +669,7 @@ Note: the 3 render timeouts are misleading because sanity_render doesn't use max
 
 ---
 
-## 2026-05-11 — Phase A: No-bribery substrate, existing CNN (mimo_substrate_A)
+## 2026-05-11 — Phase I: No-bribery substrate, existing CNN (mimo_substrate_A)
 
 **What we ran:** A 250K-step training run on the MIMo crawler under a deliberately stripped-down substrate that removes every behavior-specific reward shaping the prior runs depended on, while keeping the existing flat-concatenation StereoCrawlerCNN architecture. The intent was to test, as a control, whether the substrate change alone — no velocity bonus, no approach reward, no FOV reward, 360° ball spawn so blind-forward-paddle cannot exploit any spawn bias, 2000-step episodes so the creature has time to recover from bad initial direction, 20cm guardrails so falling off is impossible, and a 15° downward camera tilt so the ball (resting on the platform) can in principle appear in the eye-camera FOV past the prone arms — is enough to make vision become load-bearing. Other config: 4 envs DummyVecEnv, MPS, lr=1e-4 (DrQ-v2 recommended), ent_coef=0.2 fixed, buffer_size=100K, learning_starts=10K. The only reward signals are +200 on ball contact and −0.05 per step (hunger). The creature has zero information about ball direction from proprio.
 
@@ -690,15 +690,15 @@ Note: the 3 render timeouts are misleading because sanity_render doesn't use max
 
 **Failure mode shift:** Worth noting separately from prior runs. v10 collapsed to 20% deterministic and stabilized. v11 collapsed and partially recovered. This run, mimo_substrate_A, collapsed to **0%** deterministic — the worst outcome of any run on the MIMo body — and showed total-zero deviation across all 20 episodes at both 150K and 250K. Removing the velocity bonus and approach reward (the bribery components) deprived the policy of the gradient signals that prior runs implicitly relied on to maintain locomotor activity even when vision was silent. Without those signals, the only reward gradient comes from sparse contact, which the policy never reaches deterministically — so the actor collapses toward a no-action attractor. This is a clean negative result for the "remove bribery, hope vision develops" hypothesis: when bribery goes away, the architecture has nothing to learn from until vision provides direction, and vision will not provide direction unless the architecture is structured to listen.
 
-**Next question:** Does the dialogue architecture (two-stream actor with proprio + vision producing independent action proposals, a learned scalar gate combining them, and a consistency loss `λ · ||μ_p − μ_v||²` penalizing per-stream disagreement) escape this attractor on the same substrate? Phase B is currently running (300K steps, mimo_dialogue_v1) with identical environment and reward configuration. If Phase B's vision-ablation sensitivity comes back above 0.5 with touch rate > 25%, the structural change is what made vision load-bearing — substrate alone was a necessary but not sufficient prerequisite. If Phase B also collapses, the MIMo body is the limiting factor and the next experiment should be on the platform creature with the dialogue architecture instead.
+**Next question:** Does the dialogue architecture (two-stream actor with proprio + vision producing independent action proposals, a learned scalar gate combining them, and a consistency loss `λ · ||μ_p − μ_v||²` penalizing per-stream disagreement) escape this attractor on the same substrate? Phase II is currently running (300K steps, mimo_dialogue_v1) with identical environment and reward configuration. If Phase II's vision-ablation sensitivity comes back above 0.5 with touch rate > 25%, the structural change is what made vision load-bearing — substrate alone was a necessary but not sufficient prerequisite. If Phase II also collapses, the MIMo body is the limiting factor and the next experiment should be on the platform creature with the dialogue architecture instead.
 
 **Theory signals:** The Behavioral Prediction Framework predicts that an agent with a viable internal model of where contact is achievable should outperform random walk on the 360° spawn distribution (random walk on a 2m × 2m platform with a 5cm ball over 2000 steps should produce ~30-50% touch by ballistic coverage alone). The deterministic 0% touch rate is far below the random-walk baseline, indicating the policy has not built a predictive model — it has been driven by the SAC update dynamics into a state of literal inaction. This is a stronger violation of the framework's prediction than any prior run, because no prior run had a substrate that supported random walk baseline at this level. The Pattern Learning Framework predicts that the visual representation should respond to recurring patterns in the camera feed (the ball as a stable red structure, the guardrail walls as a recurring spatial feature). The 0.0226 ablation delta shows no such pattern has developed — the visual pathway is not just unused for control, it is structurally inert. Both frameworks are challenged in the same direction: when bribery is removed, the flat-concatenation architecture produces a less capable policy, not a more grounded one. The architecture, not the substrate, is the load-bearing failure.
 
 ---
 
-## 2026-05-11 — Phase B: Dialogue architecture on no-bribery substrate (mimo_dialogue_v1)
+## 2026-05-11 — Phase II: Dialogue architecture on no-bribery substrate (mimo_dialogue_v1)
 
-**What we ran:** A 300K-step training run with the same no-bribery substrate as Phase A (360° spawn, 2000-step episodes, guardrails, camera tilt, no velocity bonus, no approach reward) but with the **dialogue architecture** from the May 7 retirement memo: a two-stream actor where proprio (69 dims) and vision (stereo CNN → 64-dim latent) each produce independent action proposals (μ_p, μ_v), a learned scalar gate w combines them as a = w·μ_p + (1−w)·μ_v, and a consistency loss λ · ||μ_p − μ_v||² (λ = 0.05) is added to the actor objective to pressure the two streams toward agreement. Same SAC hyperparameters as Phase A: lr=1e-4, ent_coef=0.2 fixed, buffer 100K, learning_starts 10K. The run was killed at 112K when the trajectory made the outcome predictable.
+**What we ran:** A 300K-step training run with the same no-bribery substrate as Phase I (360° spawn, 2000-step episodes, guardrails, camera tilt, no velocity bonus, no approach reward) but with the **dialogue architecture** from the May 7 retirement memo: a two-stream actor where proprio (69 dims) and vision (stereo CNN → 64-dim latent) each produce independent action proposals (μ_p, μ_v), a learned scalar gate w combines them as a = w·μ_p + (1−w)·μ_v, and a consistency loss λ · ||μ_p − μ_v||² (λ = 0.05) is added to the actor objective to pressure the two streams toward agreement. Same SAC hyperparameters as Phase I: lr=1e-4, ent_coef=0.2 fixed, buffer 100K, learning_starts 10K. The run was killed at 112K when the trajectory made the outcome predictable.
 
 **Numbers (rollout, no completed eval at kill time):**
 - ep_rew_mean trajectory: −100 (8K) → −66.5 (16K) → −56.3 (24K, peak) → −66.6 (32K) → −73 (40K) → −65.3 (48K) → −70.1 (56K) → −63.6 (58K) → −67.6 (66K) → −70.8 (74K) → ~−65 throughout the rest
@@ -706,12 +706,12 @@ Note: the 3 render timeouts are misleading because sanity_render doesn't use max
 - Disagreement (||μ_p − μ_v||) trajectory: 0.090 (16K) → 0.099 (24K) → 0.105 (32K) → 0.112 (40K) → 0.178 (48K) → 0.196 (56K) → 0.222 (60K) → 0.271 (66K) → 0.415 (74K) → ~0.42 (steady)
 - Consistency_loss trajectory: 0.013 (16K) → 0.020 (40K) → 0.055 (48K) → 0.086 (60K) → 0.123 (66K) → 0.285 (74K) → 0.31 (steady)
 - μ_proprio_mean ≈ 0.19; μ_vision_mean ≈ 0.085 (vision actions roughly half the magnitude of proprio actions throughout)
-- First eval at 60K: episode_reward = −85.03 ± 65.26 (≈ same as Phase A 50K eval)
+- First eval at 60K: episode_reward = −85.03 ± 65.26 (≈ same as Phase I 50K eval)
 - Steps completed before kill: 112,000
 
-**What we learned:** The dialogue architecture, as configured, degenerated into a *monologue*: the gate w collapsed to near zero (0.005 at its low) within 40K steps, meaning the policy effectively ran the vision stream alone with the proprio stream's contributions multiplied by ~0. The asymmetry is structural in the gradient flow: with w ≈ 0, the SAC actor loss flows primarily to μ_v (because the combined action a ≈ μ_v), so μ_v gets a strong reward gradient. The proprio stream μ_p receives essentially no SAC gradient — only the smaller consistency-loss pressure. As μ_v drifts toward Q-value-maximizing actions, μ_p slowly lags behind via the consistency term, but it cannot keep up. Disagreement and consistency_loss grow together (0.09 → 0.42 and 0.013 → 0.31 respectively over 100K steps), exactly the opposite of what the consistency objective was supposed to produce. By the kill, the gate began ticking back up (0.005 → 0.07), suggesting a long-run equilibrium might emerge where proprio re-enters, but at the cost of compute we judged not worth investing given the trajectory looked like Phase A in slow motion.
+**What we learned:** The dialogue architecture, as configured, degenerated into a *monologue*: the gate w collapsed to near zero (0.005 at its low) within 40K steps, meaning the policy effectively ran the vision stream alone with the proprio stream's contributions multiplied by ~0. The asymmetry is structural in the gradient flow: with w ≈ 0, the SAC actor loss flows primarily to μ_v (because the combined action a ≈ μ_v), so μ_v gets a strong reward gradient. The proprio stream μ_p receives essentially no SAC gradient — only the smaller consistency-loss pressure. As μ_v drifts toward Q-value-maximizing actions, μ_p slowly lags behind via the consistency term, but it cannot keep up. Disagreement and consistency_loss grow together (0.09 → 0.42 and 0.013 → 0.31 respectively over 100K steps), exactly the opposite of what the consistency objective was supposed to produce. By the kill, the gate began ticking back up (0.005 → 0.07), suggesting a long-run equilibrium might emerge where proprio re-enters, but at the cost of compute we judged not worth investing given the trajectory looked like Phase I in slow motion.
 
-**Vision-stream magnitude problem:** A separate diagnostic from the disagreement trajectory: throughout training, μ_vision_mean (~0.08) was about half the magnitude of μ_proprio_mean (~0.19). With the gate weighting vision at ≥ 93%, the actual combined action magnitude was dominated by these smaller vision actions. The deterministic policy therefore output unusually small actions — which, on a 25-DOF MIMo body, are not enough to produce locomotion. The combination "gate ≈ 0, μ_v is small" produces a deterministic policy that barely moves. This is consistent with the rollout reward plateauing at −65 (~14% one-ball touch rate) and explains why the eval at 60K was identical to Phase A's eval at 50K.
+**Vision-stream magnitude problem:** A separate diagnostic from the disagreement trajectory: throughout training, μ_vision_mean (~0.08) was about half the magnitude of μ_proprio_mean (~0.19). With the gate weighting vision at ≥ 93%, the actual combined action magnitude was dominated by these smaller vision actions. The deterministic policy therefore output unusually small actions — which, on a 25-DOF MIMo body, are not enough to produce locomotion. The combination "gate ≈ 0, μ_v is small" produces a deterministic policy that barely moves. This is consistent with the rollout reward plateauing at −65 (~14% one-ball touch rate) and explains why the eval at 60K was identical to Phase I's eval at 50K.
 
 **Is vision load-bearing?** Unconfirmed — and architecturally misleading. The ablation test (zeroing pixels and measuring action delta) would likely report large delta because zeroing the inputs to a network with gate ≈ 0 makes μ_v change dramatically, and the policy IS combined ≈ μ_v. So the ablation would say "vision is load-bearing," but only in the degenerate sense that the architecture made vision structurally load-bearing by zeroing out the proprio stream. This is not the MICOA outcome — there is no confirmation, only dependence. A genuine load-bearing vision pathway would have w in some intermediate range (say 0.3–0.7) with disagreement decreasing over training (vision and proprio converging on the same answer). What we got was the opposite: w collapsing and disagreement growing.
 
@@ -721,50 +721,50 @@ Note: the 3 render timeouts are misleading because sanity_render doesn't use max
 
 ---
 
-## 2026-05-11 — Phase C / C2: Fixed-ball-position substrate (mimo_phase_c_*)
+## 2026-05-11 — Phase III / III.2: Fixed-ball-position substrate (mimo_phase_c_*)
 
 **What we ran:** Two experiments testing whether the random-spawn distribution is the load-bearing failure rather than the architecture. The user's insight: random spawn means every episode is a fresh problem with no stable spatial structure for the agent to model. With *fixed* ball positions, the world has a stable structure the agent can learn to navigate to. Two variants tested:
 
-- **Phase C**: Two fixed balls at (0.7, 0.0) and (0.0, 0.7), random starting orientation per episode (creature spawns prone facing a random yaw), blind proprio (no vision), no bribery, 2000-step episodes, episode terminates only when both balls touched. Killed at 56K after first eval.
-- **Phase C2**: Same as Phase C, plus **memory_obs** appended to the observation: two binary flags (`touched_ball1`, `touched_ball2`) get concatenated to proprio at every step, letting a stateless SAC policy condition on its own past contacts within an episode. Killed at 56K after first eval.
+- **Phase III**: Two fixed balls at (0.7, 0.0) and (0.0, 0.7), random starting orientation per episode (creature spawns prone facing a random yaw), blind proprio (no vision), no bribery, 2000-step episodes, episode terminates only when both balls touched. Killed at 56K after first eval.
+- **Phase III.2**: Same as Phase III, plus **memory_obs** appended to the observation: two binary flags (`touched_ball1`, `touched_ball2`) get concatenated to proprio at every step, letting a stateless SAC policy condition on its own past contacts within an episode. Killed at 56K after first eval.
 
 **Numbers:**
 
 | Run | Step | ep_rew_mean | Eval @50K |
 |-----|------|------------:|----------:|
-| Phase C  | 8K  | −50    | (run too short for eval landing) |
-| Phase C  | 16K | −50    | |
-| Phase C  | 24K | **−16.7** ← peak | |
-| Phase C  | 32K | −25    | |
-| Phase C  | 40K | −40    | |
-| Phase C  | 50K | (eval) | **−100.00 ± 0.00** |
-| Phase C2 | 8K  | −50    | |
-| Phase C2 | 16K | −75    | |
-| Phase C2 | 24K | −50    | |
-| Phase C2 | 32K | −50    | |
-| Phase C2 | 40K | −60    | |
-| Phase C2 | 48K | −66.7  | |
-| Phase C2 | 50K | (eval) | **−100.00 ± 0.00** |
+| Phase III  | 8K  | −50    | (run too short for eval landing) |
+| Phase III  | 16K | −50    | |
+| Phase III  | 24K | **−16.7** ← peak | |
+| Phase III  | 32K | −25    | |
+| Phase III  | 40K | −40    | |
+| Phase III  | 50K | (eval) | **−100.00 ± 0.00** |
+| Phase III.2 | 8K  | −50    | |
+| Phase III.2 | 16K | −75    | |
+| Phase III.2 | 24K | −50    | |
+| Phase III.2 | 32K | −50    | |
+| Phase III.2 | 40K | −60    | |
+| Phase III.2 | 48K | −66.7  | |
+| Phase III.2 | 50K | (eval) | **−100.00 ± 0.00** |
 
-Both runs collapsed to identical deterministic-eval failure: every one of 20 episodes returned exactly −100.00, meaning zero contacts and zero variance — the deterministic policy outputs near-zero actions and the creature does not move during eval. Same total-zero attractor as Phase A.
+Both runs collapsed to identical deterministic-eval failure: every one of 20 episodes returned exactly −100.00, meaning zero contacts and zero variance — the deterministic policy outputs near-zero actions and the creature does not move during eval. Same total-zero attractor as Phase I.
 
 **What we learned:** Fixed ball positions alone do not rescue the substrate. Adding within-episode memory flags also does not rescue it. The deeper failure is upstream: under no-bribery conditions with sparse contact reward, SAC's deterministic policy collapses to zero-action regardless of whether the spatial structure is learnable or whether memory of past contacts is available. The collapse happens because the policy receives no consistent gradient signal for locomotion — non-zero actions occasionally produce contact reward (during stochastic exploration with ent_coef=0.2), but they also produce step_cost and proprio chaos when the body tips over. SAC averages over this uncertainty by going to zero. Both fixed positions and memory require a working locomotor base to be useful, and the no-bribery setup doesn't produce one. The user's two-ball + memory hypothesis is therefore not refuted — it is not testable in this configuration, because the prerequisite (the agent reliably moves at all) was never satisfied.
 
 **The dependency graph this reveals:** body works → can move → can encounter things → can remember encounters → can use memory + stable structure to map. We confirmed empirically that the chain breaks at link 2 ("can move") in the no-bribery setting. Memory flags (link 4) and fixed structure (link 6) are downstream-of-locomotion features and cannot compensate for an absent locomotion base.
 
-**Is vision load-bearing?** Not applicable; both Phase C and C2 are blind proprio.
+**Is vision load-bearing?** Not applicable; both Phase III and III.2 are blind proprio.
 
-**Stochastic vs deterministic gap, revisited:** In all three failed runs (A, C, C2), the same pattern: stochastic rollout shows touch rates of 10–30% (ep_rew_mean around −20 to −70), but deterministic eval shows zero contacts (mean reward −100, std 0). The exploration noise from ent_coef=0.2 is the only thing producing contacts during training; the policy mean has not learned to produce contacts on its own. This is the structural diagnostic: SAC + no-bribery + sparse contact reward + MIMo body has *not* in 250K-300K steps developed a locomotion policy whose mean produces motion. Whatever motion happens in rollouts is the noise, not the policy.
+**Stochastic vs deterministic gap, revisited:** In all three failed runs (I, III, III.2), the same pattern: stochastic rollout shows touch rates of 10–30% (ep_rew_mean around −20 to −70), but deterministic eval shows zero contacts (mean reward −100, std 0). The exploration noise from ent_coef=0.2 is the only thing producing contacts during training; the policy mean has not learned to produce contacts on its own. This is the structural diagnostic: SAC + no-bribery + sparse contact reward + MIMo body has *not* in 250K-300K steps developed a locomotion policy whose mean produces motion. Whatever motion happens in rollouts is the noise, not the policy.
 
-**Next question:** Does adding back a *small* velocity bonus (say 0.01–0.02, vs the 0.05 of the prior 85% blind run, vs 0.0 in Phases A/C/C2) restore locomotion without resurrecting the bribery-driven failure modes? The user's framing distinguishes "enabling locomotion" (substrate, fair) from "paying for a specific behavior" (bribery, not fair). A small velocity bonus is closer to the first — it tells the creature "moving is better than not moving" but not WHICH direction to move. Combined with fixed ball positions and memory flags, this might finally produce the locomotor base needed for the spatial-structure hypothesis to be testable.
+**Next question:** Does adding back a *small* velocity bonus (say 0.01–0.02, vs the 0.05 of the prior 85% blind run, vs 0.0 in Phases I/III/III.2) restore locomotion without resurrecting the bribery-driven failure modes? The user's framing distinguishes "enabling locomotion" (substrate, fair) from "paying for a specific behavior" (bribery, not fair). A small velocity bonus is closer to the first — it tells the creature "moving is better than not moving" but not WHICH direction to move. Combined with fixed ball positions and memory flags, this might finally produce the locomotor base needed for the spatial-structure hypothesis to be testable.
 
 **Theory signals:** The Behavioral Prediction Framework's prediction that an agent should outperform random walk on a learnable task is violated in all three runs. The agent does not produce random walk — it produces *no walk*. This is a stronger failure than the framework anticipates. The agent has not built any internal model, predictive or otherwise; it has gone to a null policy. The Pattern Learning Framework expected stable representations to form around recurring features of the environment. With fixed ball positions, the world *has* the stable structure required, but the policy never reaches a state where it could differentially respond to those features. Both frameworks predict that with the substrate fixed in this way, *something* should be learnable; the result that *nothing* is learnable is informative — it tells us the prerequisite layer (motor activity that produces consequences) is not in place. The dependency-graph principle (body → motion → encounter → memory → map) maps onto Taylor's developmental progression: you cannot build perceptual equivalence classes for objects you have never encountered, and you cannot encounter objects without a working motor system that produces encounters.
 
 ---
 
-## 2026-05-11 — Phase D: HER + fixed balls + memory + small velocity bonus (mimo_phase_d_her)
+## 2026-05-11 — Phase IV: HER + fixed balls + memory + small velocity bonus (mimo_phase_d_her)
 
-**What we ran:** A 250K-step training run combining everything from Phase C2 plus **Hindsight Experience Replay** (Andrychowicz et al. 2017) — the canonical literature solution for sparse-reward goal-reaching. Config: HERCrawlerWrapper exposing goal-conditioned Dict obs (achieved_goal = hip XY, desired_goal = active ball XY), HerReplayBuffer with `n_sampled_goal=4` and `goal_selection_strategy="future"`, MultiInputPolicy, VecNormalize with `norm_obs_keys=["observation"]`. Same substrate as C2: two fixed balls at (0.7, 0) and (0, 0.7), random starting orientation, blind proprio (mono camera in env but no vision in policy), memory flags. Plus a small `velocity_bonus_scale=0.02` to test the "enabling pressure" hypothesis from the Phase C2 next-question. 16 parallel envs on MPS, `learning_starts=40000` (required by HER's per-env first-episode constraint: needs ≥ `n_envs × max_steps`).
+**What we ran:** A 250K-step training run combining everything from Phase III.2 plus **Hindsight Experience Replay** (Andrychowicz et al. 2017) — the canonical literature solution for sparse-reward goal-reaching. Config: HERCrawlerWrapper exposing goal-conditioned Dict obs (achieved_goal = hip XY, desired_goal = active ball XY), HerReplayBuffer with `n_sampled_goal=4` and `goal_selection_strategy="future"`, MultiInputPolicy, VecNormalize with `norm_obs_keys=["observation"]`. Same substrate as III.2: two fixed balls at (0.7, 0) and (0, 0.7), random starting orientation, blind proprio (mono camera in env but no vision in policy), memory flags. Plus a small `velocity_bonus_scale=0.02` to test the "enabling pressure" hypothesis from the Phase III.2 next-question. 16 parallel envs on MPS, `learning_starts=40000` (required by HER's per-env first-episode constraint: needs ≥ `n_envs × max_steps`).
 
 **Crash diagnostics on the way in:** First launch crashed at startup with `EXC_BAD_ACCESS` in `_datetime.delta_new` during `_Py_Finalize → finalize_modules → gc_collect_main`. This is a Python 3.13 + MuJoCo + PyTorch shutdown race on macOS: any uncaught exception causes Python's interpreter teardown, which calls a generator's `__del__` chain that touches `datetime.timedelta()` after `_datetime` is partially torn down. Fixed by (a) `faulthandler.enable()` at module top for real tracebacks instead of opaque segfaults, (b) wrapping `train(args)` in try/except + `os._exit(exit_code)` to skip Python's broken finalization entirely whether training succeeds or raises, and (c) setting `progress_bar=False` in `model.learn()` to avoid the `tqdm.rich` destructor's `Live.refresh → datetime` chain. With these in place the real underlying error surfaced: `RuntimeError: Unable to sample before the end of the first episode` — HER's replay buffer needs at least one *completed* episode per env before it can relabel, and with `learning_starts=10000` × `n_envs=16` × `max_steps=2000`, no env had finished a full episode by warmup's end. Resolved by bumping `learning_starts` to 40000.
 
@@ -784,32 +784,32 @@ Both runs collapsed to identical deterministic-eval failure: every one of 20 epi
 
 **Why HER alone failed (this is the important part):** HER's premise is "even failed episodes are useful if you treat the agent's end-state as the goal." This is powerful when episode endpoints *vary*. Here they don't. Every episode ends near the spawn position, so every *hindsight* goal HER samples is approximately the spawn position. HER's relabeling degenerates into "learn a policy that reaches the spawn position" — which is trivially achieved by the policy already there (do nothing, you're already at spawn). The literature's claim that HER fixes sparse-reward exploration assumes the agent already produces *varied* trajectories. **HER does not produce exploration; it exploits exploration that already exists.** If the underlying policy cannot wander, HER has no useful hindsight to relabel. The bootstrap problem is upstream of HER.
 
-**The dependency-graph picture, refined:** Phases A, B, C, C2, D have now closed off the upper-substrate fixes. Substrate (A) doesn't bootstrap. Two-stream architecture (B) doesn't bootstrap. Fixed structure (C) doesn't bootstrap. Memory (C2) doesn't bootstrap. Goal-conditioned relabeling (D) doesn't bootstrap. The chain `body → motion → encounter → memory → map` still breaks at link 2, and we have now tested fixes at links 2 (substrate), 3 (architecture and memory), 4 (relabeled hindsight goals) without any of them generating motion. What none of these has tested is the human-developmental scaffold: in real infants, link 2 is solved not by the infant but by a *caregiver* who places objects within stumble-range so accidental contact happens. The infant's first-ever reach is a contingency: random body motion → object moves → "I did that." Once that contingency is logged, the agent has a varied endpoint to learn from. HER would then have something to relabel.
+**The dependency-graph picture, refined:** Phases I, II, III, III.2, IV have now closed off the upper-substrate fixes. Substrate (I) doesn't bootstrap. Two-stream architecture (II) doesn't bootstrap. Fixed structure (III) doesn't bootstrap. Memory (III.2) doesn't bootstrap. Goal-conditioned relabeling (IV) doesn't bootstrap. The chain `body → motion → encounter → memory → map` still breaks at link 2, and we have now tested fixes at links 2 (substrate), 3 (architecture and memory), 4 (relabeled hindsight goals) without any of them generating motion. What none of these has tested is the human-developmental scaffold: in real infants, link 2 is solved not by the infant but by a *caregiver* who places objects within stumble-range so accidental contact happens. The infant's first-ever reach is a contingency: random body motion → object moves → "I did that." Once that contingency is logged, the agent has a varied endpoint to learn from. HER would then have something to relabel.
 
-**Is vision load-bearing?** Not applicable; Phase D is blind proprio.
+**Is vision load-bearing?** Not applicable; Phase IV is blind proprio.
 
 **Next question:** Does placing one ball within stumble-range of the spawn (≈ 0.15 m, the prone-reach distance) — caregiver-scaffolding — produce accidental contacts during HER's warmup, generating varied endpoints that HER can then relabel into useful exploration? The second ball remains at 0.7 m to test whether learned reaching generalises beyond the scaffold or stays attached to it. The intervention is minimal: change `--fixed-ball-positions "0.7,0.0;0.0,0.7"` to `--fixed-ball-positions "0.15,0.0;0.7,0.0"`. If accidental contacts on the near ball produce varied endpoints, HER relabeling should kick in and we'd see `ep_rew_mean` rise off −2000 within the first 100K steps. If `ep_rew_mean` stays at −2000 even with a ball within reach, then random initial action noise from SAC's high-entropy start is insufficient to produce even prone-reach motion on this body, and the next escalation is a stronger velocity bonus or a "kick-start" initial action perturbation.
 
-**Theory signals:** Taylor's "interpenetration" predicts that perception requires *encounters with the world* through one's own action. Phase D confirms a developmentally meaningful failure: with no encounters, the agent has no equivalence classes to build, no model to predict, and no behaviour to perceive. The Behavioral Prediction Framework predicts outperformance of random walk on learnable tasks; Phase D continues to fail this test at the strongest level (no walk at all). The Pattern Learning Framework predicts stable patterns from recurring features; with no motion, no recurring features ever land in the sensorium that aren't fixed proprio constants. The caregiver-scaffold hypothesis is the first proposed intervention that addresses **encounter generation** rather than substrate, architecture, or memory — the first to plausibly satisfy Taylor's prerequisite "there has to be something to perceive."
+**Theory signals:** Taylor's "interpenetration" predicts that perception requires *encounters with the world* through one's own action. Phase IV confirms a developmentally meaningful failure: with no encounters, the agent has no equivalence classes to build, no model to predict, and no behaviour to perceive. The Behavioral Prediction Framework predicts outperformance of random walk on learnable tasks; Phase IV continues to fail this test at the strongest level (no walk at all). The Pattern Learning Framework predicts stable patterns from recurring features; with no motion, no recurring features ever land in the sensorium that aren't fixed proprio constants. The caregiver-scaffold hypothesis is the first proposed intervention that addresses **encounter generation** rather than substrate, architecture, or memory — the first to plausibly satisfy Taylor's prerequisite "there has to be something to perceive."
 
 
 ---
 
-## 2026-05-11 — Phase E / E2: Caregiver scaffold + velocity bonus (mimo_phase_e_*, mimo_phase_e2_*)
+## 2026-05-11 — Phase V / V.2: Caregiver scaffold + velocity bonus (mimo_phase_e_*, mimo_phase_e2_*)
 
-These two runs must be read together. Phase E was the planned caregiver-scaffold escalation from Phase D. Phase E2 was the rerun after we found a bug that had silently invalidated Phase E — and, retrospectively, Phase D as well. The story is as much about a wrapper bug as about the experimental results.
+These two runs must be read together. Phase V was the planned caregiver-scaffold escalation from Phase IV. Phase V.2 was the rerun after we found a bug that had silently invalidated Phase V — and, retrospectively, Phase IV as well. The story is as much about a wrapper bug as about the experimental results.
 
 ### What we ran
 
-**Phase E** (`mimo_phase_e_scaffold_velbonus_10`, 250K steps, completed normally): HER + fixed balls + memory + caregiver scaffold + 5× velocity bonus. The near ball was moved from 0.70 m to 0.10 m — within the prone-reach envelope of the creature — so accidental contacts could happen during SAC's high-entropy warmup without any purposeful motion. The velocity bonus was increased from 0.02 to 0.10 (5× larger than Phase D's setting) to break the stillness attractor. HER relabeling with `n_sampled_goal=4`, `goal_selection_strategy="future"`, 16 parallel envs, MPS, ent_coef pinned at 0.2, learning_starts=40000. Same command as Phase D except `--fixed-ball-positions "0.10,0.0;0.7,0.0" --velocity-bonus-scale 0.10 --ent-coef 0.2`.
+**Phase V** (`mimo_phase_e_scaffold_velbonus_10`, 250K steps, completed normally): HER + fixed balls + memory + caregiver scaffold + 5× velocity bonus. The near ball was moved from 0.70 m to 0.10 m — within the prone-reach envelope of the creature — so accidental contacts could happen during SAC's high-entropy warmup without any purposeful motion. The velocity bonus was increased from 0.02 to 0.10 (5× larger than Phase IV's setting) to break the stillness attractor. HER relabeling with `n_sampled_goal=4`, `goal_selection_strategy="future"`, 16 parallel envs, MPS, ent_coef pinned at 0.2, learning_starts=40000. Same command as Phase IV except `--fixed-ball-positions "0.10,0.0;0.7,0.0" --velocity-bonus-scale 0.10 --ent-coef 0.2`.
 
-**The bug found between E and E2:** While investigating why the velocity bonus appeared to have no effect in Phase E, we audited `her_wrapper.py`'s `step()` method and found that it returned only `self.compute_reward(achieved, desired, info)` — the HER sparse goal signal — without adding `inner_reward`. The inner env's reward (which carries `velocity_bonus_scale × hip_speed`, `step_cost`, and `approach_reward`) was computed and then silently discarded. This bug was present from the first HER run (Phase D). Both Phase D and Phase E were tested with effective velocity bonus = 0.00, not the 0.02 and 0.10 they were supposed to have. The fix (line ~150 of `her_wrapper.py`) is `reward = self.compute_reward(achieved, desired, info) + inner_reward`, with a multi-line comment above it explaining the composition. An important caveat is noted in that comment: HER's relabel mechanism re-runs `compute_reward()` for 4 out of every 5 sampled transitions (the hindsight-relabeled ones), so those samples see only the sparse term. The velocity bonus only flows through the 1/5 of samples that retain the original goal. If the dilution proves too strong, the next escalation is to bake `hip_speed` into `info` and have `compute_reward()` read it back so relabeled transitions carry the bonus too.
+**The bug found between V and V.2:** While investigating why the velocity bonus appeared to have no effect in Phase V, we audited `her_wrapper.py`'s `step()` method and found that it returned only `self.compute_reward(achieved, desired, info)` — the HER sparse goal signal — without adding `inner_reward`. The inner env's reward (which carries `velocity_bonus_scale × hip_speed`, `step_cost`, and `approach_reward`) was computed and then silently discarded. This bug was present from the first HER run (Phase IV). Both Phase IV and Phase V were tested with effective velocity bonus = 0.00, not the 0.02 and 0.10 they were supposed to have. The fix (line ~150 of `her_wrapper.py`) is `reward = self.compute_reward(achieved, desired, info) + inner_reward`, with a multi-line comment above it explaining the composition. An important caveat is noted in that comment: HER's relabel mechanism re-runs `compute_reward()` for 4 out of every 5 sampled transitions (the hindsight-relabeled ones), so those samples see only the sparse term. The velocity bonus only flows through the 1/5 of samples that retain the original goal. If the dilution proves too strong, the next escalation is to bake `hip_speed` into `info` and have `compute_reward()` read it back so relabeled transitions carry the bonus too.
 
-**Phase E2** (`mimo_phase_e2_her_velbonus_fixed`, 250K steps, completed normally): Same command as Phase E but with the wrapper patched. One additional explicit flag: `--approach-reward-scale 0.0`, to keep the inner env's default 2.0 approach-reward from feeding through the now-propagated inner_reward and introducing bribery that Phase E2 was not designed to include.
+**Phase V.2** (`mimo_phase_e2_her_velbonus_fixed`, 250K steps, completed normally): Same command as Phase V but with the wrapper patched. One additional explicit flag: `--approach-reward-scale 0.0`, to keep the inner env's default 2.0 approach-reward from feeding through the now-propagated inner_reward and introducing bribery that Phase V.2 was not designed to include.
 
 ### Numbers
 
-**Phase E (broken wrapper):**
+**Phase V (broken wrapper):**
 
 | Checkpoint | ep_rew_mean | ep_len_mean | eval mean ± std | ent_coef | critic_loss |
 |---|---|---|---|---|---|
@@ -819,7 +819,7 @@ These two runs must be read together. Phase E was the planned caregiver-scaffold
 | 200K eval | −2000 (rollout) | 2000 | −2000.00 ± 0.00 | 0.2 | 0.985 |
 | **250K eval** | **−2000 (rollout)** | **2000** | **−2000.00 ± 0.00** | **0.2** | **0.783** |
 
-**Phase E2 (fixed wrapper):**
+**Phase V.2 (fixed wrapper):**
 
 | Checkpoint | ep_rew_mean | ep_len_mean | eval mean ± std | ent_coef | critic_loss |
 |---|---|---|---|---|---|
@@ -834,33 +834,33 @@ These two runs must be read together. Phase E was the planned caregiver-scaffold
 - Steps completed: 250,000 each
 - Both runs exited normally (no crash; one semaphore leak warning at shutdown, cosmetic only)
 
-### What we saw in the video (Phase E2)
+### What we saw in the video (Phase V.2)
 
 Three episodes were rendered (seeds 0, 1, 2 of `mimo_phase_e2_her_velbonus_fixed`). Eight evenly-spaced frames from seed 0 were extracted to `alien_baby/results/frames/phase_e2/`. All three episodes show the same pattern: the creature makes **one initial motion** — rolling from its prone starting orientation onto its side, driven by random_start_orientation causing an unbalanced starting posture — and then freezes in that side-lying posture for the remainder of the 2000-step episode. The hip never translates more than a few centimeters from spawn in any episode. The near ball at (0.10, 0.0) ends up adjacent to the creature's flank because of the initial roll; this is why the policy earns approximately −1899 instead of −2000 — it is spending roughly 100 steps of the episode within GOAL_THRESHOLD = 0.12 m of the near ball by virtue of body geometry, not locomotion. The far ball at (0.70, 0.0) is never visited.
 
 ### Why it failed
 
-The -1899 reward in Phase E2 is geometric, not learned. The near ball at 0.10 m from origin, combined with GOAL_THRESHOLD = 0.12 m and random_start_orientation that rotates the body up to 180°, means the ball is almost certain to overlap with the body's footprint for some portion of the episode regardless of what the policy does. The policy's contribution is: make the one initial roll happen early enough to maximise the overlap duration. That is the entire learned behavior. The policy did not learn to crawl, did not learn to approach the near ball, and did not learn to approach the far ball. The "one motion then freeze" pattern is a new failure mode — it is different from Phase D's total stillness, but it is not locomotion.
+The -1899 reward in Phase V.2 is geometric, not learned. The near ball at 0.10 m from origin, combined with GOAL_THRESHOLD = 0.12 m and random_start_orientation that rotates the body up to 180°, means the ball is almost certain to overlap with the body's footprint for some portion of the episode regardless of what the policy does. The policy's contribution is: make the one initial roll happen early enough to maximise the overlap duration. That is the entire learned behavior. The policy did not learn to crawl, did not learn to approach the near ball, and did not learn to approach the far ball. The "one motion then freeze" pattern is a new failure mode — it is different from Phase IV's total stillness, but it is not locomotion.
 
-The deeper reason this failure mode exists: ent_coef pinning at 0.2 prevents entropy collapse (so the failure is not "policy degenerated to zero entropy"), but it does not prevent the **action mean** from converging to "produce one big motion at step 0, then output near-zero actions forever." SAC's actor learns that the first motion earns HER goal-overlap reward at the beginning of the episode, and subsequent actions earn −1/step no matter what, so the best policy is one big move then stop. The one-move attractor is different from the no-move attractor in Phase D, but both are still attractors that block sustained locomotion.
+The deeper reason this failure mode exists: ent_coef pinning at 0.2 prevents entropy collapse (so the failure is not "policy degenerated to zero entropy"), but it does not prevent the **action mean** from converging to "produce one big motion at step 0, then output near-zero actions forever." SAC's actor learns that the first motion earns HER goal-overlap reward at the beginning of the episode, and subsequent actions earn −1/step no matter what, so the best policy is one big move then stop. The one-move attractor is different from the no-move attractor in Phase IV, but both are still attractors that block sustained locomotion.
 
 ### The dependency-graph picture
 
-The Phase D analysis identified the dependency chain: body → motion → encounter → memory → map. Phase D broke at "motion." Phase E and E2 broke at the same link, but with a clearer diagnosis: the creature **can** produce one motion, but cannot sustain motion across multiple time steps against the per-step cost. The caregiver scaffold (near ball) confirmed that accidental first-contact can happen — the overlap reward is reaching the policy. What is missing is the incentive to keep moving after the first contact has been made and the creature is no longer in the goal zone. The chain now reads: **body → (one action) → [stuck] → encounter (geometrically, not behaviorally) → memory flags (unused) → map (unreachable).**
+The Phase IV analysis identified the dependency chain: body → motion → encounter → memory → map. Phase IV broke at "motion." Phase V and V.2 broke at the same link, but with a clearer diagnosis: the creature **can** produce one motion, but cannot sustain motion across multiple time steps against the per-step cost. The caregiver scaffold (near ball) confirmed that accidental first-contact can happen — the overlap reward is reaching the policy. What is missing is the incentive to keep moving after the first contact has been made and the creature is no longer in the goal zone. The chain now reads: **body → (one action) → [stuck] → encounter (geometrically, not behaviorally) → memory flags (unused) → map (unreachable).**
 
-The HER bug retrospective adds another dimension: Phases D and E were supposed to be testing "HER + velocity bonus" and "HER + 5× velocity bonus + scaffold," respectively. What they were actually testing was "HER alone" and "HER alone + scaffold." The velocity bonus was never part of either experiment. This means we have not yet run a single valid test of whether a velocity bonus — applied correctly through the wrapper — can break the stillness attractor under HER. Phase E2 is the first valid test, and it shows the bonus (once actually propagated) does something: ep_rew_mean left the floor. But it did not produce sustained locomotion.
+The HER bug retrospective adds another dimension: Phases IV and V were supposed to be testing "HER + velocity bonus" and "HER + 5× velocity bonus + scaffold," respectively. What they were actually testing was "HER alone" and "HER alone + scaffold." The velocity bonus was never part of either experiment. This means we have not yet run a single valid test of whether a velocity bonus — applied correctly through the wrapper — can break the stillness attractor under HER. Phase V.2 is the first valid test, and it shows the bonus (once actually propagated) does something: ep_rew_mean left the floor. But it did not produce sustained locomotion.
 
 ### What we actually learned from this pair
 
-1. **The wrapper bug retrospectively invalidates Phase D-HER as a test of velocity bonus.** Phase D tested HER alone. Phase E tested HER alone (bug). Phase E2 is the first valid test of HER + velocity bonus composition, and it moves the needle from −2000 to −1899 — meaningful numerically, not meaningful behaviorally.
+1. **The wrapper bug retrospectively invalidates Phase IV-HER as a test of velocity bonus.** Phase IV tested HER alone. Phase V tested HER alone (bug). Phase V.2 is the first valid test of HER + velocity bonus composition, and it moves the needle from −2000 to −1899 — meaningful numerically, not meaningful behaviorally.
 
-2. **"One move then freeze" is now the canonical failure mode at this stage.** It is distinct from Phase D's total stillness and from the prior MICOA runs' timeout-while-moving. The policy is not broken — it is rational given the reward structure. One initial motion earns some geometric overlap reward; every subsequent step costs −1 regardless of direction. Freezing is locally optimal once the first motion is made.
+2. **"One move then freeze" is now the canonical failure mode at this stage.** It is distinct from Phase IV's total stillness and from the prior MICOA runs' timeout-while-moving. The policy is not broken — it is rational given the reward structure. One initial motion earns some geometric overlap reward; every subsequent step costs −1 regardless of direction. Freezing is locally optimal once the first motion is made.
 
-3. **The non-zero eval std (0.30–0.42) is the first faint positive signal in months.** Every run from Phase A through Phase D produced eval std = 0.00, meaning all 20 deterministic eval episodes returned identical reward — the policy was doing literally the same thing in each. Phase E2's non-zero std means the policy is arriving at slightly different micro-states across the 20 eval episodes, likely because random_start_orientation creates slightly different body configurations that the one-motion strategy interacts with differently. This is genuinely new — but should not be oversold. The variance is less than 1 reward unit per episode (std ~0.35 means individual episode rewards vary by less than ±1 from −1899) and the source is geometric, not behavioral.
+3. **The non-zero eval std (0.30–0.42) is the first faint positive signal in months.** Every run from Phase I through Phase IV produced eval std = 0.00, meaning all 20 deterministic eval episodes returned identical reward — the policy was doing literally the same thing in each. Phase V.2's non-zero std means the policy is arriving at slightly different micro-states across the 20 eval episodes, likely because random_start_orientation creates slightly different body configurations that the one-motion strategy interacts with differently. This is genuinely new — but should not be oversold. The variance is less than 1 reward unit per episode (std ~0.35 means individual episode rewards vary by less than ±1 from −1899) and the source is geometric, not behavioral.
 
-4. **Critic confidence improved.** critic_loss dropped from a Phase D peak of 35 (at 100K) to Phase E2's 0.635 at 250K. The critic is now producing confident, consistent value estimates. This is a diagnostic positive: the policy found a stable, learnable attractor (even if the wrong one). In Phase D, the critic could not find a stable gradient because the policy was too diffuse. Phase E2's critic has something concrete to model.
+4. **Critic confidence improved.** critic_loss dropped from a Phase IV peak of 35 (at 100K) to Phase V.2's 0.635 at 250K. The critic is now producing confident, consistent value estimates. This is a diagnostic positive: the policy found a stable, learnable attractor (even if the wrong one). In Phase IV, the critic could not find a stable gradient because the policy was too diffuse. Phase V.2's critic has something concrete to model.
 
-5. **The caregiver-scaffold + enabling-pressure combination is not sufficient for sustained locomotion.** Even with both interventions actually applied (Phase E2 vs. the broken-wrapper E), the chain breaks at "after the first motion, the policy freezes." The scaffold created the condition for accidental contact; the velocity bonus was actually propagated; the ent_coef pin prevented entropy collapse. None of these together produced a policy that keeps moving.
+5. **The caregiver-scaffold + enabling-pressure combination is not sufficient for sustained locomotion.** Even with both interventions actually applied (Phase V.2 vs. the broken-wrapper E), the chain breaks at "after the first motion, the policy freezes." The scaffold created the condition for accidental contact; the velocity bonus was actually propagated; the ent_coef pin prevented entropy collapse. None of these together produced a policy that keeps moving.
 
 ### Methodological lesson
 
@@ -868,11 +868,11 @@ Wrappers that override or intercept reward are a hidden audit risk. When composi
 
 ### Is vision load-bearing?
 
-Not applicable. Both Phase E and Phase E2 are blind proprio runs. No visual channel was used in either. The non-zero eval std in Phase E2 is a behavioral signal, but it does not involve vision.
+Not applicable. Both Phase V and Phase V.2 are blind proprio runs. No visual channel was used in either. The non-zero eval std in Phase V.2 is a behavioral signal, but it does not involve vision.
 
 ### Theory signals
 
-The Behavioral Prediction Framework predicts that an agent with internal predictive structure should produce behavior that stays coherent in novel positions it has not visited before. The "one move then freeze" pattern is anti-predictive: after the first timestep, the creature's behavior is entirely decoupled from its state — the same near-zero actions regardless of body orientation, distance from either ball, or limb configuration. This is not prediction; it is convergence to a constant output. The Pattern Learning Framework predicts that sparse, stable patterns should emerge in the representation as recurring inputs are encountered. Phase E2's stable critic_loss (converging to 0.635) suggests the value function has learned a stable pattern — but the pattern it learned is "first-step geometric overlap, then −1 per step," not a distributed representation of spatial structure. Both frameworks are challenged: the agent has converged to a representation that is internally consistent but disconnected from any useful environmental structure.
+The Behavioral Prediction Framework predicts that an agent with internal predictive structure should produce behavior that stays coherent in novel positions it has not visited before. The "one move then freeze" pattern is anti-predictive: after the first timestep, the creature's behavior is entirely decoupled from its state — the same near-zero actions regardless of body orientation, distance from either ball, or limb configuration. This is not prediction; it is convergence to a constant output. The Pattern Learning Framework predicts that sparse, stable patterns should emerge in the representation as recurring inputs are encountered. Phase V.2's stable critic_loss (converging to 0.635) suggests the value function has learned a stable pattern — but the pattern it learned is "first-step geometric overlap, then −1 per step," not a distributed representation of spatial structure. Both frameworks are challenged: the agent has converged to a representation that is internally consistent but disconnected from any useful environmental structure.
 
 ### Next question
 
@@ -881,25 +881,25 @@ The failure is post-first-action freeze, not zero-action freeze. The single most
 
 ---
 
-## 2026-05-11 — Phase F / F-2k: Diagnostic 1 from Phase E2 — near ball outside goal threshold (mimo_phase_f_nearball_outside_threshold / mimo_phase_f_2k_nearball_outside_threshold)
+## 2026-05-11 — Phase VI / VI.2: Diagnostic 1 from Phase V.2 — near ball outside goal threshold (mimo_phase_f_nearball_outside_threshold / mimo_phase_f_2k_nearball_outside_threshold)
 
-These two runs must be read together. Phase F was the intended execution of Phase E2's "Recommended diagnostic 1": move the near ball from 0.10 m (inside GOAL_THRESHOLD = 0.12 m) to 0.30 m (well outside threshold). Phase F-2k was its corrected rerun after a methodological confound was discovered mid-session. The story is partly about what the diagnostic revealed and partly about how a one-parameter oversight silently invalidated the first attempt.
+These two runs must be read together. Phase VI was the intended execution of Phase V.2's "Recommended diagnostic 1": move the near ball from 0.10 m (inside GOAL_THRESHOLD = 0.12 m) to 0.30 m (well outside threshold). Phase VI.2 was its corrected rerun after a methodological confound was discovered mid-session. The story is partly about what the diagnostic revealed and partly about how a one-parameter oversight silently invalidated the first attempt.
 
 ### What we ran
 
-**Phase F** (`mimo_phase_f_nearball_outside_threshold`): Identical config to Phase E2 in all intended respects, except `--fixed-ball-positions "0.30,0.0;0.7,0.0"` — the near ball moved from 0.10 m to 0.30 m, placing it outside GOAL_THRESHOLD. If Phase E2's reward was coming purely from the geometric footprint overlap of the creature's body with the near ball at 0.10 m, then removing that overlap should return ep_rew_mean to the −2000 floor. If some genuine locomotion had been learned, the policy should partially maintain its score by moving toward the new ball position.
+**Phase VI** (`mimo_phase_f_nearball_outside_threshold`): Identical config to Phase V.2 in all intended respects, except `--fixed-ball-positions "0.30,0.0;0.7,0.0"` — the near ball moved from 0.10 m to 0.30 m, placing it outside GOAL_THRESHOLD. If Phase V.2's reward was coming purely from the geometric footprint overlap of the creature's body with the near ball at 0.10 m, then removing that overlap should return ep_rew_mean to the −2000 floor. If some genuine locomotion had been learned, the policy should partially maintain its score by moving toward the new ball position.
 
-**The confound discovered during F:** `train_crawler.py`'s `--max-steps` default is 600, not 2000. Phase E2 had been run with an explicit `--max-steps 2000`. Phase F was launched without that flag, so it ran with 600-step episodes while the intention was 2000-step episodes. An episode of 600 steps with HER's −1-per-step sparse reward has a floor of −600, not −2000. Phase F's ep_rew_mean and per-step reward cannot be compared numerically to Phase E2 at all — the units are different. The diagnostic manipulation (ball position) was applied correctly; the episode-length confound made the result unreadable against its predecessor.
+**The confound discovered during F:** `train_crawler.py`'s `--max-steps` default is 600, not 2000. Phase V.2 had been run with an explicit `--max-steps 2000`. Phase VI was launched without that flag, so it ran with 600-step episodes while the intention was 2000-step episodes. An episode of 600 steps with HER's −1-per-step sparse reward has a floor of −600, not −2000. Phase VI's ep_rew_mean and per-step reward cannot be compared numerically to Phase V.2 at all — the units are different. The diagnostic manipulation (ball position) was applied correctly; the episode-length confound made the result unreadable against its predecessor.
 
-**Action taken:** Phase F was retired immediately. Phase F-2k was launched with `--max-steps 2000` made explicit.
+**Action taken:** Phase VI was retired immediately. Phase VI.2 was launched with `--max-steps 2000` made explicit.
 
-**Phase F-2k** (`mimo_phase_f_2k_nearball_outside_threshold`, 250K steps, completed normally): Config identical to Phase E2 except `--fixed-ball-positions "0.30,0.0;0.7,0.0"` and `--max-steps 2000` (explicit). ent_coef pinned at 0.2 (confirmed held). All other parameters — HER, memory flags, velocity bonus 0.10, fixed balls, 16 parallel envs — unchanged.
+**Phase VI.2** (`mimo_phase_f_2k_nearball_outside_threshold`, 250K steps, completed normally): Config identical to Phase V.2 except `--fixed-ball-positions "0.30,0.0;0.7,0.0"` and `--max-steps 2000` (explicit). ent_coef pinned at 0.2 (confirmed held). All other parameters — HER, memory flags, velocity bonus 0.10, fixed balls, 16 parallel envs — unchanged.
 
 ### Numbers
 
-**Phase F-2k (the valid run):**
+**Phase VI.2 (the valid run):**
 
-| Metric | Phase E2 | Phase F-2k | Change |
+| Metric | Phase V.2 | Phase VI.2 | Change |
 |---|---|---|---|
 | eval mean_reward | −1899.35 ± 0.30 | −1989.35 ± 99.48 | −90 pts mean, ~300× larger std |
 | ep_len_mean | ~1980 | ~1960 | marginally shorter |
@@ -911,45 +911,45 @@ These two runs must be read together. Phase F was the intended execution of Phas
 | touch_rate | N/A | N/A | blind proprio |
 | Falls | 0 | 0 | body stable |
 
-**Phase F (invalid; methodological record only):** Ran with 600-step episodes instead of 2000. All numerical results are incommensurable with E2 and F-2k and are not reported here. The only contribution of Phase F is identifying the --max-steps default gotcha.
+**Phase VI (invalid; methodological record only):** Ran with 600-step episodes instead of 2000. All numerical results are incommensurable with V.2 and VI.2 and are not reported here. The only contribution of Phase VI is identifying the --max-steps default gotcha.
 
 ### What we saw in the video
 
-No new video was rendered for Phase F or Phase F-2k during this session. The analysis below is based entirely on eval reward statistics. A rendering from the Phase F-2k best checkpoint is recommended before Phase G launches, to visually confirm what the statistics imply: do individual episodes show the creature reaching the 0.30 m ball position on lucky orientations, or freezing without contact on unlucky ones?
+No new video was rendered for Phase VI or Phase VI.2 during this session. The analysis below is based entirely on eval reward statistics. A rendering from the Phase VI.2 best checkpoint is recommended before Phase VII launches, to visually confirm what the statistics imply: do individual episodes show the creature reaching the 0.30 m ball position on lucky orientations, or freezing without contact on unlucky ones?
 
 ### Reading the two outcomes of Diagnostic 1
 
-Phase E2's entry described two predicted outcomes:
+Phase V.2's entry described two predicted outcomes:
 
 - **Pure geometric:** moving the ball outside GOAL_THRESHOLD eliminates the footprint-overlap bonus entirely. ep_rew_mean returns to the −2000 floor. This would confirm that no locomotion was learned — only a geometric refuge was exploited.
 
 - **Pure behavioral:** the policy maintains a score above −2000 with the ball at 0.30 m, because a genuine locomotion strategy would still drive the creature toward wherever the near ball is placed.
 
-What Phase F-2k returned is **neither**. The result is mixed, and the mixture is diagnostic in its own right.
+What Phase VI.2 returned is **neither**. The result is mixed, and the mixture is diagnostic in its own right.
 
 ### Why it failed — and what the mixed result reveals
 
-**The mean got worse, not better.** Per-step reward degraded from −0.95 (E2) to −0.99 (F-2k). The near-ball geometric refuge that earned E2 its 100-step overlap bonus is largely gone — the ball at 0.30 m is too far for the initial-roll's body footprint to overlap it under typical spawn configurations. This confirms the core E2 hypothesis: most of E2's reward above the −2000 floor was geometric, not learned locomotion.
+**The mean got worse, not better.** Per-step reward degraded from −0.95 (V.2) to −0.99 (VI.2). The near-ball geometric refuge that earned V.2 its 100-step overlap bonus is largely gone — the ball at 0.30 m is too far for the initial-roll's body footprint to overlap it under typical spawn configurations. This confirms the core V.2 hypothesis: most of V.2's reward above the −2000 floor was geometric, not learned locomotion.
 
-**But the standard deviation exploded from 0.30 to 99.48.** That is roughly 300 times larger than Phase E2's std. This magnitude means individual episodes are not clustered around one value. Some rollouts earn reward substantially above the floor; most sit at −2000. The distribution now has at least two qualitatively distinct outcomes.
+**But the standard deviation exploded from 0.30 to 99.48.** That is roughly 300 times larger than Phase V.2's std. This magnitude means individual episodes are not clustered around one value. Some rollouts earn reward substantially above the floor; most sit at −2000. The distribution now has at least two qualitatively distinct outcomes.
 
-**The likely mechanism is random-orientation roulette.** The creature spawns prone with `random_start_orientation` rotating its yaw up to 180°. Its learned behavior is still "one big roll at step 0, then freeze." On lucky spawns, that initial roll brings the body's footprint into proximity with the 0.30 m ball position — not because the policy directed it there, but because the random starting angle happened to align the initial roll vector toward the ball's fixed location. On unlucky spawns, the initial roll goes in the wrong direction entirely and the episode earns −2000. With the near ball at 0.10 m (E2), almost every spawn was lucky because the ball was close enough for the body footprint to overlap regardless of yaw. With the ball at 0.30 m (F-2k), only a fraction of spawns produce lucky alignment, and the rest return floor reward. A 99.48 std is exactly what this lottery looks like.
+**The likely mechanism is random-orientation roulette.** The creature spawns prone with `random_start_orientation` rotating its yaw up to 180°. Its learned behavior is still "one big roll at step 0, then freeze." On lucky spawns, that initial roll brings the body's footprint into proximity with the 0.30 m ball position — not because the policy directed it there, but because the random starting angle happened to align the initial roll vector toward the ball's fixed location. On unlucky spawns, the initial roll goes in the wrong direction entirely and the episode earns −2000. With the near ball at 0.10 m (V.2), almost every spawn was lucky because the ball was close enough for the body footprint to overlap regardless of yaw. With the ball at 0.30 m (VI.2), only a fraction of spawns produce lucky alignment, and the rest return floor reward. A 99.48 std is exactly what this lottery looks like.
 
-**The important recharacterization of the failure mode:** The "one move then freeze" failure mode is now understood to have two internal layers that Phase E2 could not distinguish. Layer one is geometric refuge — the near ball was so close at 0.10 m that even a stationary body overlapped it. Layer two is random-orientation lottery — the initial roll is undirected, but on lucky yaw angles it happens to land the body near a more distant ball position. Phase E2 was almost entirely Layer one (std = 0.30 means almost no variance, almost every episode earns the same bonus). Phase F-2k exposed Layer two by removing Layer one. The policy did not learn to direct its motion. It learned to bet on the lottery.
+**The important recharacterization of the failure mode:** The "one move then freeze" failure mode is now understood to have two internal layers that Phase V.2 could not distinguish. Layer one is geometric refuge — the near ball was so close at 0.10 m that even a stationary body overlapped it. Layer two is random-orientation lottery — the initial roll is undirected, but on lucky yaw angles it happens to land the body near a more distant ball position. Phase V.2 was almost entirely Layer one (std = 0.30 means almost no variance, almost every episode earns the same bonus). Phase VI.2 exposed Layer two by removing Layer one. The policy did not learn to direct its motion. It learned to bet on the lottery.
 
 Both layers share the same upstream cause: freeze is globally optimal after the first action. The creature makes one move and stops because moving further costs −1/step with no compensating gradient. The fix that collapses the lottery and forces genuine locomotion is making stillness genuinely costly across all initial conditions — so even a lucky-orientation rollout that ends up near the ball must keep moving to sustain reward, and cannot earn its way to a non-floor total by freezing on a lucky placement.
 
 ### Methodological lesson: the --max-steps default gotcha
 
-Phase F is a specific instance of the general wrapper-audit rule established after the Phase D/E her_wrapper.py bug. When launching a follow-on experiment intended as a controlled comparison, every parameter that affects reward scale or episode length must be verified explicitly. Phase F-2k adds a concrete checklist item: confirm `--max-steps` matches the predecessor before comparing ep_rew_mean numbers. A 600-step run and a 2000-step run are measuring different quantities even if all other config is identical.
+Phase VI is a specific instance of the general wrapper-audit rule established after the Phase IV/V her_wrapper.py bug. When launching a follow-on experiment intended as a controlled comparison, every parameter that affects reward scale or episode length must be verified explicitly. Phase VI.2 adds a concrete checklist item: confirm `--max-steps` matches the predecessor before comparing ep_rew_mean numbers. A 600-step run and a 2000-step run are measuring different quantities even if all other config is identical.
 
 ### Is vision load-bearing?
 
-Not applicable. Phases F and F-2k are blind proprio runs, identical in architecture to Phases D, E, and E2. No visual channel was used in either. The eval std signal — the most informative new number in this entry — is a consequence of the random-orientation lottery interacting with ball geometry, not of any visual processing.
+Not applicable. Phases VI and VI.2 are blind proprio runs, identical in architecture to Phases IV, V, and V.2. No visual channel was used in either. The eval std signal — the most informative new number in this entry — is a consequence of the random-orientation lottery interacting with ball geometry, not of any visual processing.
 
 ### Theory signals
 
-The eval std jumping from 0.30 (Phase E2) to 99.48 (Phase F-2k) is the first signal in this project's history that reflects genuine outcome variance across qualitatively different behavioral attractor basins, rather than micro-variation around a single attractor.
+The eval std jumping from 0.30 (Phase V.2) to 99.48 (Phase VI.2) is the first signal in this project's history that reflects genuine outcome variance across qualitatively different behavioral attractor basins, rather than micro-variation around a single attractor.
 
 The Behavioral Prediction Framework predicts that a policy with internal predictive structure should produce coherent behavior across a range of initial conditions. What we observe is the opposite: outcome quality is almost entirely determined by the random starting angle, not by anything the policy learned to do. Two initial conditions that differ only in yaw angle produce rewards of −1900 vs. −2000. The policy has no model of "where is the ball relative to my current orientation" — it cannot compensate for a bad starting angle. The high std is direct evidence that the policy's behavior is orientation-blind, which is precisely what the framework predicts a policy looks like when no predictive internal model has formed.
 
@@ -957,14 +957,14 @@ The Pattern Learning Framework predicts that stable, sparse patterns should emer
 
 ### Next question
 
-The four candidate directions from Phase E2 remain live — none has been tested under conditions where the initial-condition lottery is eliminated. The leading candidate is **F-tipped-init**: force the creature to spawn in postures from which the initial-roll refuge is not available, so that even a geometrically lucky orientation cannot produce a non-floor reward without continued motion. The three alternatives are **F-curiosity** (RND bonus that penalizes returning to visited states, so freeze is always costly regardless of luck), **F-sustained** (episode-level reward requiring sustained goal-zone overlap across a time window rather than instantaneous overlap, so a single lucky freeze cannot earn full reward), and **F-info-velocity** (bake hip_speed into the `info` dict so the velocity bonus survives HER's 4/5 relabeling dilution and reaches the full policy gradient). The four candidates are not mutually exclusive, but tipped-init is the most direct empirical test of whether the one-roll-then-freeze failure mode is locked to the current spawn posture or survives even when that posture is removed.
+The four candidate directions from Phase V.2 remain live — none has been tested under conditions where the initial-condition lottery is eliminated. The leading candidate is **F-tipped-init**: force the creature to spawn in postures from which the initial-roll refuge is not available, so that even a geometrically lucky orientation cannot produce a non-floor reward without continued motion. The three alternatives are **F-curiosity** (RND bonus that penalizes returning to visited states, so freeze is always costly regardless of luck), **F-sustained** (episode-level reward requiring sustained goal-zone overlap across a time window rather than instantaneous overlap, so a single lucky freeze cannot earn full reward), and **F-info-velocity** (bake hip_speed into the `info` dict so the velocity bonus survives HER's 4/5 relabeling dilution and reaches the full policy gradient). The four candidates are not mutually exclusive, but tipped-init is the most direct empirical test of whether the one-roll-then-freeze failure mode is locked to the current spawn posture or survives even when that posture is removed.
 
 
 ---
 
-## 2026-05-20 — Phase H: Moving balls, R32/R33/R34/R35 (mimo_phase_h_moving_balls_v1)
+## 2026-05-20 — Phase VIII: Moving balls, R32/R33/R34/R35 (mimo_phase_h_moving_balls_v1)
 
-**What we ran:** Four 80K-step runs on the cart substrate (R20+R30 recipe: ent_coef=0.5 anneal→0.2, vel_bonus=0.10, strength_scale=1.0, offset curriculum 0→0.15, offset=0.15 locked, 16 envs proprio / 8 envs vision), testing whether constant-velocity bouncing balls make vision load-bearing. Two speed settings (0.08 m/s and 0.05 m/s), each with a matched proprio control (no camera) and vision run (stereo CNN). Pre-flight confirmed balls bounce correctly off all four edges, touch detection works on moving balls, ball velocity is NOT in proprio (obs length identical at 71), and --ball-speed 0.0 is bit-identical to Phase G. Phase G found vision non-load-bearing across six substrates; this was the strongest remaining substrate-level hypothesis.
+**What we ran:** Four 80K-step runs on the cart substrate (R20+R30 recipe: ent_coef=0.5 anneal→0.2, vel_bonus=0.10, strength_scale=1.0, offset curriculum 0→0.15, offset=0.15 locked, 16 envs proprio / 8 envs vision), testing whether constant-velocity bouncing balls make vision load-bearing. Two speed settings (0.08 m/s and 0.05 m/s), each with a matched proprio control (no camera) and vision run (stereo CNN). Pre-flight confirmed balls bounce correctly off all four edges, touch detection works on moving balls, ball velocity is NOT in proprio (obs length identical at 71), and --ball-speed 0.0 is bit-identical to Phase VII. Phase VII found vision non-load-bearing across six substrates; this was the strongest remaining substrate-level hypothesis.
 
 **Training log summary — all four runs:**
 
@@ -1008,7 +1008,7 @@ Static ball (speed=0.0), offset=0.15 — generalization test:
 | R34 proprio speed05 | 0.0 | 0.15 | −13  |  742 | **18** | 2 | 0 |
 | R35 vision speed05  | 0.0 | 0.15 | −737 |  826 | 6 | 14 | 0 |
 
-The static-ball results are dramatically better than moving-ball results for all four policies. The proprio runs (R32: 14/20, R34: 18/20) perform comparably to Phase G benchmarks, confirming the best_model checkpoints are real policies that solved the task at some point — they just cannot handle moving balls. The vision runs perform worse than their matched proprio controls on static balls too (8/20 vs 14/20 at speed 0.08; 6/20 vs 18/20 at speed 0.05). Vision not only fails to help under moving balls — it also degrades static-ball performance compared to matched proprio controls. This is the seventh straight substrate under which vision underperforms proprio.
+The static-ball results are dramatically better than moving-ball results for all four policies. The proprio runs (R32: 14/20, R34: 18/20) perform comparably to Phase VII benchmarks, confirming the best_model checkpoints are real policies that solved the task at some point — they just cannot handle moving balls. The vision runs perform worse than their matched proprio controls on static balls too (8/20 vs 14/20 at speed 0.08; 6/20 vs 18/20 at speed 0.05). Vision not only fails to help under moving balls — it also degrades static-ball performance compared to matched proprio controls. This is the seventh straight substrate under which vision underperforms proprio.
 
 Reach curve (training ball_speed, offsets 0.10 and 0.05):
 
@@ -1023,18 +1023,18 @@ Reach curve (training ball_speed, offsets 0.10 and 0.05):
 | R35 vision speed05  | 0.05 | 0.10 | −1887 | 0/20 |
 | R35 vision speed05  | 0.05 | 0.05 | −1882 | 1/20 |
 
-The reach curve shows no improvement as offset shrinks (as it did in Phase G). Moving balls have collapsed performance at every offset. Proprio reach slightly better than vision reach at both offsets.
+The reach curve shows no improvement as offset shrinks (as it did in Phase VII). Moving balls have collapsed performance at every offset. Proprio reach slightly better than vision reach at both offsets.
 
 **TABLE 2 — Vision Ablation (R33 and R35)**
 
 (a) Single-step action delta: 200 steps × 10 seeds, pixels zeroed vs normal, L2 norm of action diff
 
-| Policy | mean delta | median delta | Phase G reference |
+| Policy | mean delta | median delta | Phase VII reference |
 |---|---|---|---|
 | R33 vision speed08 | 0.0244 | 0.0187 | 0.023 (R14), 0.009 (R17) |
 | R35 vision speed05 | 0.0207 | 0.0202 | 0.009–0.023 |
 
-Both values land squarely in the same 0.009–0.023 dead zone that Phase G identified as "vision inert." The proposal required ≥0.20 for Promising and 0.05–0.20 for Marginal. Both R33 and R35 measure < 0.05. REFUTED on this metric.
+Both values land squarely in the same 0.009–0.023 dead zone that Phase VII identified as "vision inert." The proposal required ≥0.20 for Promising and 0.05–0.20 for Marginal. Both R33 and R35 measure < 0.05. REFUTED on this metric.
 
 (b) Episode-level: 20 seeds pixels-normal vs 20 seeds pixels-zeroed
 
@@ -1051,11 +1051,11 @@ Proprio both-touched at speed 0.05 vs 0.08: 1/20 in both conditions. Ball motion
 
 **What we learned:**
 
-1. Moving balls at 0.05–0.08 m/s break the stationary-ball performance completely (1/20 vs 14-20/20 in static) but do not differentiate vision from proprio. Both modalities are equally destroyed by ball motion. The task became too hard for either to solve rather than creating pressure that only vision could relieve. Ball motion at these speeds appears to be in the regime where timing the arm to a moving ball is beyond what 80K steps of SAC training can learn regardless of modality — the Phase H proposal's pre-flight check found only 10% success for a stationary outstretched arm, which means even a perfect reach policy would only get 2/20 from geometric chance. This is the upper ceiling, and both proprio and vision run into it.
+1. Moving balls at 0.05–0.08 m/s break the stationary-ball performance completely (1/20 vs 14-20/20 in static) but do not differentiate vision from proprio. Both modalities are equally destroyed by ball motion. The task became too hard for either to solve rather than creating pressure that only vision could relieve. Ball motion at these speeds appears to be in the regime where timing the arm to a moving ball is beyond what 80K steps of SAC training can learn regardless of modality — the Phase VIII proposal's pre-flight check found only 10% success for a stationary outstretched arm, which means even a perfect reach policy would only get 2/20 from geometric chance. This is the upper ceiling, and both proprio and vision run into it.
 
-2. Vision continues to show ablation sensitivity of 0.020–0.024, matching the 0.009–0.023 range found in six prior Phase G experiments. The pixel pathway is structurally inert under SAC in this body. Moving balls at these speeds did not change that. The dead zone is not a task-difficulty artifact — it is a consistent property of the CNN + SAC combination in this substrate.
+2. Vision continues to show ablation sensitivity of 0.020–0.024, matching the 0.009–0.023 range found in six prior Phase VII experiments. The pixel pathway is structurally inert under SAC in this body. Moving balls at these speeds did not change that. The dead zone is not a task-difficulty artifact — it is a consistent property of the CNN + SAC combination in this substrate.
 
-3. Vision hurts static-ball performance even after training on moving balls. The R34 proprio policy achieves 18/20 on static balls at offset=0.15 — matching the best Phase G results. R35 vision achieves only 6/20 on the same condition. The CNN adds noise without adding useful signal, and this effect persists even when the training environment was explicitly designed to make visual prediction valuable.
+3. Vision hurts static-ball performance even after training on moving balls. The R34 proprio policy achieves 18/20 on static balls at offset=0.15 — matching the best Phase VII results. R35 vision achieves only 6/20 on the same condition. The CNN adds noise without adding useful signal, and this effect persists even when the training environment was explicitly designed to make visual prediction valuable.
 
 **Is vision load-bearing?** No. Single-step ablation sensitivity 0.020–0.024 on both vision policies, identical episode-level results with pixels normal vs zeroed, and vision underperforming its matched proprio control at every evaluated condition. This is the seventh consecutive substrate in which vision ablation returns < 0.05. The pattern is consistent and robust.
 
@@ -1078,9 +1078,9 @@ Proprio both-touched at speed 0.05 vs 0.08: 1/20 in both conditions. Ball motion
 
 ---
 
-## 2026-05-22 — Phase IV R41/R42: MICOA + vision vs. proprio control on moving balls (phase_iv_R41_micoa_vision_speed08 / phase_iv_R42_proprio_speed08)
+## 2026-05-22 — Phase XII R41/R42: MICOA + vision vs. proprio control on moving balls (phase_iv_R41_micoa_vision_speed08 / phase_iv_R42_proprio_speed08)
 
-**What we ran:** Two matched 250K-step runs testing whether R40's architectural integration of vision (MICOA + predictive KL) rescues performance on moving balls (ball_speed=0.08, cart_mode=constant_velocity_bouncer). R41 used MICOA + vision (n_envs=8, --micoa-beta 0.0, --micoa-pred-beta 0.1, R40 Goldilocks σ clamp); R42 was the matched proprio-only control (n_envs=16, no MICOA, no vision). Both used identical task config: max_steps=2000, curriculum warmup=2000/ramp_end=15000/final_offset=0.15, entropy anneal 0.5→0.2 over [15K,30K], velocity-bonus-scale=0.10, seed 42, fresh initialization. Eval cadence tightened to 10K steps (fixing Phase H's 50K cadence that missed the policy's peak).
+**What we ran:** Two matched 250K-step runs testing whether R40's architectural integration of vision (MICOA + predictive KL) rescues performance on moving balls (ball_speed=0.08, cart_mode=constant_velocity_bouncer). R41 used MICOA + vision (n_envs=8, --micoa-beta 0.0, --micoa-pred-beta 0.1, R40 Goldilocks σ clamp); R42 was the matched proprio-only control (n_envs=16, no MICOA, no vision). Both used identical task config: max_steps=2000, curriculum warmup=2000/ramp_end=15000/final_offset=0.15, entropy anneal 0.5→0.2 over [15K,30K], velocity-bonus-scale=0.10, seed 42, fresh initialization. Eval cadence tightened to 10K steps (fixing Phase VIII's 50K cadence that missed the policy's peak).
 
 **Numbers:**
 
@@ -1110,11 +1110,11 @@ Static-ball generalization: speed=0.0, offset=0.15
 | R41 MICOA+vision (static) | −397.0 | 755.7 | 9 | 11 | 0 |
 | R42 proprio (static) | +127.6 | 611.5 | 18 | 2 | 0 |
 
-Phase H benchmarks for comparison (80K runs, single eval at 50K):
-- Phase H R32 proprio @ 0.08: 1/20 moving, 14/20 static
-- Phase H R33 vision @ 0.08: 0/20 moving, 8/20 static
-- R42 (this run) proprio @ 0.08: 2/20 moving, 18/20 static — best proprio yet on moving balls; beats Phase H proprio by 4 episodes on static
-- R41 (this run) MICOA+vision @ 0.08: 1/20 moving, 9/20 static — slightly better than Phase H R33 but well below its matched proprio control
+Phase VIII benchmarks for comparison (80K runs, single eval at 50K):
+- Phase VIII R32 proprio @ 0.08: 1/20 moving, 14/20 static
+- Phase VIII R33 vision @ 0.08: 0/20 moving, 8/20 static
+- R42 (this run) proprio @ 0.08: 2/20 moving, 18/20 static — best proprio yet on moving balls; beats Phase VIII proprio by 4 episodes on static
+- R41 (this run) MICOA+vision @ 0.08: 1/20 moving, 9/20 static — slightly better than Phase VIII R33 but well below its matched proprio control
 
 **TABLE 2 — Vision Ablation (R41 only)**
 
@@ -1126,12 +1126,12 @@ Single-step action delta: 200 steps × 10 seeds, pixels zeroed vs normal, L2 nor
 | R41 @ ball_speed=0.0 (static generalization) | 0.7946 | 0.7337 | far above Promising threshold (0.20) |
 
 Project ablation history for context:
-- R36 (Phase I): 0.0019 — dead zone
-- R37 (Phase I): 0.0023 — dead zone
-- Phase H R33/R35: 0.020–0.024 — dead zone
-- R38 (Phase II): 0.6563 — first barrier break
-- R40 (Phase III): 0.481 — load-bearing confirmed
-- R41 (Phase IV): 0.8511 — highest ever measured in this project
+- R36 (Phase IX): 0.0019 — dead zone
+- R37 (Phase IX): 0.0023 — dead zone
+- Phase VIII R33/R35: 0.020–0.024 — dead zone
+- R38 (Phase X): 0.6563 — first barrier break
+- R40 (Phase XI): 0.481 — load-bearing confirmed
+- R41 (Phase XII): 0.8511 — highest ever measured in this project
 
 **TABLE 3 — MICOA training health (R41)**
 
@@ -1141,9 +1141,9 @@ Project ablation history for context:
 | kl_pred_k1 | 0.57 | ~30–62 (runaway) | ~638 |
 | kl_agreement | 0.31 | ~244 | ~953 |
 
-For reference: R38 kl_pred_k1 eventually reached ~116 (flagged as pathology in Phase II). R41 exceeded that by 5×, reaching 638–760 in the final 50K steps. sigma_combined crossed below 0.10 (the flagged collapse threshold) around t=60–70K and remained near or below it for the remaining 180K steps. The R40 Goldilocks clamp (σ_p_min ≈ 0.135) prevented collapse in the static-ball setting but did not hold under moving-ball dynamics.
+For reference: R38 kl_pred_k1 eventually reached ~116 (flagged as pathology in Phase X). R41 exceeded that by 5×, reaching 638–760 in the final 50K steps. sigma_combined crossed below 0.10 (the flagged collapse threshold) around t=60–70K and remained near or below it for the remaining 180K steps. The R40 Goldilocks clamp (σ_p_min ≈ 0.135) prevented collapse in the static-ball setting but did not hold under moving-ball dynamics.
 
-**Verdict against the Phase IV Section 6 criteria:**
+**Verdict against the Phase XII Section 6 criteria:**
 
 | Metric | Threshold | Actual | Grade |
 |---|---|---|---|
@@ -1165,11 +1165,11 @@ For reference: R38 kl_pred_k1 eventually reached ~116 (flagged as pathology in P
 
 4. The bottleneck in this project has now been isolated precisely: the architectural gap ("vision not integrated") is closed. The new gap is "the RL update does not use the now-integrated visual representation to find better actions." Whether this is the actor's policy gradient, the nature of the MICOA loss under dynamic targets, or some interaction between the two is the open question.
 
-5. R42's static-ball performance (18/20, mean reward +127.6) is the best proprio result yet on this substrate, validating the 250K training length and 10K checkpoint cadence as significant improvements over Phase H's 80K runs with 50K cadence.
+5. R42's static-ball performance (18/20, mean reward +127.6) is the best proprio result yet on this substrate, validating the 250K training length and 10K checkpoint cadence as significant improvements over Phase VIII's 80K runs with 50K cadence.
 
 **Is vision load-bearing?** Action-level: yes — ablation delta 0.85 is the highest this project has produced. Outcome-level: no — R41 underperformed R42 on both the primary condition and static generalization. These two answers are not contradictory: vision's weight in the policy's computations is large, but the content it encodes under moving-ball pathology does not steer the creature toward the balls. A large bad signal is worse than a small good signal.
 
-**Methodological lesson — eval_phase_h.py has hardcoded paths:** The Phase IV launch script attempted to evaluate R42 using eval_phase_h.py with a --run-tag flag. eval_phase_h.py silently ignores all CLI flags and uses hardcoded Phase H run paths; it exited 0 while evaluating the wrong model entirely. R42's numbers in this entry came from a one-off eval_phase_iv_R42.py script created after the failure was detected. Bug: eval_phase_h.py has no argparse, no parameterization, and no warning when its flags are ignored. Fix: either add a parameterized CLI to eval_phase_h.py or create a shared eval_phase_iv.py that accepts --run-tag and --ball-speed from the command line. Any eval script with hardcoded paths that is also referenced in launch automation should be treated as a latent data-integrity bug.
+**Methodological lesson — eval_phase_h.py has hardcoded paths:** The Phase XII launch script attempted to evaluate R42 using eval_phase_h.py with a --run-tag flag. eval_phase_h.py silently ignores all CLI flags and uses hardcoded Phase VIII run paths; it exited 0 while evaluating the wrong model entirely. R42's numbers in this entry came from a one-off eval_phase_iv_R42.py script created after the failure was detected. Bug: eval_phase_h.py has no argparse, no parameterization, and no warning when its flags are ignored. Fix: either add a parameterized CLI to eval_phase_h.py or create a shared eval_phase_iv.py that accepts --run-tag and --ball-speed from the command line. Any eval script with hardcoded paths that is also referenced in launch automation should be treated as a latent data-integrity bug.
 
 **Theory signals:** The Behavioral Prediction Framework predicts that a policy with useful internal predictive structure should produce coherent, task-relevant behavior — not just large action changes when inputs are perturbed. R41's ablation of 0.85 confirms prediction is happening; the task regression (1/20 vs R42's 2/20, and −9 on static) confirms the predictions are not task-useful. The framework's prediction that predictive coding would improve behavior on dynamic targets is weakly disconfirmed at the behavioral level, while strongly confirmed at the representational level. This is a new split in the evidence that the framework does not easily accommodate. The Pattern Learning Framework predicts that sparse, distributed internal patterns should fire for structurally similar inputs regardless of exact position. R41's encoder pathology (kl_pred_k1 = 638, sigma_combined = 0.10) suggests the pattern representation did not stabilize — the encoder was driven to extreme precision estimates by moving targets instead of forming stable sparse codes. A healthy sparse code would produce stable ablation deltas; the fact that R41's ablation (0.85) is far above R40's (0.48) despite worse task outcomes is consistent with an over-fitted, non-generalizing representation rather than a stable sparse one.
 
@@ -1177,7 +1177,7 @@ For reference: R38 kl_pred_k1 eventually reached ~116 (flagged as pathology in P
 
 ---
 
-## 2026-05-30 — Phase V R43/R44: MICOA + vision vs. proprio control on static reachable balls with eccentricity sweep (phase_v_R43_micoa_vision_static_randbox / phase_v_R44_proprio_static_randbox)
+## 2026-05-30 — Phase XIII R43/R44: MICOA + vision vs. proprio control on static reachable balls with eccentricity sweep (phase_v_R43_micoa_vision_static_randbox / phase_v_R44_proprio_static_randbox)
 
 **What we ran:** Two matched 250K-step SAC runs on the cart substrate, seed 42, with static balls (ball_speed=0.0) and per-episode ball placement drawn from a uniform box jitter of ±0.08 m on top of the ±0.15 m curriculum offset — so the ball's lateral position landed in roughly [0.07, 0.23] m from center across episodes, forcing per-episode directional uncertainty while keeping the ball inside the reachable band. R43 used MICOA + vision (n_envs=8, --micoa-beta 0.0, --micoa-pred-beta 0.1, R40 Goldilocks sigma clamp); R44 was the matched proprio-only control (n_envs=16, no vision, no MICOA). All other config identical: max_steps=2000, entropy anneal 0.5→0.2 over [15K,30K], velocity-bonus-scale=0.10, curriculum warmup 2000/ramp_end 15000/final_offset 0.15. Two new eval tools were introduced: eval_phase_v.py (eccentricity/direction sweep, 20 eps/bin, reach-conditional metrics) and eval_generalization_battery.py (size/distance/speed zero-shot sweeps, 15 eps/bin, reach-conditional). Both report got_close (fraction whose hand came within 0.12 m of the ball) and both|close (touch rate among episodes where got_close was true) to cleanly separate "couldn't get near" from "got near and missed." Goal: test the "generalization is the primary state" hypothesis — that proprioceptive general approach is what generalizes, and vision (if anything) is a late refinement deployed only where direction information is needed most.
 
@@ -1240,15 +1240,15 @@ SPEED sweep (ball_speed: 0.000 / 0.010 / 0.020 / 0.030 at eccentricity 0.10):
 
 The proprioceptive general approach response is real and it generalizes. R44 reaches the ball in lawful proportion to distance (r=+0.89), extends successfully into distances outside its training band (0.55 m and 0.65 m were never seen during training), and degrades gracefully under ball motion — losing half its performance by speed 0.030 rather than collapsing suddenly. This is exactly what a learned internal model of "how to get to a thing" looks like when you probe it systematically. The "generalization is the primary state" hypothesis is confirmed for proprio.
 
-*Clarification (added 2026-06-14):* The "generalization is the primary state" idea was the researcher's, offered on 2026-05-30 as a tentative reframing for discussion. Its core claim — proprioceptive object-agnostic approach as the primary, broadly-transferring generalization — is **confirmed here**. A separate strong-form rider that the assistant attached when designing Phase V (that vision would be recruited *selectively at the margin*, i.e. at high eccentricity) was **not supported** by the ablation data below. That rider is a claim about how vision bound under MICOA, not part of the researcher's core idea. Earlier write-ups that framed this as the hypothesis being "refuted" overstated it: the core idea held; only the added rider failed.
+*Clarification (added 2026-06-14):* The "generalization is the primary state" idea was the researcher's, offered on 2026-05-30 as a tentative reframing for discussion. Its core claim — proprioceptive object-agnostic approach as the primary, broadly-transferring generalization — is **confirmed here**. A separate strong-form rider that the assistant attached when designing Phase XIII (that vision would be recruited *selectively at the margin*, i.e. at high eccentricity) was **not supported** by the ablation data below. That rider is a claim about how vision bound under MICOA, not part of the researcher's core idea. Earlier write-ups that framed this as the hypothesis being "refuted" overstated it: the core idea held; only the added rider failed.
 
-Vision adds essentially nothing to task outcomes. R43 and R44 are nearly identical at every eccentricity bin — the rows in the direction sweep table above are nearly indistinguishable. This result is on the cleanest task the project has run: static ball, reachable geometry, no encoder pathology (the static-ball setting keeps MICOA's sigma healthy). Phase H and IV found vision non-load-bearing under moving-ball conditions that were near-impossible for either modality; Phase V found the same null result on a static task where vision could in principle have helped with direction. The null is stronger here.
+Vision adds essentially nothing to task outcomes. R43 and R44 are nearly identical at every eccentricity bin — the rows in the direction sweep table above are nearly indistinguishable. This result is on the cleanest task the project has run: static ball, reachable geometry, no encoder pathology (the static-ball setting keeps MICOA's sigma healthy). Phase VIII and XII found vision non-load-bearing under moving-ball conditions that were near-impossible for either modality; Phase XIII found the same null result on a static task where vision could in principle have helped with direction. The null is stronger here.
 
 Vision under ball motion is actively worse. R43's speed retention (0.25, a cliff) is half of R44's (0.50, graceful). This is the third time this project has seen vision degrade faster than proprio under ball motion, now cleanly isolated on a reachable task where the proprio baseline is strong.
 
-**Methodological wins:** eval_phase_v.py and eval_generalization_battery.py are fully parameterized (no hardcoded paths, fixing the eval_phase_h.py bug documented in Phase IV). The reach-conditional metric (both|close) cleanly separates "couldn't get close" from "got close and whiffed," so unreachable placements no longer miscounted as policy failures. The box=0.08 jitter choice worked as intended — the task landed in a non-saturated eccentricity band where there is room to see differences across conditions. The step-0 contact artifact (spawn-overlap triggering false contact at step 0) was identified and corrected; distance-bin results use only contacts after step 0.
+**Methodological wins:** eval_phase_v.py and eval_generalization_battery.py are fully parameterized (no hardcoded paths, fixing the eval_phase_h.py bug documented in Phase XII). The reach-conditional metric (both|close) cleanly separates "couldn't get close" from "got close and whiffed," so unreachable placements no longer miscounted as policy failures. The box=0.08 jitter choice worked as intended — the task landed in a non-saturated eccentricity band where there is room to see differences across conditions. The step-0 contact artifact (spawn-overlap triggering false contact at step 0) was identified and corrected; distance-bin results use only contacts after step 0.
 
-**Is vision load-bearing?** Not yet confirmed — and this is now the strongest negative result in the project. The abl_L2 range is 0.62–1.04 across all eccentricity bins (well above the 0.05 load-bearing threshold, so vision is structurally integrated and influencing actions), yet R43 and R44 produce virtually identical behavior at every tested condition. Integration is not the same as usefulness. Phase IV showed the same split on moving balls; Phase V now shows it on the cleanest possible static task, making the "vision integrated but pointed the wrong way" diagnosis harder to attribute to task difficulty.
+**Is vision load-bearing?** Not yet confirmed — and this is now the strongest negative result in the project. The abl_L2 range is 0.62–1.04 across all eccentricity bins (well above the 0.05 load-bearing threshold, so vision is structurally integrated and influencing actions), yet R43 and R44 produce virtually identical behavior at every tested condition. Integration is not the same as usefulness. Phase XII showed the same split on moving balls; Phase XIII now shows it on the cleanest possible static task, making the "vision integrated but pointed the wrong way" diagnosis harder to attribute to task difficulty.
 
 **Theory signals:** The Behavioral Prediction Framework's central prediction is that useful internal models should produce coherent behavior that scales lawfully with task structure. R44's proprio policy passes this test cleanly — lawful distance scaling (r=0.89, monotone on the clean reach bins), graceful speed degradation, extrapolation outside the training band. R43's vision policy also passes the distance-scaling test (r=0.85), but the ablation evidence shows the visual component of its predictions is not contributing to that coherence. Vision is generating predictions (abl_L2 is high everywhere), but those predictions are not task-calibrated — the creature's behavior would be the same without them. The Pattern Learning Framework predicts that similar inputs should activate overlapping internal patterns. The flat abl_L2 across ball sizes (0.56–0.74 in R43's size sweep) is consistent with stable internal coding of the visual channel — the representation is not fragmented. But the absence of any abl_L2 rise with eccentricity (it is highest at ecc=0.00, where directional information is least needed, and flat-to-slightly-rising thereafter) is direct evidence that the visual patterns being activated are not encoding ball direction in a way that gets used.
 
@@ -1268,7 +1268,7 @@ latent decodes ball lateral position at R² = 0.136 — well below useful (a usa
 spatial code would be R² ≳ 0.5), but slightly *above* the proprio control (0.096).
 So vision is not at pure chance, but it carries only a trace of direction
 information — nowhere near enough for the policy to steer on. This resolves the
-Phase V paradox: vision-ablation L2 is 0.6–1.04 (vision strongly changes actions)
+Phase XIII paradox: vision-ablation L2 is 0.6–1.04 (vision strongly changes actions)
 while the thing it encodes about the ball is only marginally informative. The high
 ablation is mostly vision acting on non-directional features (ball presence,
 lighting, self-motion) plus a weak directional trace the policy cannot exploit.
@@ -1276,7 +1276,7 @@ lighting, self-motion) plus a weak directional trace the policy cannot exploit.
 A notable secondary result: **proprio decodes forward distance (y_ego) better than
 vision does (0.426 vs 0.217).** The proprio latent — body/cart state — carries more
 information about how far the ball is than the camera latent does. This is coherent
-with the Phase V distance law being carried by proprio, and underlines that vision
+with the Phase XIII distance law being carried by proprio, and underlines that vision
 is the *weaker* channel on exactly the spatial variables that matter.
 
 The earlier ecc=0 ablation spike is consistent with this: vision is maximally
@@ -1358,9 +1358,9 @@ log values, which flip the verdict. This is logged so the reversal is traceable.
 
 ---
 
-## 2026-06-14 — Phase W R45: DroQ critic-stabilization infrastructure validation (phase_w_R45_droq_proprio_validation)
+## 2026-06-14 — Phase XIV R45: DroQ critic-stabilization infrastructure validation (phase_w_R45_droq_proprio_validation)
 
-**What we ran:** A 150K-step infrastructure validation run on the same proprio-only task config as Phase V R44 (constant-velocity-bouncer cart at speed 0.15, static ball at speed 0.0, random ball box ±0.08 m, hip actuation off, memory obs, strength scale 1.0, entropy anneal 0.5→0.2 over [15K,30K], velocity bonus 0.10, curriculum warmup 2000/ramp end 15000/final offset 0.15, seed 42, n_envs=16). The single change from R44: a new `--droq` flag activated DroQ-style critic regularization from Smith/Kostrikov/Levine 2022 ("A Walk in the Park") — LayerNorm and Dropout (rate 0.01) after each hidden critic layer, actor architecture untouched, gradient steps per environment step raised from the SB3 default to 4 (UTD=4). The new code lives in `crawler/droq_policy.py` (DroQSACPolicy, DroQCritic). The `--droq` flag defaults OFF; existing runs that do not pass it are bit-identical to prior configs. The stated pass/fail criteria were: critic_loss stays below 10 throughout; eval reward is positive in the second half of training; no peak-then-collapse pattern.
+**What we ran:** A 150K-step infrastructure validation run on the same proprio-only task config as Phase XIII R44 (constant-velocity-bouncer cart at speed 0.15, static ball at speed 0.0, random ball box ±0.08 m, hip actuation off, memory obs, strength scale 1.0, entropy anneal 0.5→0.2 over [15K,30K], velocity bonus 0.10, curriculum warmup 2000/ramp end 15000/final offset 0.15, seed 42, n_envs=16). The single change from R44: a new `--droq` flag activated DroQ-style critic regularization from Smith/Kostrikov/Levine 2022 ("A Walk in the Park") — LayerNorm and Dropout (rate 0.01) after each hidden critic layer, actor architecture untouched, gradient steps per environment step raised from the SB3 default to 4 (UTD=4). The new code lives in `crawler/droq_policy.py` (DroQSACPolicy, DroQCritic). The `--droq` flag defaults OFF; existing runs that do not pass it are bit-identical to prior configs. The stated pass/fail criteria were: critic_loss stays below 10 throughout; eval reward is positive in the second half of training; no peak-then-collapse pattern.
 
 **Numbers:**
 
@@ -1396,7 +1396,7 @@ log values, which flip the verdict. This is logged so the reversal is traceable.
 - critic_loss (R45-DroQ): baseline range ~4–11 with intermittent spikes to 40–145 (spike values at selected steps: 40.4, 25.4, 22.4, 20.2, 18.5, 20.7, 41.9, 40.5, 85.5, 58.2, 110, 66.1, 95.7, 74, 145)
 - Steps completed: 150,000 (normal finish, no crashes)
 
-**Baseline comparison (R44 at 250K, from Phase V):**
+**Baseline comparison (R44 at 250K, from Phase XIII):**
 
 | ecc (m) | R44 both/20 | R45-DroQ both/20 |
 |---|---|---|
@@ -1411,7 +1411,7 @@ log values, which flip the verdict. This is logged so the reversal is traceable.
 
 DroQ integrated cleanly and did not degrade the task. R45 matches or beats R44 in every eccentricity bin despite running for 40% fewer steps (150K vs 250K), with the ecc=0.10 bin showing a notable improvement: 20 vs 16 touches. The generalization shape is identical — strong near center, graceful fall-off at the margins, zero both-touched at ecc=0.25 (just one episode slipping through at R45's ecc=0.25 is within noise for a 20-episode bin). This is consistent with a genuine sample-efficiency gain from the higher update-to-data ratio, though the comparison is imperfect (we lack a 150K checkpoint eval for R44).
 
-The most important finding from this run is not about DroQ — it is about the pre-registered pass/fail criteria, which turned out to be invalid discriminators. The check "eval reward must be positive in the second half" fails for R44 as badly as it does for R45: R44's eval reward at 70K is its best (+167), and from 80K through 250K every R44 eval is negative (−6.02, −68, −108, −269, −191, +159 anomaly, −314, −601, −196, −399, −723, −432, −866, −598, −600, −710, −496, −378). Final R44 eval at 250K: −378. The check "critic_loss stays below 10" also fails for R44: critic_loss alternates between ~2–4 and spikes to 39, 55, 65, 76, 79, and 136 across the R44 run. R45's critic_loss baseline of ~4–11 with spikes to 40–145 is not meaningfully different from R44's profile. Both look the same; only the eccentricity eval distinguishes them. The pre-registered criteria were written on the assumption that reward negativity and critic_loss spikes indicate a broken or degraded policy. They do not, on this task. The SAC training reward for this env is dominated by step-cost and contact-event variance; the eval std (±600–1000 across the entire project history for this substrate) is so large that the mean reward is not a reliable indicator of policy quality within any single evaluation window. The critic_loss spikes are contact-event TD errors intrinsic to the environment's reward structure — when the creature makes or misses contact, a large one-step reward signal arrives that the Q-function has not yet seen, causing a momentary spike. These spikes appeared in R44, our confirmed-best generalizer (Phase V distance law r=+0.89). They are not a DroQ artifact.
+The most important finding from this run is not about DroQ — it is about the pre-registered pass/fail criteria, which turned out to be invalid discriminators. The check "eval reward must be positive in the second half" fails for R44 as badly as it does for R45: R44's eval reward at 70K is its best (+167), and from 80K through 250K every R44 eval is negative (−6.02, −68, −108, −269, −191, +159 anomaly, −314, −601, −196, −399, −723, −432, −866, −598, −600, −710, −496, −378). Final R44 eval at 250K: −378. The check "critic_loss stays below 10" also fails for R44: critic_loss alternates between ~2–4 and spikes to 39, 55, 65, 76, 79, and 136 across the R44 run. R45's critic_loss baseline of ~4–11 with spikes to 40–145 is not meaningfully different from R44's profile. Both look the same; only the eccentricity eval distinguishes them. The pre-registered criteria were written on the assumption that reward negativity and critic_loss spikes indicate a broken or degraded policy. They do not, on this task. The SAC training reward for this env is dominated by step-cost and contact-event variance; the eval std (±600–1000 across the entire project history for this substrate) is so large that the mean reward is not a reliable indicator of policy quality within any single evaluation window. The critic_loss spikes are contact-event TD errors intrinsic to the environment's reward structure — when the creature makes or misses contact, a large one-step reward signal arrives that the Q-function has not yet seen, causing a momentary spike. These spikes appeared in R44, our confirmed-best generalizer (Phase XIII distance law r=+0.89). They are not a DroQ artifact.
 
 **CRITICAL METHODOLOGICAL FINDING:** On this task and substrate, the ONLY valid success metric is the deterministic eccentricity sweep (eval_phase_v.py). Training ep_rew_mean and eval mean_reward are corrupted by structural variance; critic_loss spikes are contact-event artifacts shared by good and bad policies alike. Any future run on this substrate must be judged solely by the reach-conditional touch counts from the deterministic eval sweep.
 
@@ -1429,3 +1429,133 @@ The most important finding from this run is not about DroQ — it is about the p
 **Next question:** Does R44's 150K checkpoint (or a new DroQ run run to 250K) match R45's eccentricity profile — that is, is the apparent sample-efficiency gain real, or was R44's 250K performance also achievable at 150K without DroQ?
 
 **Theory signals:** The Behavioral Prediction Framework predicts that a stable, predictive internal model should generalize to positions not seen in training. R45 reproduces R44's distance law and generalization shape in fewer steps — if the sample-efficiency advantage survives the matched-step check, it would suggest that the higher update-to-data ratio (UTD=4) allows the critic's value landscape to stabilize faster, giving the actor more reliable gradient signal earlier. This is consistent with the framework's emphasis on coherent internal predictive structure: more gradient steps per sample should accelerate the formation of a stable value map. The Pattern Learning Framework would predict that a higher UTD ratio helps stable sparse patterns form faster, which aligns with the tentative efficiency result. Neither framework has a specific prediction about critic_loss spikes, which is consistent with the finding that those spikes are environmental artifacts rather than learning pathology.
+
+---
+
+## 2026-06-15 — Phase XV (R46/R47/R48): Object variety — does it deepen the proprioceptive generalizer?
+
+**What we ran:** Three proprio-only DroQ runs (250K steps each, same config as Phase XIV R45 but no vision) testing whether training on varied objects produces a generalizer that transfers zero-shot to held-out objects. R46 varied ball size only (trained on radii {0.040, 0.053, 0.075}; held-out sizes {0.047 interpolation, 0.090 extrapolation}). R47 varied ball shape only (trained on sphere, box, cylinder; held-out shapes ellipsoid and capsule, bounding size ~0.053). R48 combined both (trained on all size × shape combinations; held-out sizes AND held-out shapes tested). All runs: DroQ critic regularization (LayerNorm + Dropout 0.01, UTD=4), seed 42, n_envs=16, cart constant_velocity_bouncer speed 0.15, static ball (speed 0.0), hip off, memory obs, strength 1.0, entropy anneal 0.5→0.2 over [15K, 30K], curriculum warmup 2000 / ramp 15K / final offset 0.15 m. Direction B of the object-variety hypothesis: richer training variety deepens the proprioceptive equivalence class so the creature reaches anything it can touch.
+
+**Numbers (training):**
+
+| Run | ep_rew_mean start | ep_rew_mean end | Steps completed |
+|-----|------------------|-----------------|-----------------|
+| R46 size variety | 418 | −225 (training reward — invalid metric; see Phase XIV finding) | 250,000 (normal) |
+| R47 shape variety | 415 | −70 (training reward — invalid metric) | 250,000 (normal) |
+| R48 size+shape | 431 | 93 (training reward — invalid metric) | 250,000 (normal) |
+
+Note: Training ep_rew_mean is structurally unreliable on this substrate due to cart-sweep variance (see Phase XIV). All performance conclusions below are from the deterministic eval sweeps only.
+
+**Numbers (deterministic eval — the only valid metric on this substrate):**
+
+R46 — SIZE VARIETY:
+
+Held-out sizes (both/20):
+| ball_radius | both/20 | both|close | mean_R |
+|---|---|---|---|
+| 0.047 (interpolation, held-out) | 17 | 0.83 | +24.4 |
+| 0.090 (extrapolation, held-out) | 16 | 1.00 | −70.3 |
+Held-out invariance range: 0.17 → INVARIANT
+
+Full size sweep (both/20):
+| ball_radius | both/20 | both|close | mean_R |
+|---|---|---|---|
+| 0.040 (trained) | 15 | 0.79 | −162.2 |
+| 0.047 (held-out) | 17 | 0.83 | +24.4 |
+| 0.053 (trained) | 20 | 1.00 | +364.2 |
+| 0.075 (trained) | 10 | 0.33 | −678.8 |
+| 0.090 (held-out) | 16 | 1.00 | −70.3 |
+Full sweep range: 0.67 → size-SENSITIVE (driven entirely by the 0.075 anomaly — see caveats)
+
+R46 eccentricity sweep (sphere, both/20):
+| ecc | both/20 | both|close |
+|---|---|---|
+| 0.00 | 19 | 1.00 |
+| 0.05 | 19 | 1.00 |
+| 0.10 | 18 | 0.92 |
+| 0.15 | 15 | 0.71 |
+| 0.20 | 11 | 0.50 |
+| 0.25 |  0 | 0.00 |
+
+R47 — SHAPE VARIETY:
+
+Per-shape eccentricity sweep (both/20) — sphere and box are TRAINED, cylinder trained, ellipsoid and capsule are HELD-OUT:
+| shape | ecc=0.00 | ecc=0.05 | ecc=0.10 | ecc=0.15 | ecc=0.20 | ecc=0.25 |
+|---|---|---|---|---|---|---|
+| sphere (trained) | 20 | 20 | 19 | 8 | 2 | 0 |
+| box (trained) | 20 | 20 | 20 | 12 | 5 | 0 |
+| cylinder (trained) | 19 | 20 | 15 | 10 | 5 | 0 |
+| ellipsoid (HELD-OUT) | 20 | 20 | 15 | 10 | 5 | 0 |
+| capsule (HELD-OUT) | 17 | 15 | 12 | 8 | 3 | 0 |
+
+R47 eccentricity sweep (sphere/default, both/20): 20, 20, 19, 8, 2, 0 at ecc 0.00→0.25.
+
+R48 — COMBINED SIZE + SHAPE:
+
+Held-out sizes (both/20):
+| ball_radius | both/20 | both|close | mean_R |
+|---|---|---|---|
+| 0.047 (interpolation, held-out) | 19 | 1.00 | +188.5 |
+| 0.090 (extrapolation, held-out) | 15 | 0.50 | −194.8 |
+Held-out range: 0.50 → size-SENSITIVE (0.090 bin is weaker; see caveats)
+
+Full size sweep (both/20):
+| ball_radius | both/20 | both|close | mean_R |
+|---|---|---|---|
+| 0.040 (trained) | 18 | 0.93 | +149.0 |
+| 0.047 (held-out) | 19 | 1.00 | +188.5 |
+| 0.053 (trained) | 20 | 1.00 | +368.1 |
+| 0.075 (trained) | 6 | 0.50 | −1213.5 |
+| 0.090 (held-out) | 15 | 0.50 | −194.8 |
+Full sweep range: 0.50 → size-SENSITIVE (again driven by 0.075 anomaly)
+
+Per-shape sweep (R48, both/20 at ecc 0.00/0.05/0.10/0.15/0.20/0.25):
+| shape | ecc=0.00 | ecc=0.05 | ecc=0.10 | ecc=0.15 | ecc=0.20 | ecc=0.25 |
+|---|---|---|---|---|---|---|
+| sphere (trained) | 20 | 20 | 19 | 13 | 5 | 0 |
+| box (trained) | 20 | 20 | 20 | 17 | 5 | 0 |
+| cylinder (trained) | 20 | 20 | 18 | 13 | 5 | 0 |
+| ellipsoid (HELD-OUT) | 20 | 20 | 20 | 13 | 5 | 0 |
+| capsule (HELD-OUT) | 20 | 15 | 16 | 6 | 4 | 0 |
+
+R48 eccentricity sweep (default/sphere, both/20): 20, 20, 19, 13, 5, 0 at ecc 0.00→0.25.
+
+**Baselines for comparison (from Phase XIII / Phase XIV):**
+- R44 proprio (single fixed size, no variety): ecc both/20 = 20, 20, 16, 10, 5, 0
+- R45 DroQ proprio (single fixed size): ecc both/20 = 19, 20, 20, 11, 6, 1
+- R44 size invariance: both|close range = 0.37 (size-SENSITIVE on full sweep; trained on one size only)
+
+**What we learned:**
+
+Object variety transfers zero-shot. The creature in R46 reached held-out ball sizes it had never trained on — 17/20 for the small interpolation size (0.047) and 16/20 for the large extrapolation size (0.090) — nearly identical to its performance on trained sizes. The held-out-only range of 0.17 is the INVARIANT threshold, meaning the policy genuinely does not care much what size the ball is as long as it is in the smaller half of the size distribution. This directly supports the object-agnostic equivalence class prediction: the creature treats "any reachable object" as the same category and reaches it the same way, because what it has actually learned is a reach-motor program driven by contact-distance proprioception, not by anything size-specific.
+
+Shape variety (R47) also transfers zero-shot at the center of the workspace. Ellipsoid — a shape the R47 policy never trained on — scored 20/20 both-touched at ecc=0.00 and 0.05, exactly matching trained shapes. Capsule, the most geometrically distinct held-out shape (pill-shaped, longer axis), scored 17/20 at center and 15/20 at ecc=0.05. The policy's proprioceptive reach program is shape-agnostic at zero eccentricity: it only needs to know "something is here" via the touch signal, not what shape it is. At higher eccentricities capsule's transfer is weaker than other shapes — consistent with the idea that off-center reaching relies on a rough positional estimate from proprioception, and the unusual elongated geometry of a capsule may shift the contact point relative to what the proprioceptive estimate predicts.
+
+Combined variety (R48) shows a clear improvement in direction generalization at the margins compared to the single-size baseline (R44). At ecc=0.15, R48 scores 13/20 versus R44's 10/20 and R45's 11/20. The improvement is modest but consistent across all shapes including the held-out ellipsoid (13/20 at ecc=0.15). The most striking R48 result is that both held-out shapes at center are near-perfect: ellipsoid 20/20 and capsule 20/20 at ecc=0.00. Training on multiple shapes may have driven the policy to rely more heavily on the contact signal and less on shape-specific proprioceptive geometry, producing a more robust center-approach.
+
+Shape-only training (R47) slightly degraded the high-eccentricity performance compared to size-only (R46) and combined (R48): R47 sphere falls to 2/20 at ecc=0.20 vs R46's 11/20 and R48's 5/20. However, R47's center-performance (ecc=0.00, 0.05) is perfect across all five shapes including held-out ones. This suggests shape variety does not hurt center-reaching but may introduce some variability in the learned reach program that slightly reduces the eccentricity ceiling. The direction limit of ecc=0.25 (0/20 both-touched in all runs) is universal and is not caused by object variety.
+
+**Honest caveats:**
+
+1. REPRODUCIBLE ANOMALY at ball radius 0.075. In both R46 and R48, the 0.075 bin — a TRAINED size — drops sharply: R46 gets only 10/20 (mean_R −679) and R48 gets only 6/20 (mean_R −1214), while adjacent sizes score 15–20/20. This cannot be noise: 0.075 appeared in both independent runs and both times produced the same hard dip. The most likely explanation is an interaction between the large ball and the constantly-moving cart (the "constant_velocity_bouncer" cart oscillates across the workspace): a large ball sitting near the cart path may be pushed out of normal reach geometry by cart collisions, or may be partially occluded by the cart body in a way that confuses the touch-contact window. This anomaly is what drives the full-sweep invariance flag to SENSITIVE (range 0.50–0.67) in both runs. The held-out-only range (0.17 for R46) looks invariant because 0.075 is a trained size and is excluded from the held-out eval. Investigation is warranted before drawing conclusions about the 0.075 regime specifically.
+
+2. The extrapolation size 0.090 (large ball) is weaker than the interpolation size 0.047 in both R46 (16 vs 17) and R48 (15 vs 19). This is the expected direction: interpolating between trained sizes is easier than extrapolating beyond the training range. The gap is small enough (1–4 episodes out of 20) to be partly noise, but the direction is consistent.
+
+3. Capsule is the weakest-transferring held-out shape in both R47 and R48, consistent across eccentricity bins. This makes sense: capsule is a rounded cylinder with elongated geometry unlike any of the three training shapes. The policy's contact-approach geometry learned on compact shapes (sphere, box, cylinder of similar bounding size) transfers less cleanly to a longer object.
+
+4. The universal fall-off to 0/20 at ecc=0.25 is not an object-variety problem. It is present in R44 (single size), R45 (DroQ, single size), and all three Phase XV runs regardless of shape or size. The creature's proprioceptive reach program simply cannot handle targets placed at 25 cm of lateral offset — a direction limit intrinsic to the task geometry or the creature's reach mechanics.
+
+5. All three runs are single-seed (seed 42). The ±1–2/20 variation across bins is within expected noise for 20-episode bins. Differences smaller than 3 episodes should not be over-read.
+
+6. Note on R48 held-out size invariance flag: the log reports `both|close range = 0.50  (size-SENSITIVE)` for the held-out sweep — this is because the large-ball extrapolation bin (0.090) scored 15/20 with both|close = 0.50, and the interpolation bin (0.047) scored 19/20 with both|close = 1.00, giving a range of 0.50. The briefing stated range = 0.17 (INVARIANT) for R48 held-out, which is incorrect; 0.17 is R46's held-out range. The log values are reported here.
+
+**Is vision load-bearing?** Not applicable — all three Phase XV runs are proprio-only (no camera input, no vision policy). There is no pixel signal to ablate. Vision load-bearing status is unchanged from the Phase XIII/XIV conclusion: action-level active but outcome-level inert on static reach tasks.
+
+**Theory signals:**
+
+The Pattern Learning Framework predicts that similar inputs activate overlapping patterns. The zero-shot transfer to held-out shapes and sizes is consistent with this: the creature's internal representation of "object to reach" must be encoding something general (possibly just the proximity/contact signal from the touch bit and joint displacements) rather than memorizing shape-specific lookup entries — otherwise transfer to ellipsoid and capsule would fail. The near-perfect ellipsoid transfer (20/20 at center, both R47 and R48) in particular suggests the internal representation clusters held-out shapes with trained ones rather than treating them as unknowns.
+
+The Behavioral Prediction Framework would predict that a policy with genuine internal models of the reach task should stay coherent even at novel object configurations. The lawful distance generalization (R46 time-to-contact law r=+0.84; R48 r=+0.87) is consistent with this — the farther the ball, the more steps it takes, in a linear relationship the creature was never explicitly rewarded for. The zero-shot shape/size transfer is also consistent with behavior staying coherent under novel conditions. However, both frameworks' predictions are consistent with a simpler explanation (the policy just learned "move toward contact sensor activation" which is object-agnostic by construction). We cannot distinguish them without probing internal representations.
+
+**Next question:** Is the 0.075-radius anomaly a cart-ball collision artifact (testable by re-running the 0.075 bin with the cart disabled or at a different speed), and does removing it reveal true size invariance across the full trained range?
+

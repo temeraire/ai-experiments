@@ -110,10 +110,10 @@ v9 splits the class. Specific candidate: **moving target env**. The ball spawns 
 
 Theoretical framing: in Taylor's notation, M (forward-paddle) must FAIL unless modified by visual evidence of the ball's trajectory. Same critical state D (contact drive), same sensory surface Q, but now Q's visual component is the only way to derive the right M. Engrams for "ball-left" and "ball-right" must become conditioned to asymmetric paddle strokes. Pure pressure, no bribery.
 
-**UPDATE — Phase H result (2026-05-20):** The moving-ball hypothesis was tested as Phase H (R32–R35, ball speeds 0.05 and 0.08 m/s, cart substrate). The result was REFUTED — see Current Best Numbers and Last Run sections below. Moving balls at these speeds make the task too hard for any policy rather than creating pressure that only vision can relieve. The hypothesis that ball motion forces visual learning is now tested and closed.
+**UPDATE — Phase VIII result (2026-05-20):** The moving-ball hypothesis was tested as Phase VIII (R32–R35, ball speeds 0.05 and 0.08 m/s, cart substrate). The result was REFUTED — see Current Best Numbers and Last Run sections below. Moving balls at these speeds make the task too hard for any policy rather than creating pressure that only vision can relieve. The hypothesis that ball motion forces visual learning is now tested and closed.
 
 
-**UPDATE — Phase I/II/III result (2026-05-21):** After Phase H closed the substrate-level avenue, the project pivoted to an architectural intervention: MICOA (Multimodal Inference via Coupled Objectives Across modalities) — wire proprio and vision encoders as a Product-of-Experts Gaussian and add a KL-based agreement loss between them. Phase I (R36/R37) confirmed MICOA worked mechanically, but vision remained inert (ablation in the 0.002–0.023 dead zone). Phase II (R38) replaced symmetric agreement with a one-sided *predictive* KL — vision pulled toward proprio(t+1).detach() — and **broke the ablation barrier for the first time**: single-step action delta 0.66, 350× R36, 13× threshold. Vision was *active* but not *productive* (6/20 with or without pixels) and σ_p instability hurt task performance. Phase III R39 changed three knobs at once (multi-horizon + tighter σ clamp + higher β) and regressed on load-bearing. **R40 isolated the σ clamp variable** (single-horizon t+1 like R38, tightened σ clamp like R39) and is the first run where vision is load-bearing AND the task is mostly solved (ablation 0.481, 15/20 both-touched, mean reward −234). Goldilocks reading: σ_p ∈ [0.018, 7.4] (R38) too permissive; σ_p ∈ [0.135, 7.4] (R40) prevents extreme precision while still letting vision broadcast useful signal. Remaining limit: action-level ablation is big (0.48) but outcome-level delta is only +1 episode (R40 15 vs R38-substrate 14) — proprio is still good enough to solve mostly alone. Next: re-introduce ball-speed > 0 to give vision a job proprio cannot do, now from an architecture where vision is actually integrated.
+**UPDATE — Phase IX/X/XI result (2026-05-21):** After Phase VIII closed the substrate-level avenue, the project pivoted to an architectural intervention: MICOA (Multimodal Inference via Coupled Objectives Across modalities) — wire proprio and vision encoders as a Product-of-Experts Gaussian and add a KL-based agreement loss between them. Phase IX (R36/R37) confirmed MICOA worked mechanically, but vision remained inert (ablation in the 0.002–0.023 dead zone). Phase X (R38) replaced symmetric agreement with a one-sided *predictive* KL — vision pulled toward proprio(t+1).detach() — and **broke the ablation barrier for the first time**: single-step action delta 0.66, 350× R36, 13× threshold. Vision was *active* but not *productive* (6/20 with or without pixels) and σ_p instability hurt task performance. Phase XI R39 changed three knobs at once (multi-horizon + tighter σ clamp + higher β) and regressed on load-bearing. **R40 isolated the σ clamp variable** (single-horizon t+1 like R38, tightened σ clamp like R39) and is the first run where vision is load-bearing AND the task is mostly solved (ablation 0.481, 15/20 both-touched, mean reward −234). Goldilocks reading: σ_p ∈ [0.018, 7.4] (R38) too permissive; σ_p ∈ [0.135, 7.4] (R40) prevents extreme precision while still letting vision broadcast useful signal. Remaining limit: action-level ablation is big (0.48) but outcome-level delta is only +1 episode (R40 15 vs R38-substrate 14) — proprio is still good enough to solve mostly alone. Next: re-introduce ball-speed > 0 to give vision a job proprio cannot do, now from an architecture where vision is actually integrated.
 
 ---
 
@@ -127,12 +127,12 @@ Theoretical framing: in Taylor's notation, M (forward-paddle) must FAIL unless m
 | Best deterministic touch rate (vision follow-on) | 4/50 (8%) | micoa_freeze_zeroinit_cone30 (30K checkpoint) — built on old invalid stage1 |
 | Mean ground coverage (blind proprio) | 0.417 mean_dist_mean | stage1_headfix_velbonus_2026_05_07 (consistent across both velbonus runs) |
 | Falls (all runs) | 0/20 | stage1_headfix_velbonus2_cone180_600steps_2026_05_07 — body stable under new physics |
-| Vision load-bearing? | Not yet confirmed | Phases E/E2 are blind proprio; vision not yet tested under corrected wrapper |
-| Best HER ep_rew_mean | −1899 ± 0.34 (Phase E2, 250K) | First time any HER run has left the −2000 floor |
-| Eval std (HER runs) | 0.30–0.42 (Phase E2) | First non-zero eval std in months; prior phases all returned std = 0.00 |
-| Wrapper bug status | FIXED (her_wrapper.py line ~150) | Phase D and E both ran with effective velocity bonus = 0; Phase E2 is first valid test |
-| **Phase G best (cart substrate, ent=0.5 + vel_bonus=0.10)** | **+380 ± 7.8, 20/20 hits** | **R19 (mimo_phase_g_R19_ent05_velbonus) at t=14976; also 20/20 maintained at t=19968** |
-| Phase G previous best (cart substrate, blind proprio + ent=0.5) | +366 ± 14, 20/20 hits | R3 (mimo_phase_g_R3_ent050) at t=14976 |
+| Vision load-bearing? | Not yet confirmed | Phases V/V.2 are blind proprio; vision not yet tested under corrected wrapper |
+| Best HER ep_rew_mean | −1899 ± 0.34 (Phase V.2, 250K) | First time any HER run has left the −2000 floor |
+| Eval std (HER runs) | 0.30–0.42 (Phase V.2) | First non-zero eval std in months; prior phases all returned std = 0.00 |
+| Wrapper bug status | FIXED (her_wrapper.py line ~150) | Phase IV and V both ran with effective velocity bonus = 0; Phase V.2 is first valid test |
+| **Phase VII best (cart substrate, ent=0.5 + vel_bonus=0.10)** | **+380 ± 7.8, 20/20 hits** | **R19 (mimo_phase_g_R19_ent05_velbonus) at t=14976; also 20/20 maintained at t=19968** |
+| Phase VII previous best (cart substrate, blind proprio + ent=0.5) | +366 ± 14, 20/20 hits | R3 (mimo_phase_g_R3_ent050) at t=14976 |
 | Reach radius of R3-best | ~0.20-0.25m (graceful 0.15→0.20, hard cutoff 0.25→0.30) | R3-best generalizes 15/20 both-touched at offset=0.20, 0/20 at 0.30 |
 | Vision load-bearing? | **No** — vision-ablation delta = 0.023; episode ablation produces identical 14/20 → 14/20 | R14 vs R15 ablation comparison, R10/R12 longer vision attempts |
 | Vision under random ball positions? | **Still no** — R17 (vision) 34/40 both-touched, R18 (proprio control) 36/40; pixel-zero ablation IMPROVES R17 from 16/20 to 17/20 | R17/R18 random_ball_box test, 04:30 |
@@ -142,39 +142,41 @@ Theoretical framing: in Taylor's notation, M (forward-paddle) must FAIL unless m
 | Buffer-preserving warm-start works? | **No** — R24 (with buffer load) still collapses on curriculum 0.15→0.20 (off-policy gradient inconsistency) | R24 |
 | Direct training at offset=0.20 with strength=1.0? | **Yes** — R30 gets 14/20 both-touched (matches R3 transfer's 15/20) | R30 |
 | Direct training at offset=0.25? | **No** — even strength=1.0 + R20 recipe collapses (R31: 0/20 at 0.25) | R31 |
-| **Phase H best vision policy (moving balls)** | **0/20 both-touched (speed=0.08), 1/20 (speed=0.05)** | **R33 (vision, 0.08), R35 (vision, 0.05) — see PHASE_H_RESULTS_RAW.md** |
-| **Phase H best proprio policy (moving balls)** | **1/20 both-touched (both speeds)** | **R32 (proprio, 0.08), R34 (proprio, 0.05)** |
-| **Vision under moving balls (speed 0.05/0.08)?** | **No — REFUTED.** Ablation 0.020–0.024 (dead zone, same as Phase G). Vision and proprio equally destroyed by ball motion. | **Phase H, R32–R35, 2026-05-20** |
-| Phase I best (MICOA PoE + symmetric KL agreement) | Vision still inert: ablation 0.0019 (R36), 0.0023 (R37); task preserved | R36 (β=0.10), R37 (β=0.03) |
-| Phase II best (MICOA + temporal predictive KL, β_pred=0.10) | **First ablation-barrier break**: action L2 delta 0.6563 (350× R36, 13× threshold). Vision active but not productive: 6/20 with or without pixels. Task regressed (−757, 6/20). | R38 |
-| **Phase III R40 (single-horizon t+1 + tightened σ clamp)** | **Ablation 0.481, both-touched 15/20, mean reward −234. First run with vision load-bearing AND task solved.** | **R40, 2026-05-21** |
-| Phase III R39 (multi-horizon t+1/t+5/t+25/t+50 + tightened σ clamp) | Regressed on load-bearing; confounded (3 knobs changed at once). 3× total β likely deformed actor gradient; possible cross-horizon interference. | R39 |
-| **Phase IV R41 (MICOA+vision, moving balls @ 0.08)** | **Ablation 0.8511 (highest ever). Task: 1/20 both-touched moving, 9/20 static. MICOA encoder pathology: kl_pred_k1 exploded to 638, sigma_combined collapsed to 0.10. Vision over-integrated but behaviorally harmful.** | **R41, 2026-05-22** |
-| **Phase IV R42 (proprio only, moving balls @ 0.08)** | **2/20 both-touched moving, 18/20 static — best proprio result yet on moving balls. Outperformed matched MICOA+vision run on both conditions.** | **R42, 2026-05-22** |
-| **Vision load-bearing under MICOA + moving balls?** | **Action-level YES (ablation 0.85). Outcome-level NO — R41 worse than proprio control on both metrics. High ablation ≠ useful encoding.** | **Phase IV R41 vs R42, 2026-05-22** |
-| **Vision load-bearing (architectural intervention)?** | **Yes (action level): R40 ablation 0.481 ≫ 0.05 threshold.** Episode-outcome lift small (+1 episode vs proprio-dominant baseline) — proprio still does most of the work. | **Phase III R40, 2026-05-21** |
-| **Phase V R43 (MICOA+vision, static reachable, eccentricity sweep)** | **Ablation 0.62–1.04 across eccentricity bins (integrated). Task: 20/20 at ecc=0.00, 0/20 at ecc=0.25. Identical to proprio control at every bin. Vision integrated but non-directional.** | **R43, 2026-05-30** |
-| **Phase V R44 (proprio only, static reachable, eccentricity sweep)** | **20/20 at ecc=0.00, 0/20 at ecc=0.25. Distance law r=+0.96, extrapolates outside training band. Speed retention ~0.50 (graceful).** | **R44, 2026-05-30** |
-| **Phase W R45 (DroQ proprio validation, 150K steps)** | **20/20 at ecc=0.05, 20/20 at ecc=0.10 (beats R44 16/20). Matches R44 at all other bins. DroQ infra validated; no degradation.** | **R45, 2026-06-14** |
-| **Methodological finding (Phase W)** | **eval mean_reward and critic_loss are INVALID health metrics on this substrate. Only deterministic eccentricity sweep (eval_phase_v.py) is valid.** | **Phase W, 2026-06-14** |
-| **Vision load-bearing on cleanest static reachable task?** | **Action-level YES (abl_L2 0.62–1.04). Outcome-level NO — R43 ≈ R44 at every eccentricity bin. Strongest null result in project history. Vision bound globally, not recruited where it carries directional information.** | **Phase V R43 vs R44, 2026-05-30** |
+| **Phase VIII best vision policy (moving balls)** | **0/20 both-touched (speed=0.08), 1/20 (speed=0.05)** | **R33 (vision, 0.08), R35 (vision, 0.05) — see PHASE_H_RESULTS_RAW.md** |
+| **Phase VIII best proprio policy (moving balls)** | **1/20 both-touched (both speeds)** | **R32 (proprio, 0.08), R34 (proprio, 0.05)** |
+| **Vision under moving balls (speed 0.05/0.08)?** | **No — REFUTED.** Ablation 0.020–0.024 (dead zone, same as Phase VII). Vision and proprio equally destroyed by ball motion. | **Phase VIII, R32–R35, 2026-05-20** |
+| Phase IX best (MICOA PoE + symmetric KL agreement) | Vision still inert: ablation 0.0019 (R36), 0.0023 (R37); task preserved | R36 (β=0.10), R37 (β=0.03) |
+| Phase X best (MICOA + temporal predictive KL, β_pred=0.10) | **First ablation-barrier break**: action L2 delta 0.6563 (350× R36, 13× threshold). Vision active but not productive: 6/20 with or without pixels. Task regressed (−757, 6/20). | R38 |
+| **Phase XI R40 (single-horizon t+1 + tightened σ clamp)** | **Ablation 0.481, both-touched 15/20, mean reward −234. First run with vision load-bearing AND task solved.** | **R40, 2026-05-21** |
+| Phase XI R39 (multi-horizon t+1/t+5/t+25/t+50 + tightened σ clamp) | Regressed on load-bearing; confounded (3 knobs changed at once). 3× total β likely deformed actor gradient; possible cross-horizon interference. | R39 |
+| **Phase XII R41 (MICOA+vision, moving balls @ 0.08)** | **Ablation 0.8511 (highest ever). Task: 1/20 both-touched moving, 9/20 static. MICOA encoder pathology: kl_pred_k1 exploded to 638, sigma_combined collapsed to 0.10. Vision over-integrated but behaviorally harmful.** | **R41, 2026-05-22** |
+| **Phase XII R42 (proprio only, moving balls @ 0.08)** | **2/20 both-touched moving, 18/20 static — best proprio result yet on moving balls. Outperformed matched MICOA+vision run on both conditions.** | **R42, 2026-05-22** |
+| **Vision load-bearing under MICOA + moving balls?** | **Action-level YES (ablation 0.85). Outcome-level NO — R41 worse than proprio control on both metrics. High ablation ≠ useful encoding.** | **Phase XII R41 vs R42, 2026-05-22** |
+| **Vision load-bearing (architectural intervention)?** | **Yes (action level): R40 ablation 0.481 ≫ 0.05 threshold.** Episode-outcome lift small (+1 episode vs proprio-dominant baseline) — proprio still does most of the work. | **Phase XI R40, 2026-05-21** |
+| **Phase XIII R43 (MICOA+vision, static reachable, eccentricity sweep)** | **Ablation 0.62–1.04 across eccentricity bins (integrated). Task: 20/20 at ecc=0.00, 0/20 at ecc=0.25. Identical to proprio control at every bin. Vision integrated but non-directional.** | **R43, 2026-05-30** |
+| **Phase XIII R44 (proprio only, static reachable, eccentricity sweep)** | **20/20 at ecc=0.00, 0/20 at ecc=0.25. Distance law r=+0.96, extrapolates outside training band. Speed retention ~0.50 (graceful).** | **R44, 2026-05-30** |
+| **Phase XIV R45 (DroQ proprio validation, 150K steps)** | **20/20 at ecc=0.05, 20/20 at ecc=0.10 (beats R44 16/20). Matches R44 at all other bins. DroQ infra validated; no degradation.** | **R45, 2026-06-14** |
+| **Methodological finding (Phase XIV)** | **eval mean_reward and critic_loss are INVALID health metrics on this substrate. Only deterministic eccentricity sweep (eval_phase_v.py) is valid.** | **Phase XIV, 2026-06-14** |
+| **Vision load-bearing on cleanest static reachable task?** | **Action-level YES (abl_L2 0.62–1.04). Outcome-level NO — R43 ≈ R44 at every eccentricity bin. Strongest null result in project history. Vision bound globally, not recruited where it carries directional information.** | **Phase XIII R43 vs R44, 2026-05-30** |
+| **Phase XV R46 (DroQ proprio, size variety, 250K)** | **Held-out sizes: 17/20 (interpolation 0.047) and 16/20 (extrapolation 0.090). Held-out range 0.17 = INVARIANT. Full sweep range 0.67 = SENSITIVE, driven by 0.075 anomaly. Ecc: 19,19,18,15,11,0.** | **R46, 2026-06-15** |
+| **Phase XV R47 (DroQ proprio, shape variety, 250K)** | **Held-out ellipsoid: 20/20 at ecc=0.00. Held-out capsule: 17/20 at ecc=0.00, 15/20 at ecc=0.05. Shape-only training slightly reduces high-ecc reach vs size-variety. Ecc (sphere): 20,20,19,8,2,0.** | **R47, 2026-06-15** |
+| **Phase XV R48 (DroQ proprio, combined size+shape, 250K)** | **Held-out ellipsoid 20/20, capsule 20/20 at ecc=0.00. Ecc: 20,20,19,13,5,0 (+3 at ecc=0.15 vs R44). Held-out sizes: 19/20 (0.047), 15/20 (0.090). 0.075 anomaly persists (6/20).** | **R48, 2026-06-15** |
+| **Object variety zero-shot transfer (Phase XV)** | **CONFIRMED: held-out sizes and held-out shapes transferred at center (15-20/20 both-touched). Combined variety (R48) improved ecc=0.15 margin vs R44/R45 baseline. Reproducible anomaly at trained size 0.075 in both R46 and R48 -- flagged for investigation.** | **Phase XV R46/R47/R48, 2026-06-15** |
 
 ## Last run
 
-- **Tag:** Phase W R45 (DroQ critic-stabilization infrastructure validation, proprio only)
-- **Date:** 2026-06-14
-- **Setup:** Identical to Phase V R44 (proprio only, cart constant_velocity_bouncer speed 0.15, ball_speed=0.0, box jitter +/-0.08, hip off, memory obs, strength 1.0, entropy anneal 0.5->0.2, vel-bonus 0.10, curriculum warmup 2000/ramp 15000/offset 0.15, seed 42, n_envs=16). Single change: --droq flag (LayerNorm + Dropout rate 0.01 on critic hidden layers; UTD=4). 150K steps.
+- **Tag:** Phase XV (R46/R47/R48 — DroQ proprio, object variety: deepen the proprioceptive generalizer)
+- **Date:** 2026-06-15
+- **Setup:** Three 250K DroQ proprio-only runs. Same config as Phase XIV R45 (cart constant_velocity_bouncer speed 0.15, ball_speed=0.0, hip off, memory obs, strength 1.0, entropy anneal 0.5->0.2, vel-bonus 0.10, curriculum warmup 2000/ramp 15K/offset 0.15, seed 42, n_envs=16, UTD=4). Varied: R46 trained on ball radii {0.040, 0.053, 0.075}; R47 trained on shapes {sphere, box, cylinder}; R48 trained on sizes x shapes combined. Held-out: R46/R48 sizes {0.047, 0.090}; R47/R48 shapes {ellipsoid, capsule}.
 - **Key results:**
-  - ep_rew_mean: +413 (start) -> -115 (end)
-  - Eval mean_reward at 150K: -486 +/- 857 (negative throughout second half, same as R44 -- see methodological finding)
-  - Eccentricity sweep (20 eps/bin) at 150K vs R44 at 250K: R45 matches or beats R44 at every bin; ecc=0.10 notably 20 vs 16
-  - critic_loss: baseline ~4-11 with spikes to 40-145 -- identical profile to R44 (spikes are contact-event TD artifacts, not pathology)
-  - **METHODOLOGICAL FINDING:** Pre-registered pass/fail criteria (eval reward must be positive, critic_loss must stay below 10) are invalid discriminators on this task. R44 -- the confirmed-best generalizer -- fails both checks too. The only valid metric is the deterministic eccentricity sweep.
-  - DroQ safe to use as opt-in; sample-efficiency gain tentative (needs matched-step check)
-- See FINDINGS.md Phase W entry for full eval table and verified numbers.
+  - R46 held-out size both/20: 0.047=17, 0.090=16 (range 0.17 = INVARIANT). Ecc: 19,19,18,15,11,0.
+  - R47 held-out shape (center): ellipsoid 20/20, capsule 17/20 at ecc=0.00. Shape variety reduces high-ecc reach vs R46/R48. Ecc (sphere): 20,20,19,8,2,0.
+  - R48 held-out shape (center): ellipsoid 20/20, capsule 20/20 at ecc=0.00. Ecc: 20,20,19,13,5,0 (best margin performance in project on this substrate).
+  - Reproducible anomaly: trained size 0.075 scores only 10/20 (R46) and 6/20 (R48) with strongly negative mean_R -- not noise, likely cart-ball interaction.
+  - Vision: N/A (proprio-only runs). Zero-shot transfer to held-out objects confirmed on proprio alone.
+- See FINDINGS.md Phase XV entry for full per-shape and per-size tables and verified numbers.
 
-### Previous run (Phase V R43/R44, 2026-05-30)
-- R43 (MICOA+vision, static reachable): 20/20 at ecc=0.00, 0/20 at ecc=0.25. Ablation 0.62-1.04. Vision integrated but non-directional.
-- R44 (proprio, static reachable): 20/20 at ecc=0.00, 0/20 at ecc=0.25. Distance law r=+0.96. Speed retention 0.50 (graceful).
-- See FINDINGS.md Phase V entry for full tables.
+### Previous run (Phase XIV R45, 2026-06-14)
+- R45 (DroQ proprio, 150K): 20/20 at ecc=0.00, 19/20 at ecc=0.05, 20/20 at ecc=0.10, 11/20 at ecc=0.15, 6/20 at ecc=0.20, 1/20 at ecc=0.25. DroQ infra validated.
+- See FINDINGS.md Phase XIV entry for full eval table and verified numbers.
 ---
