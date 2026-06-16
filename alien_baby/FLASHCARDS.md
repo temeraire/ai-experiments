@@ -1423,3 +1423,9 @@ A: AB reconstructs human perception but isn't bound to the human developmental p
 
 Q: What are the two concrete levers for building movement in as a substrate, and their cost?
 A: (1) Graded DOF freezing/freeing (Berthouze & Lungarella) -- lock most joints, master the reduced body, progressively release DOF so each motor competence scaffolds the next; CHEAP, a curriculum change in MuJoCo today. (2) Migrate to a richer/growing body (MIMo v2: hands, foveated vision, sensorimotor delays, birth->24mo growth) -- EXPENSIVE, justified only once the substrate->vision-generalization link is confirmed on the current simplified body.
+
+---
+
+Q: What is the "winnability" rule (every episode must be winnable)?
+A: The project's governing design rule (2026-06-16): we must give AB the tools to succeed; if AB never gets near the target, that's OUR setup failure, not AB's learning failure, and it teaches nothing. Every episode must be winnable -- the action we want reinforced (touching the ball) must be physically possible for AB's body, and for vision runs the target must be in view or bringable into view by an action AB can execute (a head turn). Never present a target that can't be seen and can't be found. Don't score impossible configs as "AB failed." Body fidelity never outranks winnability. Rationale: an action can only be reinforced if it can occur.
+

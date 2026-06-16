@@ -108,6 +108,21 @@ Before fixing bugs or adding features, always create a new git branch with a des
 These rules apply to any RL training run under `alien_baby/`. They exist to avoid burning hours
 of compute on runs with broken cameras, broken physics, or misread signals.
 
+### Winnability — every episode must be possible to win (governing rule)
+We must provide AB the tools it needs to succeed. **If AB never gets near the target, that is OUR
+failure in setting up the task, not AB's failure to learn — and it teaches neither AB nor us
+anything.** So, for every training and eval episode:
+- The action we want reinforced (e.g. touching the ball) must be **physically possible** for AB
+  in whatever body it has — the target must sit inside AB's actual reach/locomotion envelope.
+- If the run involves **vision**, the target must be **in AB's field of view, or bringable into
+  view by an action AB can execute** (e.g. a head turn). Never run a case where the target cannot
+  be seen and cannot be found, for any reason.
+- Curricula and eval bins must stay inside the winnable set. Do **not** score impossible configs
+  (target out of reach / out of view) as "AB failed" — that measures our setup's impossibility,
+  not AB's ability. Separate "AB couldn't" from "we made it impossible," and fix the latter.
+This is the precondition for progress: an action can only be reinforced if it can occur. Body
+fidelity (e.g. keeping the MIMo infant body) never outranks this — if the body makes the target
+unreachable, change the setup, not the standard.
 
 ### Always watch a video before committing to a training run
 Before launching any training run longer than a smoke test (>50K steps), render one episode
