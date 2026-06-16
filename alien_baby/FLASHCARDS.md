@@ -1361,3 +1361,35 @@ A: A glancing-blow knock-away. A mid-size ball (~0.070-0.080) is struck off-cent
 
 Q: Why can't you trust describe_video.py (Gemini) for pass/fail on these runs?
 A: It narrated the failing 0.075 episodes as successful "throw-then-pickup" sequences — it doesn't know the task is "touch both balls", so it over-reported success. Pass/fail must come from the metric and from frames read directly, not the free-text narration.
+
+---
+
+## Encoder / decoder and prior-work concepts
+
+Q: In our context, what is an encoder?
+A: The part of the network that turns raw sensory input into the compact internal latent the policy reads. We have two (one per modality): the proprio encoder (3-layer MLP, 7 proprio numbers → 64-dim Gaussian (μ,σ) over the shared latent Z) and the vision encoder (DrQ-v2 4-conv CNN, stereo image → its own 64-dim (μ,σ)). "The visual latent" we keep probing IS the vision encoder's output. "Representation failure" = the encoder's output doesn't carry the needed info; the encoder is the fix target when the problem is representational.
+
+---
+
+Q: In our context, what is a decoder?
+A: A readout that runs the other way — from the internal latent back to an interpretable quantity. We don't keep one as a permanent part of the agent; we attach them in two roles: (1) a PROBE (read-only diagnostic) — the ball-x linear probe is a decoder, latent → ball lateral position, R²≈0.08 measured the representation failure; (2) an AUXILIARY LOSS — a trainable decoder whose error is pushed back into the encoder to force it to encode the target. Read-only decoder measures the failure; auxiliary-loss decoder tries to fix it.
+
+---
+
+Q: What is "modality dominance / modality competition"?
+A: From supervised multimodal learning (Wang/Tran/Feiszli 2020; Peng OGM-GE 2022): trained jointly on two streams, the easier-to-learn stream wins the gradient and the other stays underused — a joint net can lose to the best single modality. It's the closest NAMED neighbor to AB's "vision integrated but inert" (proprio solves the task, so vision is starved). Difference: in that literature the weak modality is usually recoverable by rebalancing; AB's is more severe (the latent barely encodes the target — representation failure).
+
+---
+
+Q: What is privileged teacher → student distillation?
+A: The field's standard fix for making vision load-bearing when a non-visual channel already solves the task (Learning by Cheating 2019; RMA 2021; Lee/Hwangbo 2020). Train a teacher with privileged info unavailable at deployment (e.g. the exact target vector), then train a vision-only student to imitate the teacher's actions. Vision becomes load-bearing because supervision forces it — the step AB's end-to-end run skips. The #1 recognized fix for AB's pathology.
+
+---
+
+Q: What is an asymmetric actor-critic?
+A: An RL trick (Pinto et al. 2018) where the critic gets extra privileged info (full state) during training while the actor sees only the real sensor observations. The critic is discarded at deployment, so feeding it ground-truth doesn't cheat at test time but gives the actor a better learning signal. "Asymmetric" = actor and critic see different things. A gentler alternative to full teacher→student distillation for putting supervisory pressure on a vision policy.
+
+---
+
+Q: What is an auxiliary (ball-position) decode loss?
+A: A second objective bolted onto the RL loss whose only job is to force the encoder to represent a specific variable. Attach a small decoder to the vision latent, train it to predict ball position, and backprop that error INTO the encoder — so the encoder is rewarded for encoding ball position regardless of whether the task gradient does. AB's #2 candidate fix; targets the encoder directly (vs the read-only probe, which only measures the failure). Success test: does vision-ablation become directional (which side the ball is on) instead of the content-free ecc=0 spike?

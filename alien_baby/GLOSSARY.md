@@ -55,6 +55,10 @@ Worth distinguishing:
 
 **Feature extractor.** For our observations it's the identity (just flattens the obs into a vector). More complex setups use CNNs for images; we skipped that for simplicity.
 
+**Encoder (in our context).** The part of the network that turns raw sensory input into the compact internal latent the policy actually reads. We have two, one per modality (see MICOAExtractor): the *proprio encoder* — a 3-layer MLP that maps the 7 proprio numbers to a 64-dim Gaussian `(μ, σ)` over the shared latent `Z` — and the *vision encoder* — a DrQ-v2 4-conv CNN that maps the stereo camera image to its own 64-dim `(μ, σ)`. "The visual latent" we keep probing *is* the output of the vision encoder. So when we say "representation failure" or "the encoder never encoded ball direction," we mean: the vision encoder's output doesn't carry that information for any downstream reader to use. The encoder is the fix target whenever the problem is representational rather than a policy-gradient problem.
+
+**Decoder (in our context).** A readout that runs the other direction — from the internal latent back out to some interpretable quantity. We don't keep a decoder as a permanent part of the agent; we attach them in two roles. (1) As a *probe* — a read-only diagnostic: the ball-x linear probe is a decoder (vision latent → ball lateral position), and its R² ≈ 0.08 is how we measured representation failure. (2) As an *auxiliary loss* — a trainable decoder whose error is pushed *back into* the encoder, forcing the encoder to put the target into the latent in the first place (see *auxiliary decode loss*). Read-only decoder = measures the failure; auxiliary-loss decoder = tries to fix it.
+
 **Weight / parameter.** A single learnable number inside the network. The actor has ~3.2M weights total; we freeze most of them and only let a small subset (the pixel-column part of the first layer) train.
 
 **Freezing weights.** Setting `requires_grad = False` so the optimizer won't update them. In v2/v3/v5 we freeze all of the actor's weights except the first-layer pixel columns — proprio's behavior is mathematically preserved.
@@ -241,3 +245,17 @@ both shoulders are fine — e.g. the [0.070-0.080] radius band where both-touche
 to ~0.45-0.55 with 0.053 (~0.95) and 0.090 (~0.75) clean. Distinct from a point
 anomaly; only visible if you sample inside the band (the original eval sampled just
 0.075, so a band masqueraded as a spike).
+
+---
+
+## Prior-work concepts (from the 2026-06-16 literature scout)
+
+Named ideas from the outside literature that map onto our "integrated but inert" problem. See `LITERATURE_SCOUT_2026_06_16.md` for the full citations.
+
+**Modality dominance / modality competition.** From the supervised multimodal-learning literature (Wang/Tran/Feiszli 2020; Peng et al. OGM-GE 2022): when a network is trained jointly on two input streams, the stream that is *easier* to learn from wins the gradient and the other stays underused — a joint multimodal net can be beaten by the best single modality alone. This is the closest *named* neighbor to AB's "vision integrated but inert": proprio already solves the task, so SAC's gradient flows through proprio and vision is starved. Key difference: in the supervised literature the weak modality is usually still informative and *recoverable by gradient rebalancing*; ours is more severe — the vision latent barely encodes the target at all (representation failure, not mere imbalance), so rebalancing alone may not suffice.
+
+**Privileged teacher → student distillation.** The field's standard recipe for making vision load-bearing when a non-visual channel already solves the task (Learning by Cheating, Chen et al. 2019; RMA, Kumar et al. 2021; Lee/Hwangbo 2020). First train a *teacher* policy that gets privileged information unavailable at deployment (e.g. the exact target vector or ground-truth state); then train a *student* that has only the real sensors (vision) to imitate the teacher's actions. Vision becomes load-bearing because supervision *forces* it to — the step AB's end-to-end run skips. The literature's #1 recognized fix for exactly AB's pathology.
+
+**Asymmetric actor-critic.** An RL training trick (Pinto et al. 2018) where the *critic* receives extra privileged information (full state) during training while the *actor* only ever sees the real sensor observations. Because the critic is used only at training time and discarded at deployment, you can feed it ground-truth it could never have in the real world, giving the actor a better learning signal without cheating at test time. "Asymmetric" = actor and critic see different things. Relevant as a gentler alternative to full teacher→student distillation for getting supervisory pressure onto a vision policy.
+
+**Auxiliary decode loss (auxiliary ball-position decode loss).** A second training objective bolted onto the main RL loss whose only job is to force the encoder to represent a specific variable. You attach a small *decoder* to the vision latent, train it to predict the target's position, and backpropagate that error *into the encoder* — so the encoder is rewarded for putting target position into the latent regardless of whether the RL task gradient bothers to. This is our #2 candidate fix for the representation-failure result, and it targets the encoder directly (cf. the read-only ball-x probe, which only *measures* the failure). Success test: does vision-ablation then become *directional* (sensitive to which side the ball is on) instead of the content-free ecc=0 spike we see now?
