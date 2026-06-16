@@ -1412,3 +1412,14 @@ A: Two facts. (1) Adaptation requires ACTIVE, self-produced movement -- Held & H
 
 Q: Does Numenta's "replication beats centralization" argument rule out AB's shared generalization mechanism?
 A: No. That argument is against a BASE COLUMN (one privileged module others query) -- which AB doesn't propose. AB proposes a base MECHANISM (a domain-general way of building generalization every column instantiates) -- and Numenta already believes in one (reference frames used everywhere). They agree on mechanism-generality; they disagree only on content-merger (interpenetration). Refinement AB holds honestly: a general mechanism doesn't guarantee automatic success -- AB's vision stayed inert (R^2~=0.08) despite seeing all the variation.
+
+---
+
+Q: What is the "movement-as-substrate" thesis, and what's the open bet in it?
+A: A step beyond generalization-as-primary: movement isn't just learned first, it's the SUBSTRATE the generalizing representation is built on. Confirmed for proprio (the extrapolating distance law; prism adaptation showing the motor frame is the anchor). The OPEN, not-yet-confirmed bet: that building in richer movement makes VISION generalize too. R49 and DOF-curriculum runs are the cheap probes of that causal link -- to be confirmed on the current body BEFORE any expensive port to a richer simulator.
+
+Q: What is the rule "faithful to the mechanism, free on the implementation"?
+A: AB reconstructs human perception but isn't bound to the human developmental path. Judge each human fact by whether it's LOAD-BEARING for the mechanism (active self-produced movement; motor competence before vision is trusted; graded freezing/freeing of DOF -- keep) or an INCIDENTAL detail of being a mammal (gestation, helpless emergence, the literal year of crawling -- drop or compress into a curriculum). Diverge freely where it SERVES the mechanism (privileged training signals, near-perfect proprioception, repeatable resets, compressed lifetimes); stay faithful only to movement-first, interpenetration, and the equivalence class.
+
+Q: What are the two concrete levers for building movement in as a substrate, and their cost?
+A: (1) Graded DOF freezing/freeing (Berthouze & Lungarella) -- lock most joints, master the reduced body, progressively release DOF so each motor competence scaffolds the next; CHEAP, a curriculum change in MuJoCo today. (2) Migrate to a richer/growing body (MIMo v2: hands, foveated vision, sensorimotor delays, birth->24mo growth) -- EXPENSIVE, justified only once the substrate->vision-generalization link is confirmed on the current simplified body.
