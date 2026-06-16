@@ -584,6 +584,11 @@ class MICOASAC(_SAC):
                 # replay buffer. Skipped silently if the buffer doesn't support
                 # it (backward-compat: existing SAC/MICOASAC runs unaffected).
                 if self.aux_ball_decode and self.ball_decoder_head is not None:
+                    # Ensure the decoder head lives on the same device as the
+                    # policy (MPS / CUDA / CPU). Do this once lazily because
+                    # self.device is not available until after super().__init__.
+                    if next(self.ball_decoder_head.parameters()).device != self.device:
+                        self.ball_decoder_head = self.ball_decoder_head.to(self.device)
                     buf = self.replay_buffer
                     if hasattr(buf, "sample_with_ego"):
                         data_aux, ego_targets = buf.sample_with_ego(
