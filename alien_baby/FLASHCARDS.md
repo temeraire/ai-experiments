@@ -1331,3 +1331,28 @@ A: A reproducible dip in both-touched success at the TRAINED ball radius 0.075 (
 
 Q: What is the constant_velocity_bouncer cart mode?
 A: The substrate AB sits on — a cart drifting at constant speed (--cart-speed 0.15) that bounces off the arena walls, giving gentle ongoing motion. Distinct from a static base or a self-moving ball (--ball-speed, set to 0 in Phase XIV/XV).
+
+---
+
+Q: What is the difference between broad touch and hand-only touch in the cart env?
+A: Broad (`touched_ball*`) fires on a collision between the ball and ANY MIMo geom (feet/legs/torso/head/hands); hand-only (`hand_touched_ball*`) counts only the 8 hand/finger geoms. Reward, termination, and "both-touched" success use the BROAD metric — success need not involve a hand.
+
+---
+
+Q: What did the Phase XV hand-touch diagnostic find?
+A: both_HAND = 0 across every size AND every ecc bin, on the whole cart line (R44/R45/R46/R48) — the two-ball task is never COMPLETED with two hands. But hands DO engage for one ball (any_HAND up to 21/30), rising with eccentricity where a real reach is needed. Verified not a detection bug (8 hand geoms correctly identified). Reframe: both_HAND=0 is a developmental stage, not a bug.
+
+---
+
+Q: What is cart-sweep delivery, and why does it matter?
+A: The balls sit on the cart's sweep line, so the moving cart carries AB's BODY into the stationary ball — the substrate delivers the ball rather than AB reaching. (The cart geom itself is a non-colliding visual marker; it never pushes the ball.) It's why low-ecc success is hand-free. Not purely a confound — incidental body contact is a valid "world-is-consistent" signal; but to study reaching, move balls off the sweep line or score hand-only.
+
+---
+
+Q: What actually causes the "0.075 anomaly"?
+A: A glancing-blow knock-away. A mid-size ball (~0.070-0.080) is struck off-centre and skids to the arena wall, out of the no-locomotion creature's reach; the second ball can't be recovered so the episode never completes. It's a contiguous dead BAND, not a point; geometric (mass unchanged by radius); a manipulation artifact, not a generalization hole.
+
+---
+
+Q: Why can't you trust describe_video.py (Gemini) for pass/fail on these runs?
+A: It narrated the failing 0.075 episodes as successful "throw-then-pickup" sequences — it doesn't know the task is "touch both balls", so it over-reported success. Pass/fail must come from the metric and from frames read directly, not the free-text narration.

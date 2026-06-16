@@ -67,7 +67,7 @@ CTRL_COST_SCALE = 0.001
 # worst-case (max observed speed ~0.21 m/s) earns ~0.004/step — small enough
 # that the creature cannot satisfy hunger by spinning in place, large enough
 # to make "move at all" strictly better than "stand still."
-VELOCITY_BONUS_SCALE = 0.02
+VELOCITY_BONUS_SCALE = 0.05
 
 # Tilt-based health termination: cos(60°) = 0.5. Terminate when torso
 # z-axis tilts more than 60° from world up. The v8 body rarely actually

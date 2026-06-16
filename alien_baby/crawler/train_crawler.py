@@ -153,7 +153,11 @@ def make_env(rank, seed, strength_scale, spawn_cone_deg, max_steps, n_substeps,
              cart_mode="none", cart_speed=0.15,
              hunger_mode="flat", hunger_base=0.05, hunger_rate=0.20, hunger_scale=500.0,
              hip_actuation=True, ball_radius=None, random_ball_box=None,
-             ball_timeout_steps=None, ball_speed=0.0):
+             ball_timeout_steps=None, ball_speed=0.0,
+             random_ball_radius=None, random_ball_shape=None,
+             target_obs=False, hand_success=False, pin_targets=False,
+             near_contact_bonus_scale=0.0, near_contact_range=0.12,
+             actuate_hands=False, contact_reward=None):
     def _init():
         if cart_mode != "none":
             # Phase G: cart substrate. HER not used; plain MimoCrawlerCartEnv.
@@ -176,6 +180,15 @@ def make_env(rank, seed, strength_scale, spawn_cone_deg, max_steps, n_substeps,
                 random_ball_box=random_ball_box,
                 ball_timeout_steps=ball_timeout_steps,
                 ball_speed=ball_speed,
+                random_ball_radius=random_ball_radius,
+                random_ball_shape=random_ball_shape,
+                target_obs=target_obs,
+                hand_success=hand_success,
+                pin_targets=pin_targets,
+                near_contact_bonus_scale=near_contact_bonus_scale,
+                near_contact_range=near_contact_range,
+                actuate_hands=actuate_hands,
+                contact_reward=contact_reward,
             )
         else:
             env_kwargs = dict(
@@ -239,6 +252,15 @@ def train(args):
         random_ball_box=getattr(args, "random_ball_box", None),
         ball_timeout_steps=getattr(args, "ball_timeout_steps", None),
         ball_speed=getattr(args, "ball_speed", 0.0),
+        random_ball_radius=getattr(args, "random_ball_radius", None),
+        random_ball_shape=getattr(args, "random_ball_shape", None),
+        target_obs=getattr(args, "target_obs", False),
+        hand_success=getattr(args, "hand_success", False),
+        pin_targets=getattr(args, "pin_targets", False),
+        near_contact_bonus_scale=getattr(args, "near_contact_bonus_scale", 0.0),
+        near_contact_range=getattr(args, "near_contact_range", 0.12),
+        actuate_hands=getattr(args, "actuate_hands", False),
+        contact_reward=getattr(args, "contact_reward", None),
     )
 
     # Vision=True: MuJoCo Metal renderer fails in forked subprocesses on macOS.
@@ -332,7 +354,8 @@ def train(args):
             # serves both actor and critic. Required for MICOA's design:
             # the corner-forming pressure must be applied to a single set
             # of encoder weights, not two unrelated copies.
-            effective_proprio_dim = PROPRIO_DIM + (2 if args.memory_obs else 0)
+            effective_proprio_dim = (PROPRIO_DIM + (2 if args.memory_obs else 0)
+                                     + (6 if getattr(args, "target_obs", False) else 0))
             in_channels = 3 if args.mono else 6
             policy_kwargs = dict(
                 features_extractor_class=MICOAExtractor,
@@ -589,6 +612,29 @@ if __name__ == "__main__":
                         help="Phase C: append 2 binary flags (touched_ball1, touched_ball2) "
                              "to the proprio observation. Lets a stateless policy condition "
                              "on its own past contacts within an episode.")
+    parser.add_argument("--target-obs", action="store_true",
+                        help="Rung 0 (reach-to): append the hand->target error vector for "
+                             "both hands (6 dims) to the observation, giving AB a SENSE of "
+                             "where the target is. The TEST arm of the rung-0 pair.")
+    parser.add_argument("--hand-success", action="store_true",
+                        help="Rung 0: contact reward AND termination fire only on a HAND "
+                             "touch (not incidental body/leg contact). Scores a real reach.")
+    parser.add_argument("--pin-targets", action="store_true",
+                        help="Rung 0: pin the target(s) in place each step so a bump can't "
+                             "roll them away (a stable landmark).")
+    parser.add_argument("--near-contact-bonus-scale", type=float, default=0.0,
+                        help="Rung 0 endgame: dense per-step bonus = scale * "
+                             "(near_contact_range - nearest_hand_dist) when in range, "
+                             "to give the last few cm a gradient into contact.")
+    parser.add_argument("--near-contact-range", type=float, default=0.12,
+                        help="Distance (m) at which the near-contact bonus starts ramping.")
+    parser.add_argument("--actuate-hands", action="store_true",
+                        help="Rung 0 embodiment fix: load the body with actuated wrist + "
+                             "finger joints (action 25->33, proprio 69->85) so AB can orient "
+                             "its hand and grasp. Default off = original passive-hand body.")
+    parser.add_argument("--contact-reward", type=float, default=None,
+                        help="Override the sparse contact reward (default 200). Smaller "
+                             "(e.g. 10) keeps the SAC value range sane to avoid the collapse.")
     parser.add_argument("--mono", action="store_true",
                         help="Use a single forward camera (left_eye) instead of stereo. "
                              "Halves the pixel observation dimension. The XML still shows "
@@ -657,6 +703,19 @@ if __name__ == "__main__":
                              "ball gets a per-episode random heading and integrates "
                              "pos += vel * dt each env step, bouncing off platform edges. "
                              "Ball velocity is NOT exposed in proprio.")
+    # Phase X: multi-size ball training (default OFF — existing runs bit-identical)
+    parser.add_argument("--random-ball-radius", default=None,
+                        help="Phase X: comma-separated list of ball radii to sample from "
+                             "per episode (e.g. '0.040,0.053,0.075'). One radius is sampled "
+                             "uniformly at reset and applied to both ball geoms. "
+                             "When None (default), behavior is bit-identical to today.")
+    # Phase X2: multi-shape ball training (default OFF — existing runs bit-identical)
+    parser.add_argument("--random-ball-shape", default=None,
+                        help="Phase X2: comma-separated list of MuJoCo primitive shape names "
+                             "to sample from per episode. Valid: sphere,box,cylinder,ellipsoid,"
+                             "capsule. One shape is sampled uniformly at reset and applied to "
+                             "both ball geoms (geom_type + geom_size updated). "
+                             "When None (default), behavior is bit-identical to today.")
     # Phase W: DroQ critic regularization flags (all default OFF — existing runs bit-identical)
     parser.add_argument("--droq", action="store_true",
                         help="Phase W: enable DroQ critic regularization. Adds LayerNorm + "
@@ -707,6 +766,12 @@ if __name__ == "__main__":
     if args.random_ball_box:
         dx, dy = args.random_ball_box.split(",")
         args.random_ball_box = (float(dx), float(dy))
+    # Parse random-ball-radius "r1,r2,r3" into list of floats
+    if args.random_ball_radius:
+        args.random_ball_radius = [float(r) for r in args.random_ball_radius.split(",")]
+    # Parse random-ball-shape "sphere,box,cylinder" into list of strings
+    if args.random_ball_shape:
+        args.random_ball_shape = [s.strip() for s in args.random_ball_shape.split(",")]
     # Curriculum: when enabled and no explicit fixed_ball_positions given, seed
     # the envs at the warmup positions (offset=0). The CurriculumCallback will
     # then push updated positions on every step.

@@ -183,3 +183,120 @@ rather than abandoning the architecture.
   Start at λ=0.05 and watch disagreement curve.
 - The old breakthrough checkpoint (micoa_freeze_zeroinit_cone30 30K) is from the serial
   approach and will not carry over to the dialogue architecture. It is preserved on disk.
+
+---
+
+## Rung 0 (2026-06-15): Can AB make ONE directed reach to a SENSED fixed target?
+
+### Why
+This session established AB is *blind to the ball* on proprio (obs = own body state +
+2 touch bits; no target position) AND the cart runs set `--approach-reward-scale 0.0`,
+so the hand-based approach reward was OFF. So `both_HAND=0` (never reaches with a hand)
+is doubly explained: no perception of the target, no reward for moving a hand toward it.
+Rung 0 = the missing bottom rung of David's stable-world curriculum: prove AB can learn a
+directed HAND reach when it can sense the target. Decided scope: **reach-to** (seated AB,
+arm extends), NOT travel-to (no locomotion).
+
+### Design: a matched pair (the contrast IS the result)
+- TEST   : target-in-obs ON  -> predict hand-touch rate climbs over training
+- CONTROL: target-in-obs OFF -> predict hand-touch stays ~0 (reproduces the blindness)
+If TEST succeeds and CONTROL fails, perception enables reaching. Clean, decisive.
+
+### Setup (reuse cart env, seated)
+- `--cart-speed 0` : static base; AB sits and reaches with an arm (cart kinematic, no walk)
+- single fixed target (one `--fixed-ball-positions` entry -> ball2 inactive)
+- target randomized in a small box each episode (so CONTROL can't memorize a constant)
+- placed within hand reach but off body-center, so a hand (not a body sweep) is required
+- `--approach-reward-scale 2.0` : already hand-based (_ball_dist = nearest-hand->ball)
+- velocity bonus on (anti-freeze), hunger on (deadline)
+- success/score = HAND touch (`hand_touched_ball*`)
+
+### Code changes (small, opt-in, default-off = existing behavior unchanged)
+- [ ] env: `target_obs` flag -> append egocentric target vector to proprio (mirror memory_obs)
+- [ ] env: `hand_success` flag -> contact reward + termination use hand-touch (default off)
+- [ ] env: pin the target so a bump can't move it (weld ball, or static cube geom)
+- [ ] train_crawler: wire `--target-obs`, `--hand-success`
+- [ ] eval: hand-touch rate vs training checkpoint (developmental curve) + held-out positions
+
+### Pre-flight (training-run rules)
+- [ ] render ONE episode from an UNTRAINED model with this config: AB seated upright,
+      target within a hand's reach, physics/cameras sane. Fix before training.
+
+### Decisions made (2026-06-15)
+- A) sense = hand->target error vector, BOTH hands (6 dims). [DONE]
+- B) pinned ball (pin_targets). [DONE]
+- C) single target. [DONE]
+- difficulty = short horizon + wide target; metric = steps-to-touch (+ hit-rate). [DONE]
+
+### Code changes — DONE + smoke-tested
+- [x] env: target_obs (6-dim hand->target both hands), hand_success, pin_targets
+- [x] train_crawler: --target-obs / --hand-success / --pin-targets wired
+- [x] smoke test: obs=75, pin drift 0.00000 m, hand_success terminates, no crash
+
+### Pre-flight findings (the de-risking that mattered)
+- Naive single-touch is TRIVIAL: random policy hits 100% in ~75 steps (workspace small
+  enough that flailing sweeps it). Fix: wide target + short horizon, score steps-to-touch.
+- Reach envelope (random rollout): x in [-0.25,0.21], y in [0.09,0.40], reach<=0.40 m.
+- Targets at y<0.20 spawn under AB's body (occluded/trivial) -> push workspace forward.
+
+### VALIDATED final config
+- cart-speed 0 (seated); fixed-ball-positions "0.0,0.30"; random-ball-box 0.18,0.08
+  (target x in [-0.18,0.18], y in [0.22,0.38] -- wide, in front of body, reachable)
+- max-steps 50 (short horizon); hand-success; pin-targets; approach-reward-scale 2.0;
+  velocity-bonus-scale 0.05; hip-actuation off
+- random baseline at this config: 50% hit / ~31 steps-to-touch -> headroom for TEST
+- PAIR: TEST = --target-obs ; CONTROL = (omit --target-obs), else identical, seed-matched
+
+### TODO
+- [ ] write steps-to-touch eval (mean steps-to-hand-touch + hit-rate@50, vs checkpoint)
+- [ ] launch TEST + CONTROL (250K DroQ, checkpoints @10K to plot the learning curve)
+- [ ] result: does TEST reach fast/reliably while CONTROL stays near baseline?
+
+### RUN LOG
+- rung0_TEST_targetobs (v1: UTD=4, ent 0.5->0.2 anneal, 250K) -> COLLAPSED.
+  Best 36% hit@50 (< 50% random); 100K-250K det. eval = 0%; ep_rew fell 200->~5,
+  ep_len->50 (stillness). Kinematics: hand DOES move (0.1-0.38 m path) toward target,
+  ends 0.086-0.19 m away -> perception->approach partly works, but imprecise + collapsed.
+  Verdict: optimization-stability failure (DroQ UTD=4 + entropy anneal), NOT a capability
+  finding. Reward design fine (CONTACT_REWARD=200 dominates).
+- rung0_TEST_v2_stable (UTD=1, ent auto, 150K) -> RUNNING. Anti-collapse retry.
+
+### RUN LOG (cont.) — embodiment + the collapse finding
+- rung0_h15_TEST vs rung0_h15_CONTROL (horizon 15): IDENTICAL (both 0% touch / 8% range
+  / ~7.7 steps). Target signal INERT even when the task requires it. But horizon 15 also
+  near-infeasible (body too slow), so partly a feasibility wall.
+- rung0_motor_fixed (passive hands, ONE fixed target, pure motor): best 53% touch (random 40%),
+  median final 0.077 m. Even reaching ONE fixed spot is barely learnable; floppy hand caps it.
+- EMBODIMENT FINDING: AB's wrists (hand1/2/3) + fingers are PASSIVE (no actuators). Arm IS
+  actuated (shoulder x3 + elbow per side). So: a reaching arm ending in a dead floppy paddle;
+  cannot orient hand or grasp. (Confirms David's "no functioning hands -> can't learn".)
+- ADDED actuated hands: new body mimo_crawler_cart_hands.xml (+8 motors, action 25->33,
+  proprio 69->85), --actuate-hands flag. Original body + all checkpoints untouched.
+- rung0_hands_motor_fixed (actuated, fixed target): best 0% touch (WORSE than passive 53%;
+  actuated random 60%). rung0_hands_TEST (actuated + perception + wide): best 7% touch / 18%
+  range (passive TEST was 42%; actuated random wide 40%). ACTUATING HANDS MADE IT WORSE.
+- ROOT CAUSE (robust across ALL ~9 runs): SAC COLLAPSES every time. ep_rew_mean 200 -> ~7-10,
+  ep_len -> full horizon, regardless of hands/perception/horizon/entropy/UTD. More DOF
+  (actuated hands) collapses HARDER. The bottleneck is the TRAINING OPTIMISATION, not
+  embodiment or perception. Prime suspect: reward magnitude (CONTACT_REWARD=200 sparse +
+  hunger to -2000) destabilises the critic. Can't test the hands hypothesis until collapse
+  is fixed.
+- NEXT: fix the collapse first. Reduce CONTACT_REWARD (200 -> ~5) + hunger scale so the
+  critic has a sane value range; retest passive AND actuated reach.
+
+### COLLAPSE-MAGNITUDE TEST (refuted) + the deep invariant
+- rung0_lowR_motor_fixed (passive, fixed target, CONTACT_REWARD 200->20, near-bonus 1.0):
+  best 53% touch, median final 0.077 m -- IDENTICAL to contact=200. Reward MAGNITUDE is NOT
+  the collapse cause. ep_rew still declined (22 -> ~4).
+- DEEP INVARIANT across ~10 runs (hands/no-hands, perception/blind, horizon 12-50, ent
+  0.5-anneal vs auto, UTD 1 vs 4, contact 20 vs 200): the reach CAPS at ~53% on a FIXED
+  target (random 40%), median hand-to-target ~0.077 m, and training COLLAPSES every time.
+  No knob moved it. Perception never helped; hand actuation made it worse.
+- HONEST CONCLUSION: the bottleneck is NOT perception, NOT reward, NOT a single hyperparam.
+  This MIMo body under SAC torque control cannot learn a reliable, stable reach even to one
+  fixed spot. It is a foundational control/optimisation wall -- the same wall as the project's
+  chronic stillness-collapse / can't-crawl history, now reproduced at the simplest task.
+- STRATEGIC OPTIONS (for David): (a) different control scheme -- position/PD control instead
+  of raw torque (likely the biggest lever); (b) simpler body / fewer DOF for the reach
+  primitive; (c) different algorithm or scripted/imitation bootstrap; (d) step back and
+  question whether this body+sim is the right substrate at all.

@@ -203,3 +203,39 @@ Vision at time `t` is pulled toward the distribution proprio will encode at `t+1
 **Velocity bonus.** A small shaping reward (`--velocity-bonus-scale 0.10`) for moving toward the target rather than freezing — counters AB's tendency to collapse into stillness (the "floor episode" attractor).
 
 **Curriculum (warmup / ramp / offset).** Easing AB into difficulty: start with the target arranged in its favor and quietly move it out of reach over training. Controlled by `--curriculum-warmup` (steps before difficulty starts rising), `--curriculum-ramp-end` (step where it reaches full difficulty), and `--curriculum-final-offset` (how far the prize ends up displaced).
+
+**Broad touch vs hand-only touch.** Two contact metrics in the cart env.
+*Broad* (`touched_ball*`) fires on a real MuJoCo collision between the ball and
+ANY MIMo geom — feet, legs, torso, head, or hands. *Hand-only* (`hand_touched_ball*`)
+counts only the 8 hand/finger geoms. Reward, termination, and our "both-touched"
+success all use the BROAD metric — so a "success" need not involve a hand at all.
+Finding (2026-06-15): both_HAND = 0 across every size AND every ecc bin on the whole
+cart line — the task is never *completed* with two hands (though a hand does engage
+for one ball, more at high ecc). The two metrics are developmentally distinct, not
+redundant: broad = unconditioned "the object is there / world is consistent" contact
+(a valid signal); hand-only = the intentional/conditioned reach. both_HAND=0 is a
+developmental stage, not a bug — the quantity to track is hand-touch fraction over
+training (does incidental encounter mature into intentional reach?).
+
+**Cart-sweep delivery (substrate delivery).** Because the balls are fixed on the
+cart's sweep line, the cart carries AB's *body* straight into them, so the ball is
+delivered into AB by the moving substrate rather than reached for. The dominant
+source of low-eccentricity broad-touch "success". NB the cart geom itself is a
+non-colliding visual marker (`contype=0 conaffinity=0`) — it never pushes the ball;
+all ball contact is via AB's body geoms or the real (solid) platform. Not purely a
+confound to remove: incidental body contact is a legitimate "world-is-consistent"
+signal. But to study *reaching*, move balls off the sweep line (forces a lateral
+hand reach) or score on hand-only touch.
+
+**Knock-away artifact (glancing-blow).** The mechanism behind the 0.075 "anomaly":
+a mid-size ball (radius ~0.070-0.080) is contacted off-centre by the trained reach,
+which propels it skidding to the arena wall, out of a no-locomotion creature's reach
+envelope. The first touch registers but the second ball can't be recovered, so the
+two-ball episode never completes. Geometric (ball mass is unchanged by radius), not
+momentum. A manipulation artifact, not a generalization failure.
+
+**Dead band.** A contiguous range of a swept parameter where performance drops while
+both shoulders are fine — e.g. the [0.070-0.080] radius band where both-touched falls
+to ~0.45-0.55 with 0.053 (~0.95) and 0.090 (~0.75) clean. Distinct from a point
+anomaly; only visible if you sample inside the band (the original eval sampled just
+0.075, so a band masqueraded as a spike).

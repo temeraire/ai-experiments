@@ -132,11 +132,22 @@ class HERCrawlerWrapper(gym.Env):
         desired = self._current_desired_goal()
         self._desired_goal = desired
 
-        # Goal-conditioned sparse reward: 0 when goal reached, -1 otherwise.
-        # This is the canonical HER convention (Andrychowicz et al.) — sparse
-        # but not flat: it provides a clear "are you there yet" signal that
-        # HER can relabel.
-        reward = self.compute_reward(achieved, desired, info)
+        # Reward = HER sparse goal signal PLUS inner env's enabling-pressure
+        # rewards (velocity bonus, step cost). The HER signal is the canonical
+        # 0/-1 "are you there yet" Andrychowicz et al. relabel-able term; the
+        # inner reward carries velocity_bonus_scale × hip_speed so stillness
+        # is costly. Without this composition the inner env's velocity bonus
+        # is silently discarded by HER, which is why Phases D and E flatlined
+        # despite --velocity-bonus-scale > 0.
+        #
+        # CAVEAT: HerReplayBuffer recomputes the reward via compute_reward()
+        # for the 4/5 of samples it relabels with hindsight goals, so those
+        # samples see only the sparse term — the velocity bonus only applies
+        # to the 1/5 of samples that retain the original goal. If the bonus
+        # turns out to be insufficiently strong with this dilution, the next
+        # iteration is to bake hip_speed into info and have compute_reward
+        # read it back so relabeled samples carry the bonus too.
+        reward = self.compute_reward(achieved, desired, info) + inner_reward
 
         obs = self._build_obs(inner_obs)
         info["achieved_goal"] = achieved

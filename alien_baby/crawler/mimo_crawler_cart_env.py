@@ -71,6 +71,14 @@ from gymnasium import spaces
 import mujoco
 
 XML_CART_PATH = pathlib.Path(__file__).parent / "mimo_crawler_cart.xml"
+XML_CART_HANDS_PATH = pathlib.Path(__file__).parent / "mimo_crawler_cart_hands.xml"
+# Rung-0 embodiment fix: the previously-passive wrist + finger joints, actuated
+# in the _hands body. Appended to the proprio joint obs so the policy can both
+# sense and drive them.
+HAND_JOINTS = [
+    "robot:right_hand1", "robot:right_hand2", "robot:right_hand3", "robot:right_fingers",
+    "robot:left_hand1", "robot:left_hand2", "robot:left_hand3", "robot:left_fingers",
+]
 
 PLATFORM_TOP_Z  = 2.025
 DEFAULT_MAX_STEPS   = 2000
@@ -169,8 +177,54 @@ class MimoCrawlerCartEnv(gym.Env):
         # reflecting off platform edges (margin ≥ 5 mm). Velocity is NOT exposed
         # in proprio — obs["proprio"] length is identical at 0.0 and 0.08.
         ball_speed=0.0,
+        # Phase X: train on multiple ball sizes per episode so the policy
+        # generalizes to held-out sizes.  When set (e.g. [0.040, 0.053, 0.075]),
+        # reset() samples one radius uniformly and writes it to both ball geoms.
+        # When None, behavior is bit-identical to today (uses XML default 0.053
+        # or any static ball_radius override).
+        random_ball_radius=None,
+        # Phase X2: train on multiple MuJoCo PRIMITIVE shapes per episode.
+        # Accepted values: "sphere", "box", "cylinder", "ellipsoid", "capsule".
+        # When set (e.g. ["sphere", "box", "cylinder"]), reset() samples one
+        # shape, updates geom_type for both ball geoms, AND updates geom_size to
+        # keep the bounding contact radius ~0.053 m across all shapes.
+        # When None, bit-identical to today (always sphere from the XML).
+        random_ball_shape=None,
+        # Rung 0 (reach-to): give AB a SENSE of the target. When True, _get_obs
+        # appends the hand->target error vector for BOTH hands (6 dims:
+        # target - right_hand, target - left_hand). This is the most generous
+        # target signal (a "feasibility floor") so we can test whether the
+        # perceive->reach loop is learnable at all. Default False = unchanged.
+        target_obs=False,
+        # Rung 0: score/reward a HAND reach, not incidental body contact. When
+        # True, contact reward AND termination use the hand-only touch flags
+        # instead of the broad any-body-geom flags. Default False = unchanged.
+        hand_success=False,
+        # Rung 0: pin the target in place so a bump can't roll it away (the
+        # landmark must stay put). When True, each step restores the active
+        # ball(s) to their episode home pose and zeros their velocity. Default
+        # False = unchanged (free-rolling ball).
+        pin_targets=False,
+        # Rung 0 endgame fix: dense shaping bonus that ramps up as the nearest
+        # hand enters contact range, to give the last few cm a gradient (the
+        # sparse CONTACT_REWARD alone leaves the policy stalling at the margin).
+        # Per-step bonus = scale * max(0, near_contact_range - nearest_hand_dist).
+        # Default scale 0.0 = unchanged.
+        near_contact_bonus_scale=0.0,
+        near_contact_range=0.12,
+        # Rung 0 embodiment fix: load the body whose wrist + finger joints are
+        # actuated (action dim 25 -> 33), and append those 8 joints to proprio
+        # (dim 69 -> 85). Default False = the original passive-hand body.
+        actuate_hands=False,
+        # Collapse fix: override the sparse contact reward. The default 200 is a
+        # huge spike vs ~0 otherwise, which destabilises the SAC critic and drives
+        # the actor off the touching policy (the 200->~7 collapse seen in every
+        # rung-0 run). A smaller value (e.g. 10) keeps the value range sane.
+        contact_reward=None,
     ):
         super().__init__()
+        self.actuate_hands = bool(actuate_hands)
+        self._contact_reward = float(contact_reward) if contact_reward is not None else CONTACT_REWARD
         self.vision = vision
         self.max_steps = max_steps
         self.strength_scale = strength_scale
@@ -184,6 +238,14 @@ class MimoCrawlerCartEnv(gym.Env):
         self.hunger_rate = float(hunger_rate)
         self.hunger_scale = float(hunger_scale)
         self.hip_actuation = bool(hip_actuation)
+        self.target_obs = bool(target_obs)
+        self.hand_success = bool(hand_success)
+        self.pin_targets = bool(pin_targets)
+        self.near_contact_bonus_scale = float(near_contact_bonus_scale)
+        self.near_contact_range = float(near_contact_range)
+        self._ball1_home = None
+        self._ball2_home = None
+        self._current_ball_radius = float(ball_radius) if ball_radius is not None else 0.053
         self.approach_reward_scale = float(approach_reward_scale)
         self.velocity_bonus_scale = float(velocity_bonus_scale)
         self.random_ball_box = (None if random_ball_box is None
@@ -195,8 +257,34 @@ class MimoCrawlerCartEnv(gym.Env):
         # _ball_vel[0] = [vx, vy] for ball1; _ball_vel[1] = [vx, vy] for ball2.
         # Allocated here; populated in reset() when ball_speed > 0.
         self._ball_vel = np.zeros((2, 2), dtype=np.float64)
+        # Phase X: random ball radius list (or None).
+        self.random_ball_radius = (None if random_ball_radius is None
+                                   else [float(r) for r in random_ball_radius])
+        # Phase X2: random ball shape list (or None). Maps name -> mjtGeom int.
+        # geom_size layout per shape (3-element row, unused slots = 0):
+        #   sphere:    [radius, 0, 0]
+        #   capsule:   [radius, half_length, 0]
+        #   cylinder:  [radius, half_length, 0]
+        #   ellipsoid: [rx, ry, rz]
+        #   box:       [hx, hy, hz]  (half-extents)
+        _SHAPE_MAP = {
+            "sphere":    (int(mujoco.mjtGeom.mjGEOM_SPHERE),    [0.053, 0.0,   0.0]),
+            "capsule":   (int(mujoco.mjtGeom.mjGEOM_CAPSULE),   [0.038, 0.038, 0.0]),
+            "cylinder":  (int(mujoco.mjtGeom.mjGEOM_CYLINDER),  [0.045, 0.030, 0.0]),
+            "ellipsoid": (int(mujoco.mjtGeom.mjGEOM_ELLIPSOID), [0.060, 0.045, 0.038]),
+            "box":       (int(mujoco.mjtGeom.mjGEOM_BOX),       [0.045, 0.045, 0.045]),
+        }
+        if random_ball_shape is not None:
+            for s in random_ball_shape:
+                if s not in _SHAPE_MAP:
+                    raise ValueError(f"Unknown ball shape '{s}'. Valid: {list(_SHAPE_MAP)}")
+            self.random_ball_shape = list(random_ball_shape)
+        else:
+            self.random_ball_shape = None
+        self._SHAPE_MAP = _SHAPE_MAP
 
-        self.model = mujoco.MjModel.from_xml_path(str(XML_CART_PATH))
+        self.model = mujoco.MjModel.from_xml_path(
+            str(XML_CART_HANDS_PATH if self.actuate_hands else XML_CART_PATH))
         self.data  = mujoco.MjData(self.model)
 
         # Optional ball-radius override (set both geoms' size[0]).
@@ -220,15 +308,16 @@ class MimoCrawlerCartEnv(gym.Env):
 
         # AB joint addresses — same as MimoCrawlerEnv but offset by 2 (no free joint)
         from alien_baby.crawler.mimo_crawler_env import ACTUATED_JOINTS
+        obs_joints = list(ACTUATED_JOINTS) + (HAND_JOINTS if self.actuate_hands else [])
         self._jpos_adr = np.array([
             self.model.jnt_qposadr[
                 mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_JOINT, j)
-            ] for j in ACTUATED_JOINTS
+            ] for j in obs_joints
         ], dtype=np.int32)
         self._jvel_adr = np.array([
             self.model.jnt_dofadr[
                 mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_JOINT, j)
-            ] for j in ACTUATED_JOINTS
+            ] for j in obs_joints
         ], dtype=np.int32)
 
         # Vestibular sensors
@@ -257,14 +346,23 @@ class MimoCrawlerCartEnv(gym.Env):
 
         # MIMo body geom ids (for contact detection)
         self._mimo_body_ids = self._get_mimo_body_ids()
+        # Hand-only geom ids — for the stricter `hand_touched_ball*` metric
+        # that disambiguates "reach with a hand" from "ball rolls into a leg
+        # while the cart sweeps past". Includes right_hand, left_hand and
+        # their child fingers bodies (8 geoms total in the stock MIMo XML).
+        self._hand_geom_ids = self._get_hand_geom_ids()
 
         # Observation space
         memory_dim = 2 if memory_obs else 0
+        target_dim = 6 if target_obs else 0   # hand->target vector for both hands
+        # proprio = root_pos(3) + root_quat(4) + root_vel(6) + jpos + jvel + vest(6).
+        # = 69 with the 25-joint body, 85 when the 8 hand joints are actuated.
+        proprio_dim = 3 + 4 + 6 + len(self._jpos_adr) + len(self._jvel_adr) + 6
         if vision:
             vis_dim = VISION_DIM_STEREO if stereo else VISION_DIM_MONO
         else:
             vis_dim = 0
-        n_obs = PROPRIO_DIM + memory_dim + vis_dim
+        n_obs = proprio_dim + memory_dim + target_dim + vis_dim
         self.observation_space = spaces.Box(
             low=-np.inf, high=np.inf, shape=(n_obs,), dtype=np.float32
         )
@@ -282,6 +380,8 @@ class MimoCrawlerCartEnv(gym.Env):
         self._step = 0
         self._ball1_touched = False
         self._ball2_touched = False
+        self._ball1_hand_touched = False
+        self._ball2_hand_touched = False
         self._ball2_active  = False
         self._cart_vx = 0.0
         self._cart_vy = 0.0
@@ -314,6 +414,33 @@ class MimoCrawlerCartEnv(gym.Env):
         for adr in self._jpos_adr:
             self.data.qpos[adr] += self.np_random.uniform(-0.05, 0.05)
 
+        # Phase X: per-episode ball radius sampling.
+        # Samples one radius from the list and applies it to both ball geoms.
+        # When random_ball_radius is None, this block is skipped entirely
+        # (bit-identical to previous behavior).
+        if self.random_ball_radius is not None:
+            idx = int(self.np_random.integers(0, len(self.random_ball_radius)))
+            r = self.random_ball_radius[idx]
+            self._current_ball_radius = r
+            for gid in (self._target_geom_id, self._target2_geom_id):
+                self.model.geom_size[gid, 0] = r
+        else:
+            self._current_ball_radius = float(self.model.geom_size[self._target_geom_id, 0])
+
+        # Phase X2: per-episode ball shape sampling.
+        # Samples one shape from the list, updates geom_type and geom_size for
+        # both ball geoms. When random_ball_shape is None, skipped entirely.
+        if self.random_ball_shape is not None:
+            idx = int(self.np_random.integers(0, len(self.random_ball_shape)))
+            shape_name = self.random_ball_shape[idx]
+            geom_type_int, geom_size = self._SHAPE_MAP[shape_name]
+            self._current_ball_shape = shape_name
+            for gid in (self._target_geom_id, self._target2_geom_id):
+                self.model.geom_type[gid] = geom_type_int
+                self.model.geom_size[gid, :] = geom_size
+        else:
+            self._current_ball_shape = "sphere"
+
         # Place balls
         tgt1_jid  = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_JOINT, "target_free")
         tgt1_qadr = self.model.jnt_qposadr[tgt1_jid]
@@ -326,7 +453,7 @@ class MimoCrawlerCartEnv(gym.Env):
                 dx, dy = self.random_ball_box
                 b1x += float(self.np_random.uniform(-dx, dx))
                 b1y += float(self.np_random.uniform(-dy, dy))
-            self.data.qpos[tgt1_qadr:tgt1_qadr + 3] = [b1x, b1y, PLATFORM_TOP_Z + 0.053]
+            self.data.qpos[tgt1_qadr:tgt1_qadr + 3] = [b1x, b1y, PLATFORM_TOP_Z + self._current_ball_radius]
             self.data.qpos[tgt1_qadr + 3:tgt1_qadr + 7] = [1, 0, 0, 0]
             if len(self.fixed_ball_positions) >= 2:
                 b2x, b2y = self.fixed_ball_positions[1]
@@ -334,7 +461,7 @@ class MimoCrawlerCartEnv(gym.Env):
                     dx, dy = self.random_ball_box
                     b2x += float(self.np_random.uniform(-dx, dx))
                     b2y += float(self.np_random.uniform(-dy, dy))
-                self.data.qpos[tgt2_qadr:tgt2_qadr + 3] = [b2x, b2y, PLATFORM_TOP_Z + 0.053]
+                self.data.qpos[tgt2_qadr:tgt2_qadr + 3] = [b2x, b2y, PLATFORM_TOP_Z + self._current_ball_radius]
                 self._ball2_active = True
             else:
                 self.data.qpos[tgt2_qadr:tgt2_qadr + 3] = [10.0, 10.0, 0.0]
@@ -344,16 +471,22 @@ class MimoCrawlerCartEnv(gym.Env):
             # Random ball1 placement
             r = self.np_random.uniform(0.5, 1.2)
             a = self.np_random.uniform(0.0, 2.0 * np.pi)
-            self.data.qpos[tgt1_qadr:tgt1_qadr + 3] = [r * np.cos(a), r * np.sin(a), PLATFORM_TOP_Z + 0.053]
+            self.data.qpos[tgt1_qadr:tgt1_qadr + 3] = [r * np.cos(a), r * np.sin(a), PLATFORM_TOP_Z + self._current_ball_radius]
             self.data.qpos[tgt1_qadr + 3:tgt1_qadr + 7] = [1, 0, 0, 0]
             self.data.qpos[tgt2_qadr:tgt2_qadr + 3] = [10.0, 10.0, 0.0]
             self.data.qpos[tgt2_qadr + 3:tgt2_qadr + 7] = [1, 0, 0, 0]
             self._ball2_active = False
 
         mujoco.mj_forward(self.model, self.data)
+
+        # Rung 0: remember each ball's start pose so pin_targets can hold it there.
+        self._ball1_home = self.data.qpos[tgt1_qadr:tgt1_qadr + 3].copy()
+        self._ball2_home = self.data.qpos[tgt2_qadr:tgt2_qadr + 3].copy()
         self._step = 0
         self._ball1_touched = False
         self._ball2_touched = False
+        self._ball1_hand_touched = False
+        self._ball2_hand_touched = False
         self._ball1_expired = False
         self._ball2_expired = False
         self._steps_since_contact = 0
@@ -412,6 +545,14 @@ class MimoCrawlerCartEnv(gym.Env):
             # Re-enforce cart velocity each substep so it doesn't drift
             self.data.qvel[self._cart_x_dadr] = self._cart_vx
             self.data.qvel[self._cart_y_dadr] = self._cart_vy
+            # Rung 0: pin the target(s) in place so a bump can't roll them away.
+            if self.pin_targets:
+                if self._ball1_home is not None:
+                    self.data.qpos[self._tgt1_qadr:self._tgt1_qadr + 3] = self._ball1_home
+                    self.data.qvel[self._tgt1_dadr:self._tgt1_dadr + 6] = 0.0
+                if self._ball2_active and self._ball2_home is not None:
+                    self.data.qpos[self._tgt2_qadr:self._tgt2_qadr + 3] = self._ball2_home
+                    self.data.qvel[self._tgt2_dadr:self._tgt2_dadr + 6] = 0.0
             # Phase H: integrate ball positions (only when ball_speed > 0).
             # Reflection check is inside the substep loop per the proposal —
             # at 0.08 m/s per-substep travel is 0.4 mm, well inside the 5 mm
@@ -424,7 +565,20 @@ class MimoCrawlerCartEnv(gym.Env):
 
         obs = self._get_obs()
 
-        ball1_hit, ball2_hit = self._check_ball_contact()
+        ball1_hit, ball2_hit, ball1_hand_hit, ball2_hand_hit = self._check_ball_contact()
+        # Latch hand-only "touched at any point during the episode" flags
+        # alongside the existing broad flags. These are diagnostic only —
+        # episode termination still uses the broad metric for backward compat.
+        if ball1_hand_hit:
+            self._ball1_hand_touched = True
+        if ball2_hand_hit and self._ball2_active:
+            self._ball2_hand_touched = True
+
+        # Rung 0: score/reward a HAND reach. Swap the broad hit flags for the
+        # hand-only ones so the contact reward AND termination below fire only
+        # on a hand touch, not on incidental body/leg contact.
+        if self.hand_success:
+            ball1_hit, ball2_hit = ball1_hand_hit, ball2_hand_hit
 
         curr_dist = self._ball_dist()
         approach  = self._prev_ball_dist - curr_dist
@@ -438,6 +592,11 @@ class MimoCrawlerCartEnv(gym.Env):
         # Approach bonus (0.0 per Phase G proposal, included for completeness)
         reward += self.approach_reward_scale * approach
 
+        # Rung 0 endgame shaping: ramp a dense bonus as the nearest hand enters
+        # contact range, so the last few cm have a gradient pulling into contact.
+        if self.near_contact_bonus_scale > 0.0 and curr_dist < self.near_contact_range:
+            reward += self.near_contact_bonus_scale * (self.near_contact_range - curr_dist)
+
         # Joint-velocity bonus: rewards motion of the actuated joints.
         # In the cart setup AB can't move its body (cart is kinematic), so
         # this specifically rewards arm/head joint movement — i.e., the
@@ -450,7 +609,7 @@ class MimoCrawlerCartEnv(gym.Env):
 
         # Contact rewards
         if ball1_hit and not self._ball1_touched:
-            reward += CONTACT_REWARD
+            reward += self._contact_reward
             self._ball1_touched = True
             self._steps_since_contact = 0
             # Phase H: zero ball1 velocity on touch so it stops moving
@@ -458,7 +617,7 @@ class MimoCrawlerCartEnv(gym.Env):
                 self._ball_vel[0, :] = 0.0
 
         if self._ball2_active and ball2_hit and not self._ball2_touched:
-            reward += CONTACT_REWARD
+            reward += self._contact_reward
             self._ball2_touched = True
             self._steps_since_contact = 0
             # Phase H: zero ball2 velocity on touch so it stops moving
@@ -497,6 +656,8 @@ class MimoCrawlerCartEnv(gym.Env):
             "touched":      self._ball1_touched,
             "touched_ball1": self._ball1_touched,
             "touched_ball2": self._ball2_touched,
+            "hand_touched_ball1": self._ball1_hand_touched,
+            "hand_touched_ball2": self._ball2_hand_touched,
             "expired_ball1": self._ball1_expired,
             "expired_ball2": self._ball2_expired,
             "step":          self._step,
@@ -619,6 +780,15 @@ class MimoCrawlerCartEnv(gym.Env):
             ], dtype=np.float32)
             proprio = np.concatenate([proprio, mem])
 
+        if self.target_obs:
+            # Rung 0 "sense": hand->target error vector for both hands.
+            # Target is ball1 (the single active target in reach-to runs).
+            tgt = self.data.qpos[self._tgt1_qadr:self._tgt1_qadr + 3]
+            r_hand = self.data.xpos[self._right_hand_bid]
+            l_hand = self.data.xpos[self._left_hand_bid]
+            tvec = np.concatenate([tgt - r_hand, tgt - l_hand]).astype(np.float32)
+            proprio = np.concatenate([proprio, tvec])
+
         if not self.vision:
             return proprio
 
@@ -664,9 +834,19 @@ class MimoCrawlerCartEnv(gym.Env):
 
     # ------------------------------------------------------------------
     def _check_ball_contact(self):
-        """Returns (ball1_hit, ball2_hit) bools for this physics step."""
+        """Returns (ball1_hit, ball2_hit, ball1_hand_hit, ball2_hand_hit).
+
+        The first two are the broad metric (any MIMo body part — feet, legs,
+        torso, head, hands). The last two are the strict hand-only metric
+        (only the hand and fingers geoms count). Hand-only disambiguates
+        "AB reached with a hand" from "ball rolled into AB's leg while the
+        cart swept past it" — important in cart-mode where the cart can
+        push a ball into a static body part without any reach happening.
+        """
         ball1_hit = False
         ball2_hit = False
+        ball1_hand_hit = False
+        ball2_hand_hit = False
         for i in range(self.data.ncon):
             c = self.data.contact[i]
             g1, g2 = c.geom1, c.geom2
@@ -677,9 +857,13 @@ class MimoCrawlerCartEnv(gym.Env):
                     if other in self._mimo_body_ids:
                         if flag == "b1":
                             ball1_hit = True
+                            if other in self._hand_geom_ids:
+                                ball1_hand_hit = True
                         else:
                             ball2_hit = True
-        return ball1_hit, ball2_hit
+                            if other in self._hand_geom_ids:
+                                ball2_hand_hit = True
+        return ball1_hit, ball2_hit, ball1_hand_hit, ball2_hand_hit
 
     def _get_mimo_body_ids(self):
         """All geom ids that belong to MIMo (not world/platform/rails/targets/cart)."""
@@ -690,6 +874,28 @@ class MimoCrawlerCartEnv(gym.Env):
             name = mujoco.mj_id2name(self.model, mujoco.mjtObj.mjOBJ_GEOM, i)
             if name and name not in exclude:
                 ids.add(i)
+        return ids
+
+    def _get_hand_geom_ids(self):
+        """Geom ids belonging to the right_hand and left_hand bodies plus their
+        descendant bodies (right_fingers, left_fingers). Used for the strict
+        hand-only touch metric."""
+        # Walk the body hierarchy from each hand outward to include child bodies
+        hand_bodies = set()
+        for root in (self._right_hand_bid, self._left_hand_bid):
+            hand_bodies.add(root)
+            changed = True
+            while changed:
+                changed = False
+                for i in range(self.model.nbody):
+                    if (self.model.body_parentid[i] in hand_bodies
+                            and i not in hand_bodies):
+                        hand_bodies.add(i)
+                        changed = True
+        ids = set()
+        for g in range(self.model.ngeom):
+            if int(self.model.geom_bodyid[g]) in hand_bodies:
+                ids.add(g)
         return ids
 
     # ------------------------------------------------------------------
@@ -707,8 +913,8 @@ class MimoCrawlerCartEnv(gym.Env):
         tgt1_qadr = self.model.jnt_qposadr[tgt1_jid]
         tgt2_jid  = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_JOINT, "target2_free")
         tgt2_qadr = self.model.jnt_qposadr[tgt2_jid]
-        self.data.qpos[tgt1_qadr:tgt1_qadr + 3] = [b1[0], b1[1], PLATFORM_TOP_Z + 0.053]
-        self.data.qpos[tgt2_qadr:tgt2_qadr + 3] = [b2[0], b2[1], PLATFORM_TOP_Z + 0.053]
+        self.data.qpos[tgt1_qadr:tgt1_qadr + 3] = [b1[0], b1[1], PLATFORM_TOP_Z + self._current_ball_radius]
+        self.data.qpos[tgt2_qadr:tgt2_qadr + 3] = [b2[0], b2[1], PLATFORM_TOP_Z + self._current_ball_radius]
         mujoco.mj_forward(self.model, self.data)
 
     # ------------------------------------------------------------------

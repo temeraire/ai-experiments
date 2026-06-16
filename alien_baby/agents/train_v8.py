@@ -249,7 +249,8 @@ def train_stage1_v8(total_timesteps=500_000, seed=42, checkpoint_interval=50_000
                     v9=False, target_radius_override=None, run_tag=None,
                     pbrs_alpha=0.0, mirror_augmentation=False,
                     stage1_anneal_max_radius=None, stage1_anneal_steps=None,
-                    closure_bonus=0.0):
+                    closure_bonus=0.0, spawn_cone_deg=None,
+                    max_steps_override=None):
     # Build output suffix. If run_tag is supplied, use it; otherwise fall back
     # to the curriculum_stage-based naming so older callers keep working.
     if run_tag:
@@ -281,6 +282,8 @@ def train_stage1_v8(total_timesteps=500_000, seed=42, checkpoint_interval=50_000
         target_radius_override=target_radius_override,
         pbrs_alpha=pbrs_alpha,
         closure_bonus_scale=closure_bonus,
+        spawn_cone_deg=spawn_cone_deg,
+        max_steps_override=max_steps_override,
     )
     if mirror_augmentation:
         train_inner = MirrorWrapper(train_inner)
@@ -294,6 +297,8 @@ def train_stage1_v8(total_timesteps=500_000, seed=42, checkpoint_interval=50_000
         target_radius_override=target_radius_override,
         pbrs_alpha=pbrs_alpha,
         closure_bonus_scale=closure_bonus,
+        spawn_cone_deg=spawn_cone_deg,
+        max_steps_override=max_steps_override,
     ))
 
     if init_from:
@@ -612,6 +617,9 @@ def train_followon_v8(
         mask = torch.ones_like(first_layer_weight)
         mask[:, :PROPRIO_DIM_V8] = 0.0
         first_layer_weight.register_hook(lambda grad: grad * mask)
+        # Zero-init pixel columns so vision starts silent (MICOA: earn divergence)
+        first_layer_weight.data[:, PROPRIO_DIM_V8:] = 0.0
+        print(f"Pixel columns zero-initialized ({first_layer_weight.shape[1] - PROPRIO_DIM_V8} cols)")
     else:
         proprio_cols_snapshot = None
         print("Proprio weights UNFROZEN — letting the world establish hierarchy")
@@ -829,6 +837,10 @@ if __name__ == "__main__":
                              "cone of this width (degrees), centered straight "
                              "ahead. E.g. 90 = ±45° forward cone. None = use "
                              "stage/v9 default (full hemisphere or annular).")
+    parser.add_argument("--max-steps-override", type=int, default=None,
+                        help="Override the episode step limit (stage1 default "
+                             "300, stage0 default 400). E.g. 600 gives ~30s "
+                             "per episode for longer ground coverage.")
     parser.add_argument("--xor-color-random", action="store_true",
                         help="Idea B: 50/50 red-good / blue-bad ball. Red "
                              "contact = +CONTACT_REWARD, blue contact = "
@@ -908,6 +920,8 @@ if __name__ == "__main__":
             stage1_anneal_max_radius=args.stage1_anneal_max_radius_to,
             stage1_anneal_steps=args.stage1_anneal_steps,
             closure_bonus=args.closure_bonus,
+            spawn_cone_deg=args.spawn_cone_deg,
+            max_steps_override=args.max_steps_override,
         )
     if args.stage in ("followon", "both"):
         # --warmstart-radius (pinned float) and --followon-radius (range)

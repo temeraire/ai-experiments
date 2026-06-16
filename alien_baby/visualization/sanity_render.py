@@ -31,7 +31,8 @@ RENDER_WIDTH = 480
 
 
 def sanity_render(vision=False, seed=0, steps=150, stage=1, checkpoint=None, v9=False,
-                  spawn_radius=None, name_suffix=""):
+                  spawn_radius=None, name_suffix="", spawn_cone_deg=None,
+                  max_steps_override=None):
     VIDEO_DIR.mkdir(parents=True, exist_ok=True)
     tag = "vision" if vision else "blind"
     ckpt_tag = "_trained" if checkpoint else ""
@@ -44,6 +45,8 @@ def sanity_render(vision=False, seed=0, steps=150, stage=1, checkpoint=None, v9=
     env = PlatformCreatureEnv(
         vision=vision, stage=stage, v9=v9,
         target_radius_override=radius_override,
+        spawn_cone_deg=spawn_cone_deg,
+        max_steps_override=max_steps_override,
     )
     if checkpoint:
         model = SAC.load(checkpoint, env=env, device="cpu")
@@ -122,10 +125,20 @@ if __name__ == "__main__":
                              "starting from --seed and incrementing).")
     parser.add_argument("--suffix", default="",
                         help="Optional tag appended to output filename.")
+    parser.add_argument("--spawn-cone-deg", type=float, default=None,
+                        help="Half-angle of ball spawn cone in degrees (e.g. 180 = "
+                             "forward hemisphere). Pass the same value used at training "
+                             "time so the render matches the training distribution.")
+    parser.add_argument("--max-steps-override", type=int, default=None,
+                        help="Override episode step limit (stage1 default 300). "
+                             "Pass the same value used at training time, e.g. 600 for "
+                             "~30 s episodes.")
     args = parser.parse_args()
     for i in range(args.episodes):
         sanity_render(
             vision=args.vision, seed=args.seed + i, steps=args.steps,
             stage=args.stage, checkpoint=args.checkpoint, v9=args.v9,
             spawn_radius=args.spawn_radius, name_suffix=args.suffix,
+            spawn_cone_deg=args.spawn_cone_deg,
+            max_steps_override=args.max_steps_override,
         )

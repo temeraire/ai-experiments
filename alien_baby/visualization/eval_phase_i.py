@@ -73,6 +73,8 @@ def run_episode(seed, vec_env, model, blind_pixels=False, record_sigma=False):
     ep_reward = 0.0
     touched_b1 = False
     touched_b2 = False
+    hand_b1 = False
+    hand_b2 = False
     sigma_trace = []
     contact_step = None
 
@@ -98,6 +100,8 @@ def run_episode(seed, vec_env, model, blind_pixels=False, record_sigma=False):
             contact_step = step
         if b1: touched_b1 = True
         if b2: touched_b2 = True
+        if info.get("hand_touched_ball1", False): hand_b1 = True
+        if info.get("hand_touched_ball2", False): hand_b2 = True
 
         if terminated or truncated:
             break
@@ -106,6 +110,8 @@ def run_episode(seed, vec_env, model, blind_pixels=False, record_sigma=False):
         "reward":       ep_reward,
         "touched_b1":   touched_b1,
         "touched_b2":   touched_b2,
+        "hand_b1":      hand_b1,
+        "hand_b2":      hand_b2,
         "sigma_trace":  sigma_trace,
         "contact_step": contact_step,
     }
@@ -124,14 +130,20 @@ def main():
     # --- Touch-counting eval (normal pixels) -------------------------------
     vec_env, model = build_env_and_model(args.run_tag, args.ball_speed, args.offset)
     rewards, both, one, neither = [], 0, 0, 0
+    hand_both, hand_one, hand_neither = 0, 0, 0
     sigma_avg_at_contact   = []
     sigma_avg_pre_contact  = []
     for seed in range(N_SEEDS):
         r = run_episode(seed, vec_env, model, blind_pixels=False, record_sigma=True)
         rewards.append(r["reward"])
+        # Broad metric (any body part)
         if r["touched_b1"] and r["touched_b2"]: both += 1
         elif r["touched_b1"] or r["touched_b2"]: one += 1
         else: neither += 1
+        # Strict hand-only metric
+        if r["hand_b1"] and r["hand_b2"]: hand_both += 1
+        elif r["hand_b1"] or r["hand_b2"]: hand_one += 1
+        else: hand_neither += 1
         st = r["sigma_trace"]
         cs = r["contact_step"]
         if cs is not None and cs > 0 and len(st) > cs:
@@ -141,8 +153,9 @@ def main():
 
     mean_reward = float(np.mean(rewards))
     std_reward  = float(np.std(rewards))
-    print(f"  Touch eval ({N_SEEDS} seeds): mean={mean_reward:.1f} ± {std_reward:.1f}  "
-          f"both={both}/{N_SEEDS}  one={one}/{N_SEEDS}  neither={neither}/{N_SEEDS}")
+    print(f"  Touch eval ({N_SEEDS} seeds): mean={mean_reward:.1f} ± {std_reward:.1f}")
+    print(f"    ANY body part: both={both}/{N_SEEDS}  one={one}/{N_SEEDS}  neither={neither}/{N_SEEDS}")
+    print(f"    HAND-only    : both={hand_both}/{N_SEEDS}  one={hand_one}/{N_SEEDS}  neither={hand_neither}/{N_SEEDS}")
     if sigma_avg_at_contact:
         print(f"  sigma_combined: pre-contact mean={np.mean(sigma_avg_pre_contact):.4f}  "
               f"at-contact mean={np.mean(sigma_avg_at_contact):.4f}")
@@ -176,13 +189,19 @@ def main():
     # --- Vision ablation: episode-level ------------------------------------
     vec_env, model = build_env_and_model(args.run_tag, args.ball_speed, args.offset)
     both_zeroed = 0
+    hand_both_zeroed = 0
     for seed in range(N_SEEDS):
         r = run_episode(seed, vec_env, model, blind_pixels=True)
         if r["touched_b1"] and r["touched_b2"]:
             both_zeroed += 1
-    print(f"  Episode-level: pixels NORMAL both={both}/{N_SEEDS}  "
-          f"pixels ZEROED both={both_zeroed}/{N_SEEDS}  "
+        if r["hand_b1"] and r["hand_b2"]:
+            hand_both_zeroed += 1
+    print(f"  Episode-level (ANY body): NORMAL both={both}/{N_SEEDS}  "
+          f"ZEROED both={both_zeroed}/{N_SEEDS}  "
           f"delta={(both-both_zeroed):+d}")
+    print(f"  Episode-level (HAND-only): NORMAL both={hand_both}/{N_SEEDS}  "
+          f"ZEROED both={hand_both_zeroed}/{N_SEEDS}  "
+          f"delta={(hand_both-hand_both_zeroed):+d}")
     vec_env.close()
 
     print(f"\n{'='*70}\nPHASE I EVAL COMPLETE\n{'='*70}\n")
@@ -201,6 +220,10 @@ def main():
         "only_one":             one,
         "neither":              neither,
         "both_touched_zeroed":  both_zeroed,
+        "hand_both_normal":     hand_both,
+        "hand_one":             hand_one,
+        "hand_neither":         hand_neither,
+        "hand_both_zeroed":     hand_both_zeroed,
         "ablation_delta_mean":  mean_delta,
         "ablation_delta_median": median_delta,
         "sigma_pre_contact":    float(np.mean(sigma_avg_pre_contact)) if sigma_avg_pre_contact else None,

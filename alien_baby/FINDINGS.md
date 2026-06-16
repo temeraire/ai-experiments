@@ -1559,3 +1559,146 @@ The Behavioral Prediction Framework would predict that a policy with genuine int
 
 **Next question:** Is the 0.075-radius anomaly a cart-ball collision artifact (testable by re-running the 0.075 bin with the cart disabled or at a different speed), and does removing it reveal true size invariance across the full trained range?
 
+
+## 2026-06-15 — Phase XV diagnostic: the "0.075 anomaly" resolved, and a hand-touch finding
+
+Follow-up to the Phase XV entry above. Two results: the 0.075 anomaly is diagnosed
+(a contact-dynamics artifact, not a generalization hole), and — more importantly —
+the both-touched task is **never completed with the hands** (`both_HAND = 0` across
+every size and every eccentricity, on the whole cart line), though hands *do* engage
+for one ball, more so at high eccentricity. Reframed below: body contact is a valid
+"world-is-consistent" signal, and hand-reach is the intentional signal to track over
+training — `both_HAND = 0` reads as a developmental stage, not a bug.
+
+Scripts: `visualization/diag_0075_anomaly.py` (stats), `render_0075_diag.py` (video),
+`rescore_hand_touch.py` + `rescore_hand_touch_ecc.py` (broad vs hand-only). Logs in `results/`.
+
+### 1) The 0.075 anomaly is real, but it's a BAND, not a point — and it's a manipulation artifact
+
+Re-ran the size neighbourhood at the original eval seed (20000) and a fresh seed
+(70000), 30 episodes each, on both R46 and R48. both-touched / 30:
+
+| radius | R46 orig | R46 fresh | R48 orig | R48 fresh |
+|--------|----------|-----------|----------|-----------|
+| 0.053  | 29 | 28 | 30 | 29 |
+| 0.070  | 16 | 15 | 14 | 12 |
+| 0.075  | 17 | 16 | 13 | 14 |
+| 0.080  | 15 | 11 | 14 | 13 |
+| 0.090  | 23 | 22 | 23 | 22 |
+
+- **Real, not a shared-seed artifact.** The original hypothesis was that both evals
+  sharing seed 20000 made an unlucky-geometry blip look reproducible. Refuted: the
+  fresh seed reproduces it almost exactly.
+- **It's a dead BAND ~[0.070–0.080], not the point 0.075.** The original `full_sizes`
+  eval only sampled 0.075 between 0.053 and 0.090, so a whole failing band disguised
+  itself as a single-point spike. The original 6/20 and 10/20 were also low-side
+  binomial noise around a true rate ~0.45–0.55 (30 eps tightens it).
+- **Mechanism (watched on video, seeds 20003/20007/20012 at r=0.075):** the creature
+  contacts the first ball, but with a mid-size ball the contact is a **glancing,
+  off-centre blow that knocks the ball skidding to the arena wall**, out of reach.
+  Sitting on a fixed cart base with no locomotion, it cannot recover the displaced
+  ball, and its post-contact policy settles into an upright posture without
+  re-reaching (in one episode the second ball ends up at its feet, untouched). The
+  episode never terminates (needs both) → hunger penalty → reward −600 to −2200.
+- **It is geometric, not momentum.** A radius override only sets `geom_size`; ball
+  mass/inertia is unchanged (env code). So it is not "heavier ball". At 0.053 the
+  hand/body reaches near the ball centre → soft contact, ball stays. At 0.070–0.080
+  the larger surface forces an earlier, off-centre strike → skid. At 0.090 it
+  partially recovers (not fully explained; possibly the surface is so close that
+  contact is immediate/repeated).
+- **Verdict:** this is a manipulation/metric artifact, NOT a hole in size
+  generalization. The reach generalizes across all sizes (got_close is similar
+  everywhere); what breaks is two-ball *completion* when a mid-size ball is knocked
+  out of a no-locomotion creature's reach envelope. This confirms and sharpens
+  Phase XV caveat #1 (which guessed a cart/large-ball interaction).
+
+### 2) Bigger finding: task completion is non-hand body contact — and what that means
+
+Prompted by the observation that the creature never visibly touches a ball with a
+hand, re-scored under the env's two contact metrics:
+- `touched_ball*` (BROAD): contact between the ball and ANY MIMo geom — feet, legs,
+  torso, head, or hands. This is what reward, termination, and our "both-touched"
+  success use.
+- `hand_touched_ball*` (HAND-ONLY): contact only with the 8 hand/finger geoms. The
+  env computes it but does not use it for success.
+
+Phase XV size sweep (30 eps, seed 20000):
+
+| run | size | both_BROAD | both_HAND | first-touch-is-hand |
+|-----|------|-----------|-----------|---------------------|
+| R46 | 0.053 | 29/30 | **0/30** | 17% |
+| R46 | 0.075 | 17/30 | **0/30** | 7% |
+| R46 | 0.090 | 23/30 | **0/30** | 3% |
+| R48 | 0.053 | 30/30 | **0/30** | 17% |
+| R48 | 0.075 | 13/30 | **0/30** | 0% |
+| R48 | 0.090 | 23/30 | **0/30** | 0% |
+
+Audit of the EARLIER runs the "proprio generalizes" headline rests on — R44
+(Phase XIII ecc sweep) and R45 (Phase XIV DroQ), 30 eps, seed 10000:
+
+| run | metric | ecc 0.00 | 0.05 | 0.10 | 0.15 | 0.20 | 0.25 |
+|-----|--------|----------|------|------|------|------|------|
+| R44 | both_BROAD | 29 | 29 | 23 | 14 | 7 | 0 |
+| R44 | both_HAND  | **0** | **0** | **0** | **0** | **0** | **0** |
+| R44 | any_HAND   | 20 | 15 | 8 | 16 | 11 | 8 |
+| R45 | both_BROAD | 29 | 30 | 30 | 18 | 10 | 1 |
+| R45 | both_HAND  | **0** | **0** | **0** | **0** | **0** | **0** |
+| R45 | any_HAND   | 8 | 4 | 11 | 16 | 21 | 18 |
+
+- **both_HAND = 0 everywhere, every run.** The two-ball task is never *completed* with
+  two hands, across the entire cart-substrate line (not just Phase XV). Verified not a
+  detection bug: the hand-geom set is correctly populated (8 geoms: right/left
+  hand1/hand2/fingers1/fingers2, subset of the MIMo geom set), and broad-touch fires
+  normally in the same episodes.
+- **But hands DO engage for one ball** (`any_HAND` up to 20–21/30), and that engagement
+  *rises with eccentricity* — exactly where the ball is off to the side and the
+  substrate cannot just deliver it, so a genuine lateral reach is required. The pattern:
+  where the cart can deliver the ball (low ecc), success is high and hand-free; where a
+  reach is actually needed (high ecc), the hand engages but cannot finish, so success
+  collapses. So this is NOT "zero reaching" — it is "reaching happens and is not yet
+  good enough to complete the task."
+- **How the body contact arises (physics correction).** Balls are fixed at (0, ±0.35)
+  and the cart sweeps AB's platform straight along that y-line, carrying AB's *body*
+  into the stationary ball. Note: the cart geom itself is a NON-COLLIDING visual marker
+  (`contype=0 conaffinity=0`); it never pushes the ball. All ball contact is via AB's
+  body geoms or the real (solid) platform — never the cart. So "the substrate delivers
+  the ball to AB's body" is the right reading; "the cart pushes the ball" is not.
+
+**Interpretation (reframed — body contact is a real signal, not just a confound).**
+Both kinds of contact matter and they mean different things developmentally:
+- **Body-bump = unconditioned confirmation.** Hip into a table, head under a table —
+  "the object is there; the world is consistent." Reflexive, undirected, and a valid
+  signal for the equivalence-class / world-consistency learning this project is about
+  (cf. unconditioned vs conditioned response in GLOSSARY).
+- **Hand-reach = conditioned / intentional.** "I am going over there to pick it up" —
+  what an undirected encounter *becomes* after repetition: directed, anticipatory.
+
+So `both_HAND = 0` is not a bug to patch; it is a **developmental readout**: AB is still
+at the incidental-encounter ("world is consistent") stage and has not yet crossed into
+reliable intentional two-handed reaching, with `any_HAND` at high ecc as the first sign
+of directed reaching. The thing to *measure* is therefore the **hand-touch fraction over
+training time** — its growth relative to body-touch would be the signature of encounters
+maturing into intentional reaches, which is the project's central question made into a
+number. The caution that remains: Phase XV's "object-variety zero-shot transfer" headline
+is a BROAD-touch result; read it as transfer of "be in a posture the swept ball intersects
+(and don't knock it away)", which is weaker than "AB learned to *reach* for novel-sized
+objects" — true, but not yet the intentional reach.
+
+### Methodological note
+`describe_video.py` (Gemini) narrated the failing 0.075 episodes as successful
+"throw-then-pickup" sequences — it over-reported success because it does not know the
+task is "touch both balls". Pass/fail must come from the metric and from frames read
+directly, not the free-text narration.
+
+### Recommended next steps
+1. **Track hand-touch fraction over training checkpoints** as a developmental metric —
+   does intentional (hand) contact grow relative to incidental (body) contact as AB
+   learns? That growth is the project's central question rendered as a number.
+2. Report BOTH metrics going forward (broad = encounter / world-consistency; hand =
+   intentional reach) rather than collapsing to one. Keep broad-touch — it is a real
+   unconditioned signal, not merely a confound.
+3. If/when the goal is to *push* AB toward intentional reaching, make the task **require
+   a hand**: use `hand_touched_ball*` for reward/termination, or move the balls **off the
+   cart sweep line** so a body sweep cannot deliver them, forcing a lateral hand reach.
+4. Finer size sampling (include 0.070/0.080) in future size batteries so a dead band
+   cannot masquerade as a point anomaly.
