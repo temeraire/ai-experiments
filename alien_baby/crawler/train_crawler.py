@@ -141,6 +141,7 @@ from alien_baby.crawler.mimo_crawler_env import PROPRIO_DIM
 from alien_baby.crawler.mimo_crawler_cart_env import MimoCrawlerCartEnv, CAM_H, CAM_W
 from alien_baby.agents.micoa_architecture import (
     MICOAExtractor, MICOASAC, MICOAConfirmationCallback, LATENT_DIM,
+    EgoTargetReplayBuffer,
 )
 
 RESULTS_DIR = pathlib.Path(__file__).parent.parent / "results"
@@ -419,10 +420,19 @@ def train(args):
             )
             model = SAC("MultiInputPolicy", train_env, **sac_kwargs)
         elif args.micoa:
+            # Phase XVI: when aux_ball_decode is on, swap in EgoTargetReplayBuffer
+            # so ego_xy targets from the env's info dict are stored alongside
+            # each transition and can be sampled in MICOASAC.train().
+            aux_decode = getattr(args, "aux_ball_decode", False)
+            if aux_decode:
+                sac_kwargs["replay_buffer_class"] = EgoTargetReplayBuffer
             model = MICOASAC("MlpPolicy", train_env,
                              micoa_beta=args.micoa_beta,
                              micoa_pred_beta=args.micoa_pred_beta,
                              micoa_pred_horizons=args.micoa_pred_horizons,
+                             aux_ball_decode=aux_decode,
+                             aux_ball_decode_coef=getattr(args, "aux_ball_decode_coef", 1.0),
+                             aux_ball_decode_target=getattr(args, "aux_ball_decode_target", "ego_xy"),
                              **sac_kwargs)
         elif use_droq:
             model = SAC(DroQSACPolicy, train_env, **sac_kwargs)
@@ -733,6 +743,21 @@ if __name__ == "__main__":
                         help="Force DummyVecEnv (single-process) even without --vision. "
                              "Used for controlled comparisons against vision runs (which must "
                              "use DummyVecEnv on macOS due to Metal renderer + fork issues).")
+    # Phase XVI: auxiliary ball-position decode loss flags (all default OFF)
+    parser.add_argument("--aux-ball-decode", action="store_true", default=False,
+                        help="Phase XVI: add a supervised MSE loss that forces the vision "
+                             "encoder's latent (mu_v, 64-dim) to predict the ball's "
+                             "egocentric position [x_ego, y_ego] = [ball_x-cart_x, "
+                             "ball_y-cart_y]. Requires --micoa and --cart-mode. "
+                             "Default OFF — all existing runs are bit-identical.")
+    parser.add_argument("--aux-ball-decode-coef", type=float, default=1.0,
+                        help="Phase XVI: coefficient on the aux ball-decode MSE loss "
+                             "(default 1.0). Ignored unless --aux-ball-decode is set.")
+    parser.add_argument("--aux-ball-decode-target", default="ego_xy",
+                        help="Phase XVI: supervision target for the aux loss. "
+                             "'ego_xy' = [ball_x-cart_x, ball_y-cart_y] in world coords "
+                             "(default, matches probe_vision_latent.py definition). "
+                             "Ignored unless --aux-ball-decode is set.")
     args = parser.parse_args()
     # Convert numeric strings to float
     if args.ent_coef != "auto":

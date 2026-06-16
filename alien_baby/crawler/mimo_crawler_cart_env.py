@@ -652,6 +652,16 @@ class MimoCrawlerCartEnv(gym.Env):
             if b1_done:
                 terminated = True
 
+        # Phase XVI: compute ego_xy = [ball_x - cart_x, ball_y - cart_y] for
+        # the first active ball. Matches probe_vision_latent.py definition so
+        # training target == eval target (no metric drift). Stored in info so
+        # EgoTargetReplayBuffer can persist it alongside the transition.
+        _cart_x = float(self.data.qpos[self._cart_x_qadr])
+        _cart_y = float(self.data.qpos[self._cart_y_qadr])
+        _b1x = float(self.data.qpos[self._tgt1_qadr])
+        _b1y = float(self.data.qpos[self._tgt1_qadr + 1])
+        _ego_xy = (_b1x - _cart_x, _b1y - _cart_y)
+
         return obs, reward, terminated, truncated, {
             "touched":      self._ball1_touched,
             "touched_ball1": self._ball1_touched,
@@ -663,11 +673,12 @@ class MimoCrawlerCartEnv(gym.Env):
             "step":          self._step,
             "steps_since_contact": self._steps_since_contact,
             "hunger_cost":   hunger_cost,
-            "cart_x":        float(self.data.qpos[self._cart_x_qadr]),
-            "cart_y":        float(self.data.qpos[self._cart_y_qadr]),
+            "cart_x":        _cart_x,
+            "cart_y":        _cart_y,
             "cart_vx":       self._cart_vx,
             "cart_vy":       self._cart_vy,
             "strength_scale": self.strength_scale,
+            "ego_xy":        _ego_xy,
         }
 
     # ------------------------------------------------------------------

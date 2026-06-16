@@ -325,10 +325,95 @@ def _get_micoa_extractor(policy):
     return None
 
 
-# ── SAC subclass that adds the KL agreement loss ──────────────────────────────
+# ── Replay buffer with ego-target sidecar (Phase XVI) ────────────────────────
 
 from stable_baselines3 import SAC as _SAC
+from stable_baselines3.common.buffers import ReplayBuffer
 import numpy as np
+
+
+class EgoTargetReplayBuffer(ReplayBuffer):
+    """ReplayBuffer that stores a 2-dim ego_xy sidecar alongside each transition.
+
+    The env puts ``ego_xy`` = [x_ego, y_ego] = [ball_x - cart_x, ball_y - cart_y]
+    into the ``info`` dict at every step. This buffer reads it from ``infos`` in
+    ``add()`` and writes it into a dedicated ``ego_targets`` array.
+
+    ``sample_with_ego(batch_size)`` returns the standard SB3 ReplaySamples tuple
+    PLUS the corresponding ``ego_targets`` slice (numpy, shape [B, 2]).
+
+    When ``info["ego_xy"]`` is absent (e.g. non-cart envs or legacy callers),
+    the slot is filled with NaN so the aux loss can detect and skip stale entries.
+
+    All existing ReplayBuffer behaviour is preserved — this subclass adds the
+    sidecar array only; the standard ``sample()`` path is untouched.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Sidecar: same time dimension as observations, 2 floats per env per slot.
+        self.ego_targets = np.full(
+            (self.buffer_size, self.n_envs, 2), np.nan, dtype=np.float32
+        )
+
+    def add(self, obs, next_obs, action, reward, done, infos):
+        # Write ego_xy from infos before calling super() so pos hasn't advanced yet
+        for env_idx, info in enumerate(infos):
+            xy = info.get("ego_xy", None)
+            if xy is not None:
+                self.ego_targets[self.pos, env_idx, 0] = float(xy[0])
+                self.ego_targets[self.pos, env_idx, 1] = float(xy[1])
+            else:
+                self.ego_targets[self.pos, env_idx, :] = np.nan
+        super().add(obs, next_obs, action, reward, done, infos)
+
+    def sample_with_ego(self, batch_size: int, env=None):
+        """Return (replay_data, ego_targets_np) where ego_targets_np is [B, 2].
+
+        Uses the same random index draw as the parent ``sample()``, applied
+        manually here to guarantee the indices are consistent between the
+        standard replay data and the ego sidecar.
+        """
+        if not self.optimize_memory_usage:
+            upper = self.buffer_size if self.full else self.pos
+            idxs = np.random.randint(0, upper, size=batch_size)
+        else:
+            # memory-optimised layout: last slot reserved for next_obs
+            upper = (self.buffer_size if self.full else self.pos) - 1
+            idxs = np.random.randint(0, upper, size=batch_size)
+        env_idxs = np.random.randint(0, max(1, self.n_envs), size=batch_size)
+
+        data = self._get_samples(idxs, env=env)
+        # Gather sidecar slice: shape [B, 2]
+        ego_np = self.ego_targets[idxs, env_idxs, :]
+        # Filter out NaN rows (missing ego_xy from env) so the loss is not
+        # contaminated by placeholder values.
+        valid_mask = ~np.isnan(ego_np[:, 0])
+        if not valid_mask.all():
+            # Keep only valid rows to avoid poisoning the MSE
+            # Note: this shortens the effective batch but is safe.
+            valid_idxs = np.where(valid_mask)[0]
+            if len(valid_idxs) == 0:
+                return data, ego_np  # all NaN — caller should skip
+            # Rebuild data with valid rows only (rebuild obs tensor slice)
+            import torch as _th
+            def _slice(t):
+                if isinstance(t, _th.Tensor):
+                    return t[valid_idxs]
+                return t
+            from stable_baselines3.common.type_aliases import ReplayBufferSamples
+            data = ReplayBufferSamples(
+                observations=_slice(data.observations),
+                actions=_slice(data.actions),
+                next_observations=_slice(data.next_observations),
+                dones=_slice(data.dones),
+                rewards=_slice(data.rewards),
+            )
+            ego_np = ego_np[valid_idxs]
+        return data, ego_np
+
+
+# ── SAC subclass that adds the KL agreement loss ──────────────────────────────
 
 class MICOASAC(_SAC):
     """
@@ -349,10 +434,33 @@ class MICOASAC(_SAC):
       kl_agreement drops fast → beta may be too high (forced agreement)
       kl_agreement never moves → beta too low, increase to 0.3 then 1.0
       sigma_combined decreases while kl_agreement is moderate → corner forming
+
+    Phase XVI / R49: aux_ball_decode
+      When aux_ball_decode=True, a small linear head (BallDecoderHead, 64→2)
+      is attached to the vision encoder's latent (mu_v, 64-dim). An MSE loss
+      between head(mu_v) and [x_ego, y_ego] — the ball's egocentric position —
+      is added to the existing _micoa_opt step (no new optimizer). This gives
+      the vision encoder a direct supervised signal to encode ball direction,
+      which the plain RL gradient failed to provide.
+
+      x_ego = ball_x - cart_x (lateral / direction signal)
+      y_ego = ball_y - cart_y (forward / distance signal)
+
+      These are identical to the probe_vision_latent.py definition so training
+      target == eval target (no metric drift).
+
+      The ego_xy targets are stored in the replay buffer as a sidecar array by
+      EgoTargetReplayBuffer. The env must put ego_xy into the info dict at each
+      step. Default OFF (aux_ball_decode=False) so all existing runs are
+      bit-identical.
     """
     def __init__(self, *args, micoa_beta: float = 0.1,
                  micoa_pred_beta: float = 0.0,
-                 micoa_pred_horizons=None, **kwargs):
+                 micoa_pred_horizons=None,
+                 aux_ball_decode: bool = False,
+                 aux_ball_decode_coef: float = 1.0,
+                 aux_ball_decode_target: str = "ego_xy",
+                 **kwargs):
         super().__init__(*args, **kwargs)
         self.micoa_beta = micoa_beta
         # pred_horizons: list of (k, beta) tuples. Backwards-compat: if not
@@ -363,6 +471,19 @@ class MICOASAC(_SAC):
             )
         else:
             self.pred_horizons = [(int(k), float(b)) for k, b in micoa_pred_horizons]
+
+        # Phase XVI: auxiliary ball-position decode loss
+        self.aux_ball_decode = bool(aux_ball_decode)
+        self.aux_ball_decode_coef = float(aux_ball_decode_coef)
+        self.aux_ball_decode_target = str(aux_ball_decode_target)
+
+        # BallDecoderHead: linear head maps mu_v (64-dim) → [x_ego, y_ego] (2-dim).
+        # Created only when the feature is enabled so all existing runs are
+        # bit-identical. Parameters are added to _micoa_opt lazily in train().
+        if self.aux_ball_decode:
+            self.ball_decoder_head = nn.Linear(LATENT_DIM, 2)
+        else:
+            self.ball_decoder_head = None
 
     def _sample_kstep(self, k: int, batch_size: int):
         """Return (obs_t, obs_t_plus_k) tensors from the replay buffer.
@@ -402,7 +523,7 @@ class MICOASAC(_SAC):
         # If all MICOA losses are disabled, nothing to do — the policy still
         # uses the MICOAExtractor for inference but no agreement pressure is
         # applied to the encoder weights.
-        if self.micoa_beta == 0.0 and not self.pred_horizons:
+        if self.micoa_beta == 0.0 and not self.pred_horizons and not self.aux_ball_decode:
             return
 
         extractor = _get_micoa_extractor(self.policy)
@@ -456,6 +577,30 @@ class MICOASAC(_SAC):
                     ).mean()
                     losses.append(beta_k * kl_pred_k)
                     logged[f"kl_pred_k{k}"] = float(kl_pred_k.item())
+
+                # --- Phase XVI: auxiliary ball-position decode loss ----------
+                # Supervision: head(mu_v) → [x_ego, y_ego].
+                # Requires EgoTargetReplayBuffer to have stored ego_xy in the
+                # replay buffer. Skipped silently if the buffer doesn't support
+                # it (backward-compat: existing SAC/MICOASAC runs unaffected).
+                if self.aux_ball_decode and self.ball_decoder_head is not None:
+                    buf = self.replay_buffer
+                    if hasattr(buf, "sample_with_ego"):
+                        data_aux, ego_targets = buf.sample_with_ego(
+                            batch_size, env=self._vec_normalize_env
+                        )
+                        obs_aux = data_aux.observations
+                        # Forward through extractor to get mu_v
+                        _ = extractor(obs_aux)
+                        mu_v_aux = extractor.last_mu_v  # shape [B, 64]
+                        # Decode to 2D ego-position
+                        pred_ego = self.ball_decoder_head(mu_v_aux)  # [B, 2]
+                        target_ego = torch.as_tensor(
+                            ego_targets, device=self.device, dtype=torch.float32
+                        )  # [B, 2]
+                        l_aux = F.mse_loss(pred_ego, target_ego)
+                        losses.append(self.aux_ball_decode_coef * l_aux)
+                        logged["aux_ball_decode"] = float(l_aux.item())
         finally:
             if not was_training:
                 extractor.eval()
@@ -469,7 +614,11 @@ class MICOASAC(_SAC):
         # the actor optimizer (to avoid double-stepping with the critic), so
         # we maintain our own optimizer over the extractor params. All
         # horizons' gradients accumulate in one .backward() call.
+        # Phase XVI: also include ball_decoder_head params when aux decode
+        # is enabled — the head and the vision encoder train together.
         ext_params = list(extractor.parameters())
+        if self.ball_decoder_head is not None:
+            ext_params = ext_params + list(self.ball_decoder_head.parameters())
         if not hasattr(self, "_micoa_opt"):
             try:
                 lr = self.policy.actor.optimizer.param_groups[0]["lr"]
@@ -489,6 +638,8 @@ class MICOASAC(_SAC):
         for key, val in logged.items():
             if key.startswith("kl_pred_k"):
                 self.logger.record(f"micoa/{key}", val)
+        if "aux_ball_decode" in logged:
+            self.logger.record("micoa/aux_ball_decode", logged["aux_ball_decode"])
         parts = [f"{k}={v:.4f}" for k, v in logged.items()]
         print(f"[MICOA] total_loss={total_loss.item():.4f}  "
               + "  ".join(parts), flush=True)
