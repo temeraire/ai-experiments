@@ -488,6 +488,11 @@ A: Linear regression with a small penalty on large weights to prevent overfittin
 
 ---
 
+Q: What is the difference between "representation failure" and "policy failure"?
+A: Two ways a channel can be active-but-useless. Representation failure = the latent never encoded the task variable (a probe can't decode it above chance) → fix the encoder. Policy failure = the latent DOES encode it (probe R² meaningful) but the policy never learned to act on it → fix the RL update. The ball-x probe found representation failure: R43's vision latent decodes ball direction at R²≈0.08 (below the proprio control), so its high ablation is binding to non-directional features, not a usable spatial code.
+
+---
+
 Q: What is CKA (Centered Kernel Alignment)?
 A: A similarity measure between two sets of activations from different networks on the same inputs. CKA=1 = essentially the same representation (up to linear reshuffling). CKA=0 = totally unrelated.
 

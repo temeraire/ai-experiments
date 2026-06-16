@@ -1323,6 +1323,12 @@ representation-failure verdict holds and is in fact slightly stronger on the
 reachable band: the trained MICOA vision latent does not encode where the ball is,
 even for balls AB can reach.
 
+*Reproduced 2026-06-16:* re-ran `probe_vision_latent.py` from scratch (same args,
+fresh process) → mu_v lateral R² = 0.081, mu_p 0.128, mu_v forward 0.235, mu_p 0.432
+— identical to the logged numbers above. The representation-failure result is stable
+and reproducible. The probe and encoder-capacity scripts are now committed to the
+repo (`visualization/probe_vision_latent.py`, `visualization/encoder_capacity_test.py`).
+
 **(2) Encoder-capacity test** (`encoder_capacity_test.py`): decides whether this is a
 *capacity* limit (the 32×32 CNN physically cannot resolve direction) or a
 *loss-geometry* limit (it can, but MICOA's objective never asked). Method: collect
