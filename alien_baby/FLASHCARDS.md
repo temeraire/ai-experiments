@@ -1398,3 +1398,17 @@ A: A second objective bolted onto the RL loss whose only job is to force the enc
 
 Q: Is generalization just "many variations resolving to the same outcome"? (domain randomization vs equivalence class)
 A: That's the mechanism (called domain randomization in robotics RL, and the equivalence class in the source theory: many instances -> one conditioned response). But variation is NECESSARY, not SUFFICIENT. Proof from our own runs: proprio saw the variations and built a lawful, extrapolating class (the distance law); vision saw the SAME variations and still failed (R^2~=0.08) because nothing forced its latent to encode what varied. Variation only generalizes when the learner is compelled to REPRESENT it. Also note: in RL the "same outcome" is defined by the reward function, standing in for the body's unconditioned reflex in development.
+
+---
+
+Q: What is the "coordination vs interpenetration" distinction (Numenta vs Taylor/MICOA)?
+A: COORDINATION (Numenta voting): each cortical column builds its own object model independently; modules exchange messages and reach consensus, but no module's internal representation is restructured by another's learning history -- experts vote, the vote doesn't rewire any expert. INTERPENETRATION (Taylor Ch.5, what MICOA builds): the modules' representations become mutually constitutive -- vision comes to encode the world the way proprio does because proprio's history reshapes vision. The disagreement is NOT about whether a domain-general mechanism exists (Numenta grants one: reference frames everywhere) -- it's about content-merger. Prism adaptation is the discriminating test.
+
+Q: How does prism adaptation discriminate coordination from interpenetration?
+A: If vision only COORDINATED with proprio via voting, reversing prisms would produce permanent vision-vs-proprio disagreement (vision votes "left", proprio "right", forever). Instead, over days of active movement, vision RECALIBRATES onto the motor frame -- its internal mapping is restructured by the other modality's learning history. That restructuring is interpenetration; pure coordination cannot produce it.
+
+Q: What does the prism-adaptation literature establish for AB's proprio-first thesis?
+A: Two facts. (1) Adaptation requires ACTIVE, self-produced movement -- Held & Hein's 1963 kitten carousel: the passively-carried kitten gets identical visual input and does NOT adapt; exposure isn't enough, action is necessary (the passive kitten = a pure confirmation loss). (2) The motor/world frame is the ANCHOR: when vision and action conflict the system re-anchors vision toward action, not vice versa ("reality and movement don't switch; vision does"). Justifies the .detach()-on-proprio asymmetry in MICOA's temporal-predictive loss.
+
+Q: Does Numenta's "replication beats centralization" argument rule out AB's shared generalization mechanism?
+A: No. That argument is against a BASE COLUMN (one privileged module others query) -- which AB doesn't propose. AB proposes a base MECHANISM (a domain-general way of building generalization every column instantiates) -- and Numenta already believes in one (reference frames used everywhere). They agree on mechanism-generality; they disagree only on content-merger (interpenetration). Refinement AB holds honestly: a general mechanism doesn't guarantee automatic success -- AB's vision stayed inert (R^2~=0.08) despite seeing all the variation.
