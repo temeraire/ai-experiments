@@ -1393,3 +1393,8 @@ A: An RL trick (Pinto et al. 2018) where the critic gets extra privileged info (
 
 Q: What is an auxiliary (ball-position) decode loss?
 A: A second objective bolted onto the RL loss whose only job is to force the encoder to represent a specific variable. Attach a small decoder to the vision latent, train it to predict ball position, and backprop that error INTO the encoder — so the encoder is rewarded for encoding ball position regardless of whether the task gradient does. AB's #2 candidate fix; targets the encoder directly (vs the read-only probe, which only measures the failure). Success test: does vision-ablation become directional (which side the ball is on) instead of the content-free ecc=0 spike?
+
+---
+
+Q: Is generalization just "many variations resolving to the same outcome"? (domain randomization vs equivalence class)
+A: That's the mechanism (called domain randomization in robotics RL, and the equivalence class in the source theory: many instances -> one conditioned response). But variation is NECESSARY, not SUFFICIENT. Proof from our own runs: proprio saw the variations and built a lawful, extrapolating class (the distance law); vision saw the SAME variations and still failed (R^2~=0.08) because nothing forced its latent to encode what varied. Variation only generalizes when the learner is compelled to REPRESENT it. Also note: in RL the "same outcome" is defined by the reward function, standing in for the body's unconditioned reflex in development.
