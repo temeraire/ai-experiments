@@ -158,7 +158,8 @@ def make_env(rank, seed, strength_scale, spawn_cone_deg, max_steps, n_substeps,
              random_ball_radius=None, random_ball_shape=None,
              target_obs=False, hand_success=False, pin_targets=False,
              near_contact_bonus_scale=0.0, near_contact_range=0.12,
-             actuate_hands=False, contact_reward=None):
+             actuate_hands=False, contact_reward=None,
+             action_mode="torque", spawn_radius=None):
     def _init():
         if cart_mode != "none":
             # Phase G: cart substrate. HER not used; plain MimoCrawlerCartEnv.
@@ -204,6 +205,8 @@ def make_env(rank, seed, strength_scale, spawn_cone_deg, max_steps, n_substeps,
                 random_start_orientation=random_start_orientation,
                 memory_obs=memory_obs,
                 stereo=stereo,
+                action_mode=action_mode,
+                spawn_radius=spawn_radius,
             )
             if her:
                 # HERCrawlerWrapper instantiates MimoCrawlerEnv internally and adds
@@ -270,6 +273,10 @@ def train(args):
     use_dummy = args.vision or getattr(args, "force_dummy_vec_env", False)
     VecEnvCls = DummyVecEnv if use_dummy else SubprocVecEnv
 
+    # Phase XVI R49 new flags (default values preserve backward compat)
+    _action_mode  = getattr(args, "action_mode",  "torque")
+    _spawn_radius = getattr(args, "spawn_radius",  None)
+
     # Training envs
     train_env = VecEnvCls([
         make_env(i, args.seed, args.strength_scale, args.spawn_cone_deg,
@@ -281,6 +288,8 @@ def train(args):
                  memory_obs=args.memory_obs,
                  stereo=not args.mono,
                  her=args.her,
+                 action_mode=_action_mode,
+                 spawn_radius=_spawn_radius,
                  **cart_kwargs)
         for i in range(args.n_envs)
     ])
@@ -303,6 +312,8 @@ def train(args):
                  memory_obs=args.memory_obs,
                  stereo=not args.mono,
                  her=args.her,
+                 action_mode=_action_mode,
+                 spawn_radius=_spawn_radius,
                  **cart_kwargs)
     ])
     if args.her:
@@ -758,6 +769,18 @@ if __name__ == "__main__":
                              "'ego_xy' = [ball_x-cart_x, ball_y-cart_y] in world coords "
                              "(default, matches probe_vision_latent.py definition). "
                              "Ignored unless --aux-ball-decode is set.")
+    # Phase XVI R49: position-offset actuation (all default to torque for backward compat)
+    parser.add_argument("--action-mode", default="torque",
+                        choices=["torque", "position_offset"],
+                        help="Phase XVI R49: 'torque' = original ctrl=action*strength (default, "
+                             "all prior runs bit-identical). 'position_offset' = action∈[-1,1] "
+                             "maps linearly onto each actuator's ctrlrange in mimo_crawler_pos.xml "
+                             "(limbs are PD position controllers; head stays torque).")
+    parser.add_argument("--spawn-radius", type=float, nargs=2, default=None,
+                        metavar=("MIN", "MAX"),
+                        help="Phase XVI R49: ball spawn radius range [min, max] in metres. "
+                             "Overrides the env default of (0.5, 1.2). Use '0.18 0.30' for "
+                             "a very close smoke test. Requires --cart-mode none (free-body env).")
     args = parser.parse_args()
     # Convert numeric strings to float
     if args.ent_coef != "auto":

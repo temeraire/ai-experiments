@@ -29,7 +29,8 @@ import gymnasium as gym
 from gymnasium import spaces
 import mujoco
 
-XML_PATH = pathlib.Path(__file__).parent / "mimo_crawler.xml"
+XML_PATH     = pathlib.Path(__file__).parent / "mimo_crawler.xml"
+XML_PATH_POS = pathlib.Path(__file__).parent / "mimo_crawler_pos.xml"
 
 PLATFORM_TOP_Z  = 2.025
 DEFAULT_MAX_STEPS   = 600
@@ -85,7 +86,9 @@ class MimoCrawlerEnv(gym.Env):
                  fixed_ball_positions=None,
                  random_start_orientation=False,
                  memory_obs=False,
-                 stereo=True):
+                 stereo=True,
+                 action_mode="torque",
+                 xml_path=None):
         super().__init__()
         self.vision = vision
         self.max_steps = max_steps
@@ -108,9 +111,28 @@ class MimoCrawlerEnv(gym.Env):
         self.random_start_orientation = random_start_orientation
         self.memory_obs = memory_obs
         self.stereo = stereo
+        # Phase XVI R49: action_mode selects torque vs position-offset control.
+        # "torque": original ctrl=action*strength_scale (no change from prior phases).
+        # "position_offset": action∈[-1,1] is mapped linearly onto each actuator's
+        #   ctrlrange, so ctrl = lo + (action+1)/2*(hi-lo). Requires mimo_crawler_pos.xml.
+        self.action_mode = action_mode
 
-        self.model = mujoco.MjModel.from_xml_path(str(XML_PATH))
+        if xml_path is not None:
+            _xml = pathlib.Path(xml_path)
+        elif action_mode == "position_offset":
+            _xml = XML_PATH_POS
+        else:
+            _xml = XML_PATH
+
+        self.model = mujoco.MjModel.from_xml_path(str(_xml))
         self.data  = mujoco.MjData(self.model)
+
+        # Cache per-actuator ctrlrange for position_offset mapping
+        if action_mode == "position_offset":
+            self._act_lo  = self.model.actuator_ctrlrange[:, 0].copy()
+            self._act_hi  = self.model.actuator_ctrlrange[:, 1].copy()
+            self._act_mid = (self._act_lo + self._act_hi) / 2.0
+            self._act_half = (self._act_hi - self._act_lo) / 2.0
 
         memory_dim = 2 if memory_obs else 0
         if vision:
@@ -241,8 +263,16 @@ class MimoCrawlerEnv(gym.Env):
 
     # ------------------------------------------------------------------
     def step(self, action):
-        # Curriculum: scale torques by strength; advance n_substeps physics steps
-        self.data.ctrl[:] = np.clip(action, -1.0, 1.0) * self.strength_scale
+        # Apply action based on mode:
+        #   torque: ctrl = clip(action, -1, 1) * strength_scale  (legacy)
+        #   position_offset: ctrl = mid + clip(action, -1, 1) * half_range
+        #     (strength_scale intentionally unused in position mode — kp/kv
+        #      in the XML set stiffness; the action selects a target position)
+        a = np.clip(action, -1.0, 1.0)
+        if self.action_mode == "position_offset":
+            self.data.ctrl[:] = self._act_mid + a * self._act_half
+        else:
+            self.data.ctrl[:] = a * self.strength_scale
         for _ in range(self.n_substeps):
             mujoco.mj_step(self.model, self.data)
         self._step += 1
