@@ -96,3 +96,18 @@ The leading order for Phase VII is therefore: F-tipped-init first, because it di
 THEORY MONITOR: Theory verdict written to FINDINGS.md.
 
 THEORY MONITOR: THEORETICAL CONCERN — Phase VI.2 confirms that the "one move then freeze" attractor is not a single uniform behavior but a pose-dependent lottery: the creature earns above-floor reward only when the random initial orientation happens to place its frozen body near the ball. This is a more troubling finding than Phase V.2's geometric-overlap exploit, because it means the policy has learned something even weaker than a single specific trick — it has learned to do nothing and depend entirely on the accident of its starting pose. The eval std of 99.48 (300× larger than Phase V.2's 0.30–0.42) is direct evidence of this: high variance across episodes driven by initial conditions, not by any learned variation in behavior. The project has now run approximately 750K total HER-based training steps (Phases IV, V, V.2, VI, VI.2) without producing a policy that actively moves toward a ball. Vision remains entirely untestable in this experimental track. If F-tipped-init does not break the lottery by eliminating passive-freeze as a viable strategy across all initial postures, the HER + velocity-bonus approach should be evaluated for retirement in favor of a curriculum-based or model-based approach that directly scaffolds multi-step action chains.
+
+---
+
+## 2026-06-17 — R49 refuted; affordance/winnability reframe; position-control smoke
+(Written by the orchestrator; the theory-monitor agent did not deliver this entry.)
+
+**R49 (aux decode loss) — PREDICTION REFUTED.** Forcing the vision encoder's latent to predict ball position did NOT make it encode lateral direction (probe R²=0.010, below chance/baseline) and did NOT produce useful directional ablation (the flip is confounded by a kl_pred=244 encoder blow-up, unbacked by any linear code, no outcome gain). The decode-loss patch does not resolve "integrated but inert."
+
+**The reframe (the real update).** "Integrated but inert" is likely downstream of an **affordance/winnability** failure, not (only) a representation failure. Causal chain now hypothesized: raw-torque action space → locomotion never learns → body mounted on a blind cart as a workaround → AB cannot pursue → ball direction has no behavioral payoff → vision stays inert & non-directional. A vision encoder that perfectly encoded direction would have no directional action to serve.
+
+**Governing principle adopted:** the **winnability rule** — every episode must be winnable (target reachable, and for vision in/bringable-into view); if AB never gets near the target that is our setup failure, not AB's, and it teaches nothing.
+
+**Position-control smoke (posoffset_smoke3) — partial test of the chain's root.** Switching limbs to constrained position-offset control (the scout's verified leading fix) fixed numerical stability but did NOT break the freeze attractor in 60K (dead-flat reward, video-confirmed stillness). So **torque-action-space is necessary-but-not-sufficient**: the freeze is also a reward/exploration collapse to the do-nothing optimum. Strengthens: movement-as-substrate; "vision is load-bearing only when it has an action to serve." Weakens: "the encoder/representation is the binding constraint"; and tempers "the torque action space was the whole cause of the locomotion failure." Crawling-from-prone is reaffirmed as a genuine open problem, not a one-line config fix.
+
+**Queued (gated):** the prism-ghost adaptation experiment (PRISM_GHOST_PROPOSAL.md) — the clean test of proprio-primacy/interpenetration — becomes runnable once vision is directionally load-bearing, which requires the locomotion→affordance chain to work first.

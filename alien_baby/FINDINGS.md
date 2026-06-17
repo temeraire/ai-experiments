@@ -1789,3 +1789,17 @@ This reframes what we have been trying to do. The sequence of vision-encoder int
 
 **Next question:** Can AB locomote under a position-offset (target-angle) action space — the control scheme "A Walk in the Park" identifies as essential — and does that locomotion produce directional contacts that give vision a job to do?
 
+
+---
+
+## Phase XVI — Position-offset action space (posoffset smoke series, 2026-06-17)
+
+**Hypothesis** (crawl-reuse scout): AB's chronic locomotion failure (one-move-then-freeze, Phases I–VI) is caused by its **raw-torque action space**; *A Walk in the Park* shows a constrained **position-offset** action space is make-or-break. Verified precondition: `mimo_crawler.xml` = 26 torque `<motor>`, 0 position servos.
+
+**Build** (commit 6a838f6, additive): new `mimo_crawler_pos.xml` (limbs → `<position>` servos, kp≈10×gear, kv=10, offset clamps shoulders/hips/elbows 0.4 rad, trunk 0.2 rad; head left torque) + `--action-mode {torque,position_offset}`. Required integrator change **Euler→implicitfast** (Euler exploded to ~8e5 N with stiff PD vs rigid contact). Preflight render: body holds a stable prone pose and limbs move smoothly under random actions (so the body *can* move).
+
+**Smoke tests** (free body, DroQ/UTD=4, 60K):
+- `smoke`/`smoke2`: INVALID — spawn ≤0.65 m → 100% step-0 contact (prone body sprawls ~0.68 m; ball spawns at radius r from world origin on a 2×2 m platform). No locomotion required.
+- `smoke3` (spawn 0.70–0.90 m, probe-verified 0% step-0 contact): VALID. **ep_rew_mean dead-flat at −18.7** (pure step cost) across all 60K; ep_len_mean=400 (every episode times out, 0 contact). **Video (both seeds): seed0 fully motionless; seed1 collapses in <1 s then inert. FREEZE ATTRACTOR UNBROKEN.**
+
+**Conclusion:** position-offset control fixed the numerical explosion and gives a stable, movable body, but did NOT by itself produce crawling in 60K. Since the body *can* move (preflight), this is a **learning/exploration collapse to the do-nothing optimum**, not physical impossibility — the same failure mode, now under position control. Torque-action-space is **necessary-but-not-sufficient**; crawling-from-prone remains open. Confounds not ruled out: 60K may be short (but dead-flat reward is a bad sign); prone default pose may not afford propulsion from small offsets; reward may not punish freezing hard enough; kp/offset untuned. **Decision deferred to human** (see NEXT_SESSION_2026_06_17.md) — did not auto-iterate reward/pose/length.
