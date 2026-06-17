@@ -218,7 +218,7 @@ The v8 follow-on architecture (CNN pixel latent concatenated to proprio features
 
 2. **No protection for prior proprio solution.** Proprio weights train jointly with visual weights throughout follow-on. The 60% solution is geometrically unprotected. Any gradient update that moves visual weights also moves proprio weights through their shared downstream layers.
 
-3. **No cross-modal coherence loss.** The v5 consistency loss (`λ · MSE(hidden1(full obs), hidden1(pixels-zeroed obs))`) was designed for exactly this purpose and achieved CKA = 0.998 in the tabletop setting. The v8 follow-on runs do not use this loss. The omission is the most direct explanation for why v8 produces 5% touch rate while v5 produced 100%.
+3. **No cross-modal coherence loss.** The v5 consistency loss (`λ · MSE(h_full, h_blind)`) was designed for exactly this purpose and achieved CKA = 0.998 in the tabletop setting. The v8 follow-on runs do not use this loss. The omission is the most direct explanation for why v8 produces 5% touch rate while v5 produced 100%.
 
 4. **No task pressure for confirmation.** The reward does not change based on whether vision and proprio "agree" about ball location. A MICOA-aligned reward would give a bonus when the agent acts in a way that is consistent with what both vision and proprio independently indicate — and would penalize actions that can only be explained by one channel, not both.
 
@@ -266,7 +266,7 @@ The sketch below is not a training plan — it is a theoretical specification of
 
 ### Open theoretical question
 
-The v5 tabletop result (CKA = 0.998, 100% success, frozen proprio + consistency loss) was achieved on a different body, different task, and fundamentally different proprioceptive signal. The v8 proprio signal is locomotion-based (body displacement, paddle stroke timing) rather than arm-joint-based (joint angles, fingertip offset). It is not guaranteed that the same architectural choices that produced MICOA-alignment in the tabletop setting will transfer to the locomotion setting.
+The v5 tabletop result (CKA = 0.998, 80% noise robustness, drift = 0) was achieved on a different body, different task, and fundamentally different proprioceptive signal. The v8 proprio signal is locomotion-based (body displacement, paddle stroke timing) rather than arm-joint-based (joint angles, fingertip offset). It is not guaranteed that the same architectural choices that produced MICOA-alignment in the tabletop setting will transfer to the locomotion setting.
 
 The theoretical question that v8 opens — and that none of the prior experiments could have addressed — is: **can MICOA-aligned confirmation be established when the proprio signal is a body-movement signal rather than an arm-position signal?** In the tabletop setting, proprio "knew" where the arm was relative to the target; vision confirmed this. In v8, proprio knows how fast the body is moving and in what direction, but it does not know where the target is. Vision would need to provide the target-location information that proprio cannot provide, while still "confirming" proprio's motor-execution signal. This is a harder problem than tabletop MICOA, and it is the correct next theoretical frontier for this project.
 
@@ -700,7 +700,7 @@ samples, 5-fold CV Ridge) answers it directly.
 | decode target | mu_v R² (vision) | mu_p R² (proprio control) |
 |---|---|---|
 | ball x_ego (lateral / direction) | 0.136 ± 0.021 | 0.096 ± 0.007 |
-| ball y_ego (forward / distance) | 0.217 ± 0.016 | 0.426 ± 0.042 |
+| ball y_ego (forward / distance) | 0.217 ± 0.016 | **0.426 ± 0.042** |
 
 **Verdict: WEAK REPRESENTATION (mostly hypothesis A, not B).** The vision latent
 decodes ball lateral direction at only R² = 0.136 — far below a usable spatial code
@@ -1061,3 +1061,117 @@ This finding also sets up the next theoretical test cleanly. The project now has
 **The most important thing we don't know yet:** Whether the 0.075-radius anomaly is an environmental artifact (cart-ball collision geometry at this specific size) or a genuine representation boundary (the approach code learned on 0.040/0.053/0.075 has a gap precisely at 0.075 for a task-structural reason). A single diagnostic — re-running the 0.075 eval bin with the cart disabled — would separate these two explanations cleanly.
 
 **Recommended diagnostic** (not a training run — just a measurement): Re-run the deterministic size sweep on R46 and R48 with the cart velocity set to 0 (or the cart removed) for the 0.075-radius bin only; if that bin recovers to 17+/20, the anomaly is a cart-ball geometric interaction, not a representation failure; if it stays at 10/20 or below, the approach code itself has a gap at this radius that needs investigation.
+
+---
+
+## 2026-06-16 — Phase XVI R49: Auxiliary ball-position decode loss — refuted, and the affordance reframe
+
+### What was tested
+
+R49 (phase_xvi_R49_micoa_vision_auxdecode, 250K steps) was a byte-for-byte copy of Phase XIII R43 (MICOA + vision, cart substrate, static ball, random box ±0.08 m jitter, seed 42) with one addition: a `Linear(64,2)` decode head on the vision encoder's latent `mu_v`, trained end-to-end with MSE loss (coefficient 1.0) to predict egocentric ball position [x_ego, y_ego] at every step. The gradient flowed directly into the MICOA encoder optimizer. The pre-registered success bar: lateral R² ≥ 0.30 on the reachable band (|x_ego| ≤ 0.20 m). This was the direct follow-through from the Phase XIII / encoder-capacity entries: if representation failure (not policy failure) is the bottleneck, forcing the encoder to represent ball position should make vision useful.
+
+The prediction was also that a directional visual code, once forced in, would make vision-ablation DIRECTIONAL — ablation sensitivity rising at high eccentricity rather than peaking at ecc=0.
+
+### Key numbers (from FINDINGS.md Phase XVI entry)
+
+Ball-x decode probe, reachable band (|x_ego| ≤ 0.20 m):
+
+| decode target | mu_v R² (vision) | mu_p R² (proprio control) |
+|---|---|---|
+| ball x_ego (LATERAL / direction) | **0.010** | 0.043 |
+| ball y_ego (FORWARD / distance) | 0.157 | 0.360 |
+
+Eccentricity sweep (both/20):
+
+| ecc (m) | R49 | R43 reference |
+|---|---|---|
+| 0.00 | 20 | 20 |
+| 0.05 | 19 | 19 |
+| 0.10 | 19 | 16 |
+| 0.15 |  8 | 11 |
+| 0.20 |  4 |  4 |
+| 0.25 |  0 |  0 |
+
+Vision ablation (abl_L2) by eccentricity: 1.29 at ecc=0.00, ~1.95–2.04 at ecc=0.05–0.25.
+
+MICOA end-of-run diagnostics: kl_pred_k1 = 244 (healthy: 0.5–2), sigma_combined = 0.117 (near the 0.10 collapse threshold). Aux decode loss started at ~0.10 early, drifted back to 0.20 by end.
+
+### The prediction, and why it was refuted
+
+The auxiliary decode loss did not produce a directional visual code. Lateral R² ended at 0.010 — at chance, below the proprio control (0.043), and far below the 0.30 success bar. The forward/distance dimension did improve (R² 0.157 vs R43's ~0.08), but forward distance is the easier-to-decode dimension that was already partly captured by the weak encoder. The critical lateral dimension — the one that would tell AB "ball is to the left" — did not budge.
+
+The most likely reason the lateral dimension was not learned: the ball spawns with symmetric jitter (±0.08 m), so the mean x_ego ≈ 0 across the training distribution. A decode head that predicts x_ego = 0 everywhere achieves low average MSE without ever representing signed left/right direction. The auxiliary loss provided no actual gradient pressure toward a directional representation — it was satisfied cheaply by a constant-zero prediction for the lateral coordinate.
+
+The MICOA encoder also destabilized. kl_pred_k1 reaching 244 (vs. healthy 0.5–2) and sigma_combined near 0.10 (the collapse floor) show that the auxiliary decode gradient and the predictive-KL gradient competed for the same encoder weights and could not be jointly satisfied. The aux loss briefly drove the encoder to a lower-loss configuration (~0.10 early), then the predictive-KL term pushed it away — the drift back to 0.20 by the end of the run is the signature of this conflict.
+
+The ablation profile flip (abl_L2 low at ecc=0, high and flat off-center) was auto-flagged by the eval script as "vision recruited at the margin." This is a false positive and should not be read as a positive finding. The ablation is 2–3× higher than R43's across the board, coinciding with the encoder pathology. This is the same pattern confirmed in Phase XII R41: a destabilized MICOA encoder generates large, noisy action changes when pixels are zeroed, not because vision encodes anything useful, but because the latent is thrashing and its removal shifts the combined Gaussian arbitrarily. Task outcomes did not improve, which is the definitive test.
+
+### What the representation-fix hypothesis predicts, and what this refutes
+
+The hypothesis entering Phase XVI was: "representation failure is the binding constraint." If that were true, forcing the representation (aux decode loss) should unblock behavioral improvement. It did not. Lateral R² stayed at chance; task outcomes were unchanged; the encoder destabilized under the competing gradient pressure. Three separate ways the fix failed.
+
+This does not refute "representation failure exists" — the Phase XIII probe (R² 0.08 reachable band) still stands, as does the encoder-capacity test (unfrozen R² 0.104). It refutes the specific claim that an auxiliary decode loss on this substrate and distribution is sufficient to fix the representation. The fix attempt failed on the lateral dimension and destabilized everything else.
+
+This weakens the "encoder is the binding constraint" hypothesis. It does not strengthen it or leave it neutral. The binding constraint may be elsewhere.
+
+### The affordance/winnability reframe — the most important theoretical update from this session
+
+Watching the R49 renders forced a diagnosis that the numbers alone do not surface. On the cart substrate, AB is physically a passenger. The policy cannot steer the cart; the cart sweeps AB's body along a fixed line. The env's own docstring states: "The policy cannot locomote; only the cart moves AB." This means that even if the auxiliary decode loss had succeeded — even if lateral R² had reached 1.0 and the vision encoder perfectly represented the ball's left/right direction — that representation would have had **no directional action to serve**. AB cannot turn left or right. The encoder can know where the ball is, and the knowledge goes nowhere.
+
+This is the **affordance failure** (or winnability failure). An action can only be reinforced if it can occur. The task, as set up on the cart substrate, never offers AB a chance to demonstrate directional pursuit, because AB has no directional locomotion. Under those conditions, the task gradient has no reason to build a directional visual code — there is no directional action the gradient could shape. The failure we have been diagnosing as "vision integrated but inert" may be largely downstream of this: the inertness is what you would expect from a system that has no action to steer.
+
+This reframes the prior sequence of vision interventions (R43 / Phase XIII probes / R49) as working at the wrong level of the problem. All three tried to fix the encoder while the action space provided no directional degree of freedom. The correct fix is upstream: give AB the ability to locomote so that directional contacts are achievable, so that vision encoding direction would have something to reward it.
+
+The hypothesized causal chain, now explicit:
+
+1. Raw-torque action space (AB's `mimo_crawler.xml` uses 26 torque motors, 0 position servos) → locomotion is very hard to discover by gradient descent alone. "A Walk in the Park" (Smith et al. 2022) shows that unconstrained torque action space makes zero locomotion progress; position-offset control is the make-or-break ingredient.
+2. Locomotion never learned → body mounted on a blind cart as a workaround → AB cannot pursue.
+3. AB cannot pursue → directional contacts cannot be reinforced → direction has no behavioral payoff.
+4. Direction has no payoff → vision has no reason to build a directional code → vision stays globally bound and non-directional.
+5. Forcing the representation (aux decode loss) does not help, because the downstream bottleneck (no directional action) is untouched.
+
+If this causal chain is correct, the ROOT fix is upstream at step 1 (the action space), not downstream at step 4 (the encoder). Patching the encoder — whether by auxiliary decode losses, architectural changes, or larger cameras — addresses a symptom, not the cause.
+
+### Which prior theoretical claims this result strengthens and which it weakens
+
+**Strengthened:**
+
+- **Generalization-as-primary / movement-as-substrate**: the deeper thesis — that movement is not just learned first but is the substrate on which visual generalization is built — is now supported from a new direction. R49 shows that forcing a representation in the absence of a movement affordance accomplishes nothing. The corollary is that providing the movement affordance (locomotion under position-offset control) may be what finally makes vision load-bearing, because direction would then have a behavioral payoff.
+
+- **Winnability as a governing design principle**: every episode must offer a winnable path to the target. On the cart substrate with no directional locomotion, no episode where the ball is off-center is genuinely winnable by directed pursuit. The project has been scoring impossible configurations as AB failures; they are our setup failures.
+
+- **The "encoder is not the binding constraint" reading**: the Phase XIII probes and R49 together make it harder to maintain that fixing the encoder alone would unblock vision. Representation failure is real, but representation failure may be caused by (not causing) the affordance failure.
+
+**Weakened:**
+
+- **"Representation failure is the binding constraint"**: the strongest form of this claim — that directly forcing the representation (aux decode loss) would produce directional vision — is refuted by R49's lateral R² = 0.010.
+
+- **The encoder-capacity hypothesis (provisional, from the 2026-05-30 entry)**: that claim held that the 32×32 CNN's resolution was the bottleneck, suggesting that higher resolution would unblock vision. R49 suggests the bottleneck may be upstream of the encoder — if direction has no behavioral payoff, even a high-resolution encoder has no reason to encode it. Higher resolution would not help in the absence of directional locomotion.
+
+### Open prediction now under test
+
+The causal-chain hypothesis predicts: switching AB's limbs from raw-torque to position-offset control should allow locomotion to emerge; once AB can crawl toward a ball in a winnable, near-in-view episode, vision-direction-encoding becomes a question that can be tested honestly. A 60K smoke test under position-offset control (run-tag posoffset_smoke) is running now.
+
+If locomotion emerges under position-offset control, the project moves to: (a) confirm directional contacts are achievable, (b) add vision, (c) run the eccentricity sweep. If the eccentricity sweep then shows abl_L2 rising with eccentricity for the first time in project history, the causal chain is confirmed and the cart-substrate era's null results are explained structurally rather than attributed to architectural failures we could not fix.
+
+If locomotion does not emerge even under position-offset control, the body itself is the bottleneck and the project needs a more capable locomotor body before the vision question is tractable.
+
+### Updated "what is ruled out / confirmed" table (Phase XVI addition)
+
+| Item | Status | Evidence |
+|---|---|---|
+| Auxiliary ball-position decode loss (MSE, coef 1.0) forces lateral visual representation | RULED OUT | Lateral R² = 0.010 (chance); below proprio control; far below 0.30 success bar |
+| Representation failure is the binding constraint for vision inertness | WEAKENED (not confirmed as binding) | Aux decode loss patch failed despite directly targeting the representation; affordance failure may be upstream |
+| High ablation under MICOA encoder pathology implies useful visual encoding | RULED OUT (repeated confirmation) | R49 abl_L2 1.29–2.04 under kl_pred_k1=244 pathology, same false-positive pattern as R41 |
+| The cart substrate can support a directional vision test | QUESTIONED | Cart substrate gives AB no directional locomotion; a directional visual code would have no action to serve even if it formed |
+| Position-offset control breaks chronic locomotion failure | UNDER TEST | posoffset_smoke run is running now |
+
+### Theory Monitor Note — 2026-06-16 (Phase XVI R49)
+
+**Behavioral Prediction Framework: UNTESTABLE on the directional claim; CONSISTENT on the stability claim** — The framework predicts that useful predictive structure should produce coherent task-calibrated behavior. R49's task outcomes are unchanged from R43 (ecc sweep nearly identical), and the aux decode loss produced a briefly coherent forward-distance prediction (loss ~0.10 early) that the competing predictive-KL term then undid (loss drifted back to 0.20). This is consistent with the framework's prediction that a system under competing gradient pressures will not form stable predictive structure for either target — but the framework's central prediction (directional visual behavior following directional encoding) remains untestable until AB has directional locomotion.
+
+**Pattern Learning Framework: CHALLENGED (vision) — the destabilization result** — The framework predicts that a system under consistent training pressure should converge to sparse, stable codes. R49's aux_ball_decode loss rose from ~0.10 to 0.20 in the second half of training, sigma_combined drifted toward the collapse floor, and kl_pred_k1 reached 244. This is the opposite of sparse stable patterns locking in: the representation is actively destabilizing under competing loss objectives, which is a direct challenge to the framework's prediction for this configuration.
+
+**The most important thing we don't know yet:** Whether AB can locomote at all under a position-offset (target-angle) action space. This single measurement determines whether the affordance/winnability hypothesis is correct — if locomotion emerges under position-offset control but not under raw torques, the cart-substrate era's null results are explained structurally (no directional affordance → no directional gradient → no directional code), and the path forward is clear. If locomotion still fails, the body or the task structure is the bottleneck, and no encoder intervention will help.
+
+**Recommended diagnostic** (not a training run — just a measurement): Watch the posoffset_smoke 60K checkpoint render and score it on: (1) does the creature translate more than 0.10 m per episode?, (2) are there directional contacts (touches at ecc > 0.05)?, (3) does touch rate on a center ball exceed the random-walk baseline (~15%)? If all three, the position-offset substrate supports the directional tests vision needs.
