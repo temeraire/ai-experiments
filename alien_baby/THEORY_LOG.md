@@ -1175,3 +1175,17 @@ If locomotion does not emerge even under position-offset control, the body itsel
 **The most important thing we don't know yet:** Whether AB can locomote at all under a position-offset (target-angle) action space. This single measurement determines whether the affordance/winnability hypothesis is correct — if locomotion emerges under position-offset control but not under raw torques, the cart-substrate era's null results are explained structurally (no directional affordance → no directional gradient → no directional code), and the path forward is clear. If locomotion still fails, the body or the task structure is the bottleneck, and no encoder intervention will help.
 
 **Recommended diagnostic** (not a training run — just a measurement): Watch the posoffset_smoke 60K checkpoint render and score it on: (1) does the creature translate more than 0.10 m per episode?, (2) are there directional contacts (touches at ecc > 0.05)?, (3) does touch rate on a center ball exceed the random-walk baseline (~15%)? If all three, the position-offset substrate supports the directional tests vision needs.
+
+### Theory Monitor Note — 2026-06-17 (RND curiosity: the freeze is breakable)
+
+**The freeze attractor was an exploration collapse, not a motor-discovery wall — RESOLVED.** posoffset_smoke3 had concluded the chronic freeze (Phases I–VI) was "not fixable by action-space or reward alone." `rnd_movefirst_60k` refutes the "or reward" half: adding an intrinsic novelty reward (RND) and zeroing the step cost made movement the optimal policy, and the freeze did not survive — sustained, video-confirmed body motion (liveness gate PASS, body_motion 0.722), the first non-collapsing crawler run on record. The corrected statement: **undirected movement is reward-fixable; the freeze was a do-nothing local optimum, and curiosity escapes it.**
+
+**What this does and does not buy us.** It buys *motion* — the precondition for everything (an action can only be reinforced if it can occur; CLAUDE.md "Realm of possibility"). It does NOT buy *pursuit*: RND rewards novelty, not approach, so the motion is goal-agnostic. On a real ~0.3 m gap (seed2) the body flails in place and times out; the apparent "reaches" (seeds 0/1, 3–4 steps) are spawn-adjacency gimmes from a too-close 0.18 m spawn floor (ball inside the prone body's ~0.68 m footprint), not learned reaching. So directed locomotion remains open — but it is now a *steering* problem on top of a moving body, not a *get-it-to-move-at-all* problem.
+
+**Updated table row:**
+
+| Item | Status | Evidence |
+| --- | --- | --- |
+| From-scratch crawling / the freeze is unfixable by reward alone (posoffset_smoke3) | OVERTURNED (movement half) | rnd_movefirst_60k: RND + step_cost 0 broke the freeze; sustained motion, gate PASS 0.722. *Directed* locomotion still open. |
+| The freeze attractor is a do-nothing exploration/reward collapse, not physical impossibility | CONFIRMED | Curiosity reward makes motion optimal; freeze does not survive 60K. |
+| Directional-vision tests are blocked on AB having directional locomotion | STILL BLOCKED | Body moves but does not pursue; need approach reward / curriculum to convert motion → directed reaching. |

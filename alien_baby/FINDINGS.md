@@ -1813,3 +1813,25 @@ This reframes what we have been trying to do. The sequence of vision-encoder int
 > **The most important thing we don't know yet (at time of writing):** whether AB can locomote at all under a position-offset action space. If locomotion emerges under position-offset but not raw torque, the cart-era null results are explained structurally (no directional affordance → no directional gradient → no directional code).
 >
 > **[UPDATE 2026-06-17 — question answered]** posoffset_smoke3 (valid test, winnable spawn) ran: AB did NOT locomote under position-offset control either — dead-flat reward, video-confirmed freeze. Anti-freeze reward shaping (progress rewards 6–7×) also failed. Conclusion: from-scratch crawling is a motor-discovery problem, not fixable by action-space or reward alone. Pivoting to CART-STEER (give AB a movement primitive so it can pursue) to unblock the directional-vision tests this note calls for. Crawling parked as a known-hard track (imitation-from-demonstrations is the indicated tool).
+
+## Phase XVI — RND curiosity + zero step-cost: the freeze attractor IS breakable (rnd_movefirst_60k, 2026-06-17)
+
+**Hypothesis:** the freeze is an *exploration collapse to the do-nothing optimum*, not a hard motor-discovery wall. If so, removing the cost of existing (`--step-cost 0`) and paying an intrinsic novelty bonus (RND — Random Network Distillation, Burda et al. 2018) should make movement the optimal policy and break the freeze. This directly tests the open question the posoffset_smoke3 entry left ("learning/exploration collapse vs physical impossibility").
+
+**Build** (branch `exp/rnd-liveness-gate`): new `rnd_wrapper.py` (`RNDRewardWrapper`, fixed random target net + trained predictor net over the obs vector; normalized prediction error added to train-env reward; eval env wrapped pass-through so VecNormalize sync matches). `mimo_crawler_env.STEP_COST` made configurable (`--step-cost`, default −0.05 unchanged). New **liveness gate** (`LivenessGateCallback`, governing rule "Realm of possibility" in CLAUDE.md): both envs expose `body_motion` (joint speed + body/cart translation); at `--liveness-gate-step` a run below `--liveness-min-motion` is declared VOID, stopped, and marked — no conclusions drawn from a frozen run.
+
+**Run:** free body, position_offset, `--rnd --rnd-coef 1.0 --step-cost 0.0 --velocity-bonus-scale 0.0 --spawn-radius 0.18 0.35`, 60K, 16 envs, seed 0.
+
+**Result — the freeze attractor is BROKEN.**
+- Liveness gate **PASS at 10K** (mean body_motion 0.722 vs 0.05 threshold). Untrained preflight already showed 0.73 random-policy motion; trained seed2 video confirms *sustained* limb/leg/head repositioning across 300 steps — not the R50/posoffset_smoke3 squat-and-hold corpse. This is the first crawler run in the project's history where the body keeps moving rather than collapsing to stillness.
+- Eval mean_reward rose 100 → 150 (4× "New best"); mean_ep_length fell 242 → 211 → 153.
+
+**Caveat — the movement is UNDIRECTED; the reward is inflated by spawn-adjacency gimmes.**
+- The 0.18 m spawn floor is too close: a prone body sprawls ~0.68 m, so at 0.18 m the ball spawns *inside the body footprint*. Trained renders: seed0 TOUCHED in 4 steps, seed1 in 3 steps — both **spawn-adjacency artifacts** (first frame shows the ball against the creature's shoulder; the broad any-geom contact metric fires immediately), NOT learned reaching. The eval reward (≈150, near the 200 contact bonus) is largely these gimmes.
+- seed2 is the honest test (ball a real ~0.3 m away): the body moves and repositions continuously but **does not translate toward the ball** → TIMEOUT at 300 steps. It moves; it does not *pursue*.
+
+**Conclusion:** RND + zero step-cost **resolves the open question** from posoffset_smoke3 — the freeze was an exploration/reward collapse, not physical impossibility. Curiosity makes movement the optimal policy and the freeze does not survive. **This updates the prior "from-scratch crawling is unfixable by reward alone" conclusion: undirected movement IS reward-fixable.** What remains unsolved is *directed* locomotion: RND rewards novelty, not approach, so the emergent motion is goal-agnostic. The task reward must now take over to turn motion into pursuit — which the too-close spawn never gave it a fair chance to do.
+
+**Confounds / limits:** single seed trained (3 rendered); 0.18 m spawn floor produced gimme contacts (fix: raise to ~0.30–0.50 m so every touch is real); 60K is short for directed crawling to emerge; broad-contact (not hand) metric; `body_motion` includes in-place flailing, so "alive" ≠ "translating".
+
+**Next:** directed-reach run — spawn floor ~0.30–0.50 m (kills gimmes), keep RND, extend to ~250K so approach/contact reward can shape pursuit now that the body is no longer frozen; optionally an outward curriculum to shape reaching.
