@@ -128,7 +128,11 @@ _PRONE_QUAT = np.array([0.5, -0.5, 0.5, 0.5], dtype=np.float64)
 
 
 class MimoCrawlerCartEnv(gym.Env):
-    """Phase G: AB on a constant-velocity 2D bouncer cart."""
+    """Phase G: AB on a constant-velocity 2D bouncer cart.
+
+    Phase XVII extension: cart_mode="steer" gives AB control over the cart.
+    cart_mode="bouncer" (default) is byte-identical to all prior runs.
+    """
 
     metadata = {"render_modes": ["rgb_array"]}
 
@@ -144,6 +148,10 @@ class MimoCrawlerCartEnv(gym.Env):
         stereo=True,
         # Cart params
         cart_speed=DEFAULT_CART_SPEED,
+        # Phase XVII: cart steering mode.
+        # "bouncer" (default) = current autonomous-drift code, byte-identical.
+        # "steer" = AB commands cart velocity via 2 appended action dims.
+        cart_mode="bouncer",
         # Hunger params
         hunger_base=DEFAULT_HUNGER_BASE,
         hunger_rate=DEFAULT_HUNGER_RATE,
@@ -221,6 +229,12 @@ class MimoCrawlerCartEnv(gym.Env):
         # the actor off the touching policy (the 200->~7 collapse seen in every
         # rung-0 run). A smaller value (e.g. 10) keeps the value range sane.
         contact_reward=None,
+        # Phase XVII steer: disc spawn radius range [lo, hi] in meters.
+        # Only used when cart_mode=="steer". Ball1 is placed at a random angle
+        # and radius drawn from U(spawn_disc_lo, spawn_disc_hi) from platform
+        # center. Ball2 is inactive (moved offscreen). Default matches spec.
+        spawn_disc_lo=0.30,
+        spawn_disc_hi=0.55,
     ):
         super().__init__()
         self.actuate_hands = bool(actuate_hands)
@@ -234,6 +248,11 @@ class MimoCrawlerCartEnv(gym.Env):
         self.memory_obs = memory_obs
         self.stereo = stereo
         self.cart_speed = float(cart_speed)
+        if cart_mode not in ("bouncer", "steer"):
+            raise ValueError(f"cart_mode must be 'bouncer' or 'steer', got {cart_mode!r}")
+        self.cart_mode = str(cart_mode)
+        self.spawn_disc_lo = float(spawn_disc_lo)
+        self.spawn_disc_hi = float(spawn_disc_hi)
         self.hunger_base = float(hunger_base)
         self.hunger_rate = float(hunger_rate)
         self.hunger_scale = float(hunger_scale)
@@ -366,8 +385,11 @@ class MimoCrawlerCartEnv(gym.Env):
         self.observation_space = spaces.Box(
             low=-np.inf, high=np.inf, shape=(n_obs,), dtype=np.float32
         )
+        # Phase XVII: steer mode adds 2 cart-steering dims after the nu limb dims.
+        # Bouncer mode is byte-identical (shape=(nu,)).
+        _action_dim = self.model.nu + (2 if self.cart_mode == "steer" else 0)
         self.action_space = spaces.Box(
-            low=-1.0, high=1.0, shape=(self.model.nu,), dtype=np.float32
+            low=-1.0, high=1.0, shape=(_action_dim,), dtype=np.float32
         )
 
         if vision:
@@ -404,11 +426,17 @@ class MimoCrawlerCartEnv(gym.Env):
         self.data.qvel[self._cart_x_dadr] = 0.0
         self.data.qvel[self._cart_y_dadr] = 0.0
 
-        # Y-axis-only cart motion: constrains cart trajectory to a fixed line
-        # so balls placed at (0, ±ball_y) are guaranteed to be swept. Random
-        # sign on cart_vy so AB sees both directions of travel.
-        self._cart_vx = 0.0
-        self._cart_vy = self.cart_speed * float(self.np_random.choice([-1.0, 1.0]))
+        # Phase XVII: steer mode starts cart stationary; policy drives it.
+        # Bouncer mode: Y-axis-only motion, random sign per episode.
+        if self.cart_mode == "steer":
+            self._cart_vx = 0.0
+            self._cart_vy = 0.0
+        else:
+            # Y-axis-only cart motion: constrains cart trajectory to a fixed line
+            # so balls placed at (0, ±ball_y) are guaranteed to be swept. Random
+            # sign on cart_vy so AB sees both directions of travel.
+            self._cart_vx = 0.0
+            self._cart_vy = self.cart_speed * float(self.np_random.choice([-1.0, 1.0]))
 
         # Small joint noise so episodes differ
         for adr in self._jpos_adr:
@@ -467,8 +495,41 @@ class MimoCrawlerCartEnv(gym.Env):
                 self.data.qpos[tgt2_qadr:tgt2_qadr + 3] = [10.0, 10.0, 0.0]
                 self._ball2_active = False
             self.data.qpos[tgt2_qadr + 3:tgt2_qadr + 7] = [1, 0, 0, 0]
+        elif self.cart_mode == "steer":
+            # Phase XVII steer: single-ball winnable spawn.
+            # Ball1 at r~U(spawn_disc_lo, spawn_disc_hi) from platform center,
+            # random angle, on-platform. Ball2 inactive (offscreen).
+            # Rejection loop: resample if the ball spawns in contact with AB at
+            # rest (which happens when the ball lands inside the body footprint
+            # e.g. the head extends ~0.54m in +y from the cart center).
+            self.data.qpos[tgt2_qadr:tgt2_qadr + 3] = [10.0, 10.0, 0.0]
+            self.data.qpos[tgt2_qadr + 3:tgt2_qadr + 7] = [1, 0, 0, 0]
+            self._ball2_active = False
+            for _spawn_attempt in range(50):
+                r = self.np_random.uniform(self.spawn_disc_lo, self.spawn_disc_hi)
+                a = self.np_random.uniform(0.0, 2.0 * np.pi)
+                bx, by = r * np.cos(a), r * np.sin(a)
+                # Clamp to platform interior so ball is never off-edge at spawn
+                bx = float(np.clip(bx, BALL_X_MIN + 0.05, BALL_X_MAX - 0.05))
+                by = float(np.clip(by, BALL_Y_MIN + 0.05, BALL_Y_MAX - 0.05))
+                self.data.qpos[tgt1_qadr:tgt1_qadr + 3] = [bx, by, PLATFORM_TOP_Z + self._current_ball_radius]
+                self.data.qpos[tgt1_qadr + 3:tgt1_qadr + 7] = [1, 0, 0, 0]
+                mujoco.mj_forward(self.model, self.data)
+                # Check for step-0 contact between ball and AB body geoms
+                _hit = False
+                for _ci in range(self.data.ncon):
+                    _c = self.data.contact[_ci]
+                    _g1, _g2 = _c.geom1, _c.geom2
+                    if _g1 == self._target_geom_id or _g2 == self._target_geom_id:
+                        _other = _g2 if _g1 == self._target_geom_id else _g1
+                        if _other in self._mimo_body_ids:
+                            _hit = True
+                            break
+                if not _hit:
+                    break  # clean spawn found
+            # (If all 50 attempts hit, accept the last sample — rare edge case)
         else:
-            # Random ball1 placement
+            # Random ball1 placement (bouncer default)
             r = self.np_random.uniform(0.5, 1.2)
             a = self.np_random.uniform(0.0, 2.0 * np.pi)
             self.data.qpos[tgt1_qadr:tgt1_qadr + 3] = [r * np.cos(a), r * np.sin(a), PLATFORM_TOP_Z + self._current_ball_radius]
@@ -515,28 +576,57 @@ class MimoCrawlerCartEnv(gym.Env):
 
     # ------------------------------------------------------------------
     def step(self, action):
-        # Apply cart bouncer: check position and reverse velocity components at edges
+        # Read current cart position
         cart_x = float(self.data.qpos[self._cart_x_qadr])
         cart_y = float(self.data.qpos[self._cart_y_qadr])
 
-        if cart_x > CART_X_MAX:
-            self._cart_vx = -abs(self._cart_vx)
-        if cart_x < CART_X_MIN:
-            self._cart_vx =  abs(self._cart_vx)
-        if cart_y > CART_Y_MAX:
-            self._cart_vy = -abs(self._cart_vy)
-        if cart_y < CART_Y_MIN:
-            self._cart_vy =  abs(self._cart_vy)
+        if self.cart_mode == "steer":
+            # Phase XVII STEER branch:
+            # Split action into limb dims and 2 steering dims.
+            nu = self.model.nu
+            limb_action = action[:nu]
+            steer = action[nu:nu + 2]  # [steer_x, steer_y] in [-1, 1]
+            # Map steer dims to cart velocity
+            desired_vx = float(np.clip(steer[0], -1.0, 1.0)) * self.cart_speed
+            desired_vy = float(np.clip(steer[1], -1.0, 1.0)) * self.cart_speed
+            # EDGE-CLAMP: if cart is at/over a platform edge and steer still
+            # pushes outward, zero that velocity component. AB can never drive
+            # off-platform (winnability guarantee).
+            if cart_x >= CART_X_MAX and desired_vx > 0.0:
+                desired_vx = 0.0
+            if cart_x <= CART_X_MIN and desired_vx < 0.0:
+                desired_vx = 0.0
+            if cart_y >= CART_Y_MAX and desired_vy > 0.0:
+                desired_vy = 0.0
+            if cart_y <= CART_Y_MIN and desired_vy < 0.0:
+                desired_vy = 0.0
+            self._cart_vx = desired_vx
+            self._cart_vy = desired_vy
+            # Limb control (same as bouncer path)
+            ctrl = np.clip(limb_action, -1.0, 1.0) * self.strength_scale
+            if not self.hip_actuation:
+                ctrl[HIP_ACT_INDICES] = 0.0
+            self.data.ctrl[:] = ctrl
+        else:
+            # BOUNCER branch (byte-identical to all prior runs):
+            # Check position and reverse velocity components at edges
+            if cart_x > CART_X_MAX:
+                self._cart_vx = -abs(self._cart_vx)
+            if cart_x < CART_X_MIN:
+                self._cart_vx =  abs(self._cart_vx)
+            if cart_y > CART_Y_MAX:
+                self._cart_vy = -abs(self._cart_vy)
+            if cart_y < CART_Y_MIN:
+                self._cart_vy =  abs(self._cart_vy)
+            # Mask hip/leg actuators if disabled
+            ctrl = np.clip(action, -1.0, 1.0) * self.strength_scale
+            if not self.hip_actuation:
+                ctrl[HIP_ACT_INDICES] = 0.0
+            self.data.ctrl[:] = ctrl
 
         # Write cart velocity kinematically (overrides any physics-derived vel)
         self.data.qvel[self._cart_x_dadr] = self._cart_vx
         self.data.qvel[self._cart_y_dadr] = self._cart_vy
-
-        # Mask hip/leg actuators if disabled
-        ctrl = np.clip(action, -1.0, 1.0) * self.strength_scale
-        if not self.hip_actuation:
-            ctrl[HIP_ACT_INDICES] = 0.0
-        self.data.ctrl[:] = ctrl
 
         # Step physics
         _dt_sub = float(self.model.opt.timestep)  # 0.005 s per substep

@@ -159,7 +159,8 @@ def make_env(rank, seed, strength_scale, spawn_cone_deg, max_steps, n_substeps,
              target_obs=False, hand_success=False, pin_targets=False,
              near_contact_bonus_scale=0.0, near_contact_range=0.12,
              actuate_hands=False, contact_reward=None,
-             action_mode="torque", spawn_radius=None):
+             action_mode="torque", spawn_radius=None,
+             spawn_disc_lo=0.30, spawn_disc_hi=0.55):
     def _init():
         if cart_mode != "none":
             # Phase G: cart substrate. HER not used; plain MimoCrawlerCartEnv.
@@ -174,6 +175,7 @@ def make_env(rank, seed, strength_scale, spawn_cone_deg, max_steps, n_substeps,
                 memory_obs=memory_obs,
                 stereo=stereo,
                 cart_speed=cart_speed,
+                cart_mode=cart_mode,
                 hunger_base=hunger_base,
                 hunger_rate=hunger_rate,
                 hunger_scale=hunger_scale,
@@ -191,6 +193,8 @@ def make_env(rank, seed, strength_scale, spawn_cone_deg, max_steps, n_substeps,
                 near_contact_range=near_contact_range,
                 actuate_hands=actuate_hands,
                 contact_reward=contact_reward,
+                spawn_disc_lo=spawn_disc_lo,
+                spawn_disc_hi=spawn_disc_hi,
             )
         else:
             env_kwargs = dict(
@@ -265,6 +269,8 @@ def train(args):
         near_contact_range=getattr(args, "near_contact_range", 0.12),
         actuate_hands=getattr(args, "actuate_hands", False),
         contact_reward=getattr(args, "contact_reward", None),
+        spawn_disc_lo=getattr(args, "spawn_disc_lo", 0.30),
+        spawn_disc_hi=getattr(args, "spawn_disc_hi", 0.55),
     )
 
     # Vision=True: MuJoCo Metal renderer fails in forked subprocesses on macOS.
@@ -667,9 +673,11 @@ if __name__ == "__main__":
                              "--fixed-ball-positions (HER needs stable goals).")
     # Phase G: cart substrate flags
     parser.add_argument("--cart-mode", default="none",
-                        choices=["none", "constant_velocity_bouncer"],
+                        choices=["none", "constant_velocity_bouncer", "steer"],
                         help="Phase G: 'constant_velocity_bouncer' mounts AB on a cart that "
-                             "traverses the platform autonomously. 'none' = standard env.")
+                             "traverses the platform autonomously. 'none' = standard env. "
+                             "Phase XVII: 'steer' = AB commands cart velocity via 2 appended "
+                             "action dims; single-ball disc spawn. Default 'none'.")
     parser.add_argument("--cart-speed", type=float, default=0.15,
                         help="Phase G: cart speed in m/s (default 0.15).")
     parser.add_argument("--hunger-mode", default="flat",
@@ -781,6 +789,13 @@ if __name__ == "__main__":
                         help="Phase XVI R49: ball spawn radius range [min, max] in metres. "
                              "Overrides the env default of (0.5, 1.2). Use '0.18 0.30' for "
                              "a very close smoke test. Requires --cart-mode none (free-body env).")
+    # Phase XVII: steer mode disc spawn radius flags
+    parser.add_argument("--spawn-disc-lo", type=float, default=0.30,
+                        help="Phase XVII steer: minimum ball spawn radius from platform center "
+                             "in metres (default 0.30). Only used with --cart-mode steer.")
+    parser.add_argument("--spawn-disc-hi", type=float, default=0.55,
+                        help="Phase XVII steer: maximum ball spawn radius from platform center "
+                             "in metres (default 0.55). Only used with --cart-mode steer.")
     args = parser.parse_args()
     # Convert numeric strings to float
     if args.ent_coef != "auto":
