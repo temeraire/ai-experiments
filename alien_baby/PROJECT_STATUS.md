@@ -164,21 +164,24 @@ Theoretical framing: in Taylor's notation, M (forward-paddle) must FAIL unless m
 | **Object variety zero-shot transfer (Phase XV)** | **CONFIRMED for BROAD-touch: held-out sizes and held-out shapes transferred at center (15-20/20 both-touched). Combined variety (R48) improved ecc=0.15 margin vs R44/R45 baseline. BUT see 2026-06-15 diagnostic below: the task is never COMPLETED with the hands (both_HAND 0), so read this as transfer of "be in a posture the swept ball intersects", weaker than reach generalization.** | **Phase XV R46/R47/R48, 2026-06-15** |
 | **0.075 "anomaly" — DIAGNOSED (2026-06-15)** | **Not a point spike but a dead BAND ~[0.070-0.080]; real and seed-independent (original 6/20,10/20 were low-side noise, true rate ~0.45-0.55 at 30 eps). Mechanism (on video): glancing blow knocks the mid-size ball to the wall, fixed-base creature can't recover it. A contact-dynamics ARTIFACT, not a size-generalization hole. Geometric (ball mass unchanged by radius).** | **diag_0075_anomaly.py / render_0075_diag.py, 2026-06-15** |
 | **Hand-touch finding (2026-06-15)** | **both_HAND = 0 across every size AND every ecc bin, on the WHOLE cart line (R44/R45/R46/R48) — the two-ball task is never completed with two hands. But hands DO engage for one ball (any_HAND up to 21/30), rising with eccentricity where a real reach is needed. The cart carries AB's BODY into the ball (cart geom is a non-colliding visual marker, never pushes the ball). Reframe: body-bump = valid unconditioned "world-is-consistent" signal; hand-reach = intentional/conditioned signal. both_HAND=0 is a DEVELOPMENTAL STAGE, not a bug. Track hand-touch fraction over training as the real progress metric.** | **rescore_hand_touch.py + rescore_hand_touch_ecc.py, 2026-06-15** |
+| **Phase XVI R49 (MICOA+vision + aux ball-position decode loss, 250K)** | **REPRESENTATION FIX FAILED. Lateral R² = 0.010 (chance; below proprio control 0.043 and below R43 ~0.08 baseline; well under 0.30 success bar). Forward R² = 0.157 (decode loss caught distance, not direction). Ecc sweep: 20,19,19,8,4,0 — roughly on par with R43, no gain. Ablation high (1.29–2.04) but confounded by kl_pred_k1 explosion (244; healthy 0.5–2) and sigma_combined near-collapse (0.117). Ablation-profile flip (ecc=0 lower, off-center high-flat) auto-flagged as "recruited at margin" — NOT a positive finding; this is the known high-ablation-under-encoder-pathology trap (cf. R41). REFRAME: cart substrate makes vision directionally pointless because AB cannot steer; fix is locomotion under position-offset control.** | **R49, 2026-06-16** |
 
 ## Last run
 
-- **Tag:** Phase XV (R46/R47/R48 — DroQ proprio, object variety: deepen the proprioceptive generalizer)
-- **Date:** 2026-06-15
-- **Setup:** Three 250K DroQ proprio-only runs. Same config as Phase XIV R45 (cart constant_velocity_bouncer speed 0.15, ball_speed=0.0, hip off, memory obs, strength 1.0, entropy anneal 0.5->0.2, vel-bonus 0.10, curriculum warmup 2000/ramp 15K/offset 0.15, seed 42, n_envs=16, UTD=4). Varied: R46 trained on ball radii {0.040, 0.053, 0.075}; R47 trained on shapes {sphere, box, cylinder}; R48 trained on sizes x shapes combined. Held-out: R46/R48 sizes {0.047, 0.090}; R47/R48 shapes {ellipsoid, capsule}.
+- **Tag:** Phase XVI R49 — MICOA + vision + auxiliary ball-position decode loss
+- **Date:** 2026-06-16
+- **Setup:** 250K-step run byte-for-byte identical to Phase XIII R43 (MICOA + vision, cart substrate, static ball, random box ±0.08 m jitter, seed 42, n_envs=8) plus a new `Linear(64,2)` auxiliary decode head on `mu_v` (MSE loss, coef 1.0, attached to MICOA encoder optimizer) trained to predict egocentric ball position [x_ego, y_ego] at every step. Pre-registered success bar: lateral R² ≥ 0.30 on reachable band. Branch: `exp/phase-xvi-R49-aux-decode`. Checkpoints: `alien_baby/results/phase_xvi_R49_micoa_vision_auxdecode(_best)`.
 - **Key results:**
-  - R46 held-out size both/20: 0.047=17, 0.090=16 (range 0.17 = INVARIANT). Ecc: 19,19,18,15,11,0.
-  - R47 held-out shape (center): ellipsoid 20/20, capsule 17/20 at ecc=0.00. Shape variety reduces high-ecc reach vs R46/R48. Ecc (sphere): 20,20,19,8,2,0.
-  - R48 held-out shape (center): ellipsoid 20/20, capsule 20/20 at ecc=0.00. Ecc: 20,20,19,13,5,0 (best margin performance in project on this substrate).
-  - Reproducible anomaly: trained size 0.075 scores only 10/20 (R46) and 6/20 (R48) with strongly negative mean_R -- not noise, likely cart-ball interaction.
-  - Vision: N/A (proprio-only runs). Zero-shot transfer to held-out objects confirmed on proprio alone.
-- See FINDINGS.md Phase XV entry for full per-shape and per-size tables and verified numbers.
+  - Ball-x decode probe (reachable |x_ego| ≤ 0.20): mu_v lateral R² = 0.010 (proprio control 0.043) — at chance, BELOW baseline, far under 0.30 bar. REFUTED.
+  - Forward decode: mu_v R² = 0.157 (proprio 0.360) — the decode head learned to predict distance but not direction.
+  - Eccentricity sweep both/20: 20, 19, 19, 8, 4, 0 — no improvement over R43.
+  - abl_L2: 1.29 @ecc=0.00, ~1.95–2.04 off-center (elevated/flipped vs R43, but confounded by encoder pathology).
+  - MICOA end-of-run diagnostics: kl_pred_k1=244 (exploded; healthy 0.5–2), kl_agreement=148, sigma_combined=0.117 (near-collapse threshold 0.10). Aux_ball_decode loss drifted from ~0.10 early back to 0.20 — decode and predictive-KL losses fought each other.
+  - Vision: NOT load-bearing in any directionally useful sense. The encode-what-matters-via-aux-loss approach is refuted on this substrate.
+  - Reframe: cart substrate gives AB no directional action; a vision encoder that perfectly encodes left/right direction would have nothing to do with that information. Fix is upstream (locomotion under position-offset control), not downstream (better encoder loss).
+- See FINDINGS.md Phase XVI entry for full tables, caveats, and the affordance/winnability reframe.
 
-### Previous run (Phase XIV R45, 2026-06-14)
-- R45 (DroQ proprio, 150K): 20/20 at ecc=0.00, 19/20 at ecc=0.05, 20/20 at ecc=0.10, 11/20 at ecc=0.15, 6/20 at ecc=0.20, 1/20 at ecc=0.25. DroQ infra validated.
-- See FINDINGS.md Phase XIV entry for full eval table and verified numbers.
+### Previous run (Phase XV R46/R47/R48, 2026-06-15)
+- Three 250K DroQ proprio-only runs testing object-variety zero-shot transfer. R46 held-out sizes: 17/20 (interpolation), 16/20 (extrapolation). R47 held-out ellipsoid: 20/20 at center. R48 combined variety: 20/20 ellipsoid and capsule at center, best ecc=0.15 margin in project (13/20). 0.075 anomaly diagnosed as [0.070-0.080] knock-away band. both_HAND = 0 everywhere (developmental stage).
+- See FINDINGS.md Phase XV entry for full per-shape and per-size tables and verified numbers.
 ---

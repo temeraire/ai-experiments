@@ -1708,3 +1708,84 @@ directly, not the free-text narration.
    cart sweep line** so a body sweep cannot deliver them, forcing a lateral hand reach.
 4. Finer size sampling (include 0.070/0.080) in future size batteries so a dead band
    cannot masquerade as a point anomaly.
+
+---
+
+## 2026-06-16 — Phase XVI R49: Auxiliary ball-position decode loss on the vision encoder (phase_xvi_R49_micoa_vision_auxdecode)
+
+**What we ran:** A 250K-step training run byte-for-byte identical to Phase XIII R43 (MICOA + vision, cart substrate, static ball, random box ±0.08 m jitter, seed 42) with one addition: a small `Linear(64,2)` decode head attached to the vision encoder's latent (`mu_v`) that was trained with MSE loss (coefficient 1.0) to predict the ball's egocentric position [x_ego, y_ego] at every step. The decode head was wired to the MICOA encoder optimizer, so its gradient flowed directly into the vision encoder weights. The hypothesis was that this direct pressure would force the vision encoder to represent lateral ball direction — fixing the "representation failure" diagnosed in Phase XIII's reachable-band probe (mu_v lateral R² = 0.08, below the proprio control). Pre-registered success bar: lateral R² ≥ 0.30 on the reachable band (|x_ego| ≤ 0.20 m).
+
+Checkpoints under `alien_baby/results/phase_xvi_R49_micoa_vision_auxdecode(_best)`. Branch: `exp/phase-xvi-R49-aux-decode`.
+
+**Numbers:**
+
+- ep_rew_mean: not separately tracked; eval behavior summarized below
+- Steps completed: 250,000 (normal finish, no crashes)
+- loco_speed_mean: N/A (cart substrate; AB cannot locomote under its own control — the policy cannot locomote, only the cart moves AB)
+
+Ball-x decode probe (reachable band, |x_ego| ≤ 0.20 m):
+
+| decode target | mu_v R² (vision) | mu_p R² (proprio control) |
+|---|---|---|
+| ball x_ego (LATERAL / direction) | **0.010** | 0.043 |
+| ball y_ego (FORWARD / distance) | 0.157 | 0.360 |
+
+Unrestricted probe: lateral 0.013, forward 0.072.
+
+Eccentricity sweep (both-touched per bin, 0.00 → 0.25 m):
+
+| ecc (m) | R49 both/20 | R43 reference (Phase XIII) |
+|---|---|---|
+| 0.00 | 20 | 20 |
+| 0.05 | 19 | 19 |
+| 0.10 | 19 | 16 |
+| 0.15 |  8 | 11 |
+| 0.20 |  4 |  4 |
+| 0.25 |  0 |  0 |
+
+Vision ablation abl_L2 by eccentricity bin:
+
+| ecc (m) | R49 abl_L2 | R43 abl_L2 (Phase XIII) |
+|---|---|---|
+| 0.00 | 1.29 | 1.04 |
+| 0.05 | ~1.95–2.04 | 0.62 |
+| 0.10 | ~1.95–2.04 | 0.65 |
+| 0.15 | ~1.95–2.04 | 0.67 |
+| 0.20 | ~1.95–2.04 | 0.69 |
+| 0.25 | ~1.95–2.04 | 0.72 |
+
+MICOA training diagnostics at end of run:
+
+| Diagnostic | R49 final | R43 reference | R41 (catastrophe) | Healthy range |
+|---|---|---|---|---|
+| kl_pred_k1 | 244 | low (static balls kept it healthy) | 638 | 0.5–2 |
+| kl_agreement | 148 | low | 953 | low |
+| sigma_combined | 0.117 | healthy (~0.13+) | ~0.10 | > 0.10 |
+| aux_ball_decode loss | 0.20 (fell to ~0.10 early, drifted back up) | N/A | N/A | — |
+
+**What we learned:**
+
+The representation-fix hypothesis is refuted. Adding a direct auxiliary loss telling the encoder "encode where the ball is" did not make the encoder encode where the ball is — at least not the lateral (left/right) component that matters for direction. Lateral R² ended at 0.010, which is at chance, below the proprio control's 0.043, and well below both the 0.30 success bar and the R43 ~0.08 baseline. The auxiliary loss caught something: forward/distance R² reached 0.157 (vs R43 reachable-band 0.080 for forward). But the forward dimension was already weakly represented in R43, and the lateral dimension is the one needed for directional steering — that result is essentially zero. The most likely reason the loss failed on lateral: the ball is usually near the lateral center of the workspace (the ±0.08 m jitter is symmetric around zero), so the decode head minimized MSE most cheaply by predicting x_ego ≈ 0 everywhere. A head that ignores lateral position entirely still achieves low average MSE on a symmetric distribution. The encoder learned to satisfy the loss without ever having to represent signed left/right direction.
+
+The encoder also destabilized. By the end of training kl_pred_k1 had reached 244 — well above a healthy 0–2, more than double R38's flagged ceiling of ~116, and on a trajectory toward the R41 catastrophe (638). sigma_combined at 0.117 is near the 0.10 collapse threshold. The aux decode loss and the predictive-KL term appear to have fought each other: the decode head pulled the encoder toward representing (noisy) ball position, while the predictive-KL pulled it toward representing proprio(t+1). Both gradients flowed into the same encoder weights, and the conflict destabilized the latent distribution in the second half of training. The aux_ball_decode loss falling to ~0.10 early and then drifting back up to 0.20 by the run's end is a direct symptom of this: the encoder briefly satisfied the decode target, then the competing predictive-KL gradient pushed it away.
+
+The ablation profile flipped relative to R43. In R43, ablation peaked at ecc=0 (1.04) where directional information is least needed, and was flat-lower off-center (0.62–0.72) — the "content-free" pattern. In R49, ablation is lower at ecc=0 (1.29 is lower than R43's off-center if you account for scale) but high-flat off-center (~1.95–2.04). The eval script automatically flags this rising profile as "vision recruited at the margin." This interpretation is almost certainly wrong and should not be recorded as a positive finding. The ablation is ~2–3× higher than R43 across the board, coinciding with the kl_pred_k1 explosion. This is the same "high ablation ≠ useful vision" pattern confirmed in R41 (ablation 0.85, kl_pred_k1 = 638, task regressed). A destabilized encoder generates large, noisy action changes when pixels are zeroed — not because vision encodes anything useful, but because its latent is thrashing and its removal shifts the combined Gaussian in an arbitrary direction. The flat-high off-center profile is high-noise-floor, not directed recruitment. Task outcomes did not improve, which is the definitive check.
+
+**Honest caveats:**
+
+The ablation-profile flip (ecc=0 lower, off-center higher) is genuinely interesting as a pattern, even if the confounded mechanism makes it uninterpretable here. A future run with the same architectural change but without a competing predictive-KL term — or with a decoder trained on a non-symmetric ball distribution that actually creates lateral gradient pressure — might reveal whether the spatial profile of ablation sensitivity is changeable, and what changes it. This result says "we couldn't do it this way," not "this direction is closed."
+
+The aux_ball_decode loss falling early to ~0.10 before drifting back up is worth noting as a failure mode in itself. The encoder briefly found a configuration that satisfied the decode constraint and lost it. Future experiments using auxiliary decode heads should consider decoupling the decode optimizer from the main encoder optimizer (using a lower learning rate or a separate parameter group) to reduce gradient conflict.
+
+**Is vision load-bearing?** Not yet confirmed — and specifically, the representation-fix attempt failed. Ablation abl_L2 is high (1.29–2.04, above the 0.05 threshold), meaning pixels do influence actions. But this influence is confounded by the kl_pred_k1 explosion; high ablation under MICOA encoder pathology has been shown before (R41) to reflect noise, not useful signal. The probe directly refutes directional encoding: lateral R² = 0.010 is at chance. Vision is wired in but pointing nowhere.
+
+**Theory signals:** The Behavioral Prediction Framework predicts that useful internal predictive structure should produce coherent, task-calibrated predictions. The auxiliary decode head briefly produced predictions that satisfied the MSE target (loss ~0.10 early) but could not hold that configuration against the competing predictive-KL gradient — the two loss terms were optimizing inconsistent internal representations. This is consistent with the framework's concern that a system under competing gradient pressures will not form stable predictive structure for either target. The Pattern Learning Framework predicts that the encoder should converge to a sparse, stable code under consistent training pressure. The drift of aux_ball_decode from 0.10 back up to 0.20, combined with sigma_combined near-collapse, is direct evidence against stable pattern formation: the representation is actively destabilizing in the second half of training, which is the opposite of sparse stable patterns locking in.
+
+**The affordance/winnability reframe (important — record this):**
+
+Watching the R49 renders forced a more fundamental diagnosis. On the cart substrate, AB is physically a passenger — its policy cannot steer the cart, and the cart carries AB's body along a fixed sweep line. The env docstring states this explicitly ("The policy cannot locomote; only the cart moves AB"). This means that even a perfectly directional vision encoder — lateral R² = 1.0 — would have no directional action to serve. AB cannot turn left or right. The encoder can know where the ball is, and the knowledge goes nowhere.
+
+This reframes what we have been trying to do. The sequence of vision-encoder interventions (R43, Phase XIII probes, R49) has been trying to fix the encoder while the downstream action space provides no directional degree of freedom. The correct fix is upstream: give AB the ability to locomote laterally. Scouting found that AB's locomotion likely failed for a configuration reason — the raw-torque action space makes locomotion hard to discover; "A Walk in the Park" (Smith et al. 2022) shows that position-offset (target-angle) control is make-or-break for quadruped locomotion. The next experiment should be a locomotion smoke test under position-control action space, paired with a reverse-curriculum or start-state winnability condition that guarantees early contacts happen. Vision cannot become directionally load-bearing until there is a directional action to steer.
+
+**Next question:** Can AB locomote under a position-offset (target-angle) action space — the control scheme "A Walk in the Park" identifies as essential — and does that locomotion produce directional contacts that give vision a job to do?
+
