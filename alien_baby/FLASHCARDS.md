@@ -1429,3 +1429,11 @@ A: (1) Graded DOF freezing/freeing (Berthouze & Lungarella) -- lock most joints,
 Q: What is the "winnability" rule (every episode must be winnable)?
 A: The project's governing design rule (2026-06-16): we must give AB the tools to succeed; if AB never gets near the target, that's OUR setup failure, not AB's learning failure, and it teaches nothing. Every episode must be winnable -- the action we want reinforced (touching the ball) must be physically possible for AB's body, and for vision runs the target must be in view or bringable into view by an action AB can execute (a head turn). Never present a target that can't be seen and can't be found. Don't score impossible configs as "AB failed." Body fidelity never outranks winnability. Rationale: an action can only be reinforced if it can occur.
 
+
+---
+
+Q: What is a "constrained action space" (position-offset control) and why does it matter for AB?
+A: From "A Walk in the Park" (2022): the policy outputs small OFFSETS around a default pose (turned into motion by a PD position controller with damping Kd~10), instead of raw joint torques. Their ablation: a raw-torque ("unconstrained") action space makes ZERO progress; position-offset control trains stably (a quadruped walks in ~20 min). AB's mimo_crawler.xml uses 26 raw-torque <motor> actuators and 0 position servos -- exactly the failing config -- which is the leading verified-precondition hypothesis for why AB's locomotion collapsed (stillness / one-move-then-freeze). Fix = small additive XML/wrapper change, not new research.
+
+Q: What is a reverse / start-state curriculum?
+A: The principled way to enforce the winnability rule (Florensa 2017/2018): start every episode with the goal trivially achievable (target close, in reach, in view) and push start-states/goals outward only as success rate rises, so the agent always has a winnable episode and difficulty tracks competence. Replaces AB's hand-tuned spawn-cone/eccentricity scaffolds with a mechanism that never presents an impossible config. Pairs with automatic goal generation (goals of intermediate, feasible-but-not-mastered difficulty).
