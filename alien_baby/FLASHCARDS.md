@@ -887,6 +887,16 @@ A: A failure mode from Phases IV, V.2, VI, VI.2: the policy commits to one initi
 
 ---
 
+Q: What is RND (Random Network Distillation)?
+A: A curiosity/intrinsic-motivation method (Burda 2018). Keep a fixed random "target" net; train a "predictor" net to match its output on visited states. The prediction error is a bonus reward — familiar states predicted well (low error, boring), novel states not (high error, curiosity bonus). Fights the freeze attractor: a motionless body sees the same state forever, error → 0, so stillness stops paying and moving does. Simplest robust curiosity method — two small nets, no learned dynamics model.
+
+---
+
+Q: What is the "freeze attractor"?
+A: The basin RL training keeps sliding into where AB's policy collapses to "do nothing" (or one move then inert) — motionless, reward dead-flat at pure step cost, zero contacts, episodes time out. An "attractor" because it's reached regardless of seed/starting pose. Two causes, neither sufficient alone: raw-torque action space, AND reward/exploration collapse (standing still is a local optimum since moving costs energy and rarely hits the sparse reward). Position-offset control fixed the action-space half but left it unbroken in 60K — proving the reward half is real. Seen Phases IV–VI and again in R50.
+
+---
+
 Q: What is "geometric refuge"?
 A: When the spawn distribution accidentally puts the agent within touching distance of the ball without doing anything. The policy collects free reward by sitting still. Phase V.2 had this on the inside of the goal-threshold geometry.
 

@@ -124,6 +124,23 @@ This is the precondition for progress: an action can only be reinforced if it ca
 fidelity (e.g. keeping the MIMo infant body) never outranks this — if the body makes the target
 unreachable, change the setup, not the standard.
 
+### Realm of possibility — behavior that leads to dying is not tolerated (governing rule)
+A baby that isn't asleep is constantly moving — it rolls, crawls, reaches, puts things in its
+mouth. **Stillness is not a neutral baseline; it is "how to die."** A run where the creature never
+moves has not produced a result — it has failed the precondition for a result, and its numbers
+mean nothing. We do not draw conclusions from a corpse. So:
+- **Every run must prove the creature moved.** Movement (locomotion, flailing, reaching, steering
+  — any of it) is mandatory, not an outcome to be hoped for. If the creature freezes, that is OUR
+  setup failing it, exactly like an unwinnable task — fix the setup, do not analyze the freeze.
+- This is enforced in code by the **liveness gate** in `train_crawler.py` (`LivenessGateCallback`):
+  at `--liveness-gate-step` it checks mean `body_motion`; below `--liveness-min-motion` the run is
+  declared **VOID** (prints "Nothing happened", writes `RUN_VOID_NO_MOVEMENT.txt`, stops). Leave
+  the gate ON; `--no-liveness-gate` is not for normal runs.
+- **Instilling motivation is fair game and expected.** If the creature won't move, turn up whatever
+  knob makes it move — intrinsic curiosity (`--rnd`), removing the cost of existing (`--step-cost 0`
+  / zero hunger), hunger, novelty, velocity bonus. We do not need a "justification" for motion; a
+  living thing moves. Reward designs whose global optimum is "do nothing" are the bug.
+
 ### Always watch a video before committing to a training run
 Before launching any training run longer than a smoke test (>50K steps), render one episode
 using whatever model the run will start from:

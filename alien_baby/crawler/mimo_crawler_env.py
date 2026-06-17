@@ -88,6 +88,7 @@ class MimoCrawlerEnv(gym.Env):
                  memory_obs=False,
                  stereo=True,
                  action_mode="torque",
+                 step_cost=STEP_COST,
                  xml_path=None):
         super().__init__()
         self.vision = vision
@@ -97,6 +98,11 @@ class MimoCrawlerEnv(gym.Env):
         self.strength_scale = strength_scale
         self.approach_reward_scale = approach_reward_scale
         self.velocity_bonus_scale = velocity_bonus_scale
+        # Per-step penalty ("cost of existing"). Default STEP_COST keeps every
+        # prior run bit-identical; set to 0.0 to stop punishing existence so the
+        # do-nothing optimum is no longer the smart move (see CLAUDE.md
+        # "Realm of possibility").
+        self.step_cost = float(step_cost)
         self.n_substeps = n_substeps   # physics steps per policy step
         self.render_mode = render_mode
         # Phase C: fixed ball positions + variable starting orientation
@@ -291,7 +297,7 @@ class MimoCrawlerEnv(gym.Env):
         approach  = self._prev_ball_dist - curr_dist   # positive = got closer
         self._prev_ball_dist = curr_dist
 
-        reward = STEP_COST + self.velocity_bonus_scale * torso_speed + self.approach_reward_scale * approach
+        reward = self.step_cost + self.velocity_bonus_scale * torso_speed + self.approach_reward_scale * approach
         terminated = False
         truncated  = self._step >= self.max_steps
 
@@ -316,12 +322,18 @@ class MimoCrawlerEnv(gym.Env):
         # Keep the old `_contact_rewarded` flag for backward compat
         self._contact_rewarded = self._ball1_touched
 
+        # Liveness signal for the "realm of possibility" gate: how much the
+        # creature is actually doing = hip translation speed + mean actuated
+        # joint speed. A frozen body -> ~0; crawling/flailing -> clearly > 0.
+        body_motion = torso_speed + float(np.abs(self.data.qvel[self._jvel_adr]).mean())
+
         return obs, reward, terminated, truncated, {
             "touched": self._ball1_touched,
             "touched_ball1": self._ball1_touched,
             "touched_ball2": self._ball2_touched,
             "step": self._step,
             "strength_scale": self.strength_scale,
+            "body_motion": body_motion,
         }
 
     # ------------------------------------------------------------------

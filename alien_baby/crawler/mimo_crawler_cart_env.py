@@ -752,6 +752,14 @@ class MimoCrawlerCartEnv(gym.Env):
         _b1y = float(self.data.qpos[self._tgt1_qadr + 1])
         _ego_xy = (_b1x - _cart_x, _b1y - _cart_y)
 
+        # Liveness signal for the "realm of possibility" gate: how much the
+        # creature is actually doing = mean actuated joint speed, plus (steer
+        # mode only) the AB-commanded cart speed. In bouncer mode the cart
+        # drifts on its own, so its motion is NOT AB's doing and is excluded.
+        _cart_motion = (float(np.hypot(self._cart_vx, self._cart_vy))
+                        if self.cart_mode == "steer" else 0.0)
+        _body_motion = float(np.abs(self.data.qvel[self._jvel_adr]).mean()) + _cart_motion
+
         return obs, reward, terminated, truncated, {
             "touched":      self._ball1_touched,
             "touched_ball1": self._ball1_touched,
@@ -769,6 +777,7 @@ class MimoCrawlerCartEnv(gym.Env):
             "cart_vy":       self._cart_vy,
             "strength_scale": self.strength_scale,
             "ego_xy":        _ego_xy,
+            "body_motion":   _body_motion,
         }
 
     # ------------------------------------------------------------------

@@ -134,6 +134,56 @@ class CurriculumCallback(BaseCallback):
             print(f"[Curriculum] t={self.num_timesteps} offset={offset:+.4f} "
                   f"ball1={b1} ball2={b2}", flush=True)
 
+class LivenessGateCallback(BaseCallback):
+    """The "realm of possibility" gate (see CLAUDE.md).
+
+    A run must PROVE the creature moved. We accumulate the env's `body_motion`
+    signal (mean joint speed + body/cart translation) and, at `gate_step`,
+    check its running mean. If the creature has been effectively motionless
+    (mean < `min_motion`), the run is VOID: we print "Nothing happened", write
+    a marker file, and stop training. No conclusions are drawn from a corpse —
+    a frozen run measures our broken setup, not the creature's ability.
+
+    The gate always PRINTS the observed mean motion, pass or fail, so the
+    threshold can be calibrated from real numbers rather than guessed.
+    """
+
+    def __init__(self, gate_step, min_motion, out_dir, verbose=1):
+        super().__init__(verbose)
+        self.gate_step = int(gate_step)
+        self.min_motion = float(min_motion)
+        self.out_dir = out_dir
+        self._sum = 0.0
+        self._cnt = 0
+        self._fired = False
+
+    def _on_step(self) -> bool:
+        for info in self.locals.get("infos", []):
+            if "body_motion" in info:
+                self._sum += float(info["body_motion"])
+                self._cnt += 1
+        if not self._fired and self.num_timesteps >= self.gate_step:
+            self._fired = True
+            mean_motion = self._sum / max(1, self._cnt)
+            bar = "=" * 70
+            if mean_motion < self.min_motion:
+                msg = (f"VOID at {self.num_timesteps} steps: mean body_motion="
+                       f"{mean_motion:.5f} < threshold {self.min_motion}. "
+                       f"Nothing happened — the creature did not move. This run "
+                       f"is void; fix the setup, do not analyze the numbers.")
+                print(f"\n{bar}\n[LivenessGate] {msg}\n{bar}", flush=True)
+                try:
+                    (pathlib.Path(self.out_dir) /
+                     "RUN_VOID_NO_MOVEMENT.txt").write_text(msg + "\n")
+                except Exception:
+                    pass
+                return False  # stop training immediately
+            print(f"[LivenessGate] PASS at {self.num_timesteps}: mean body_motion="
+                  f"{mean_motion:.5f} >= threshold {self.min_motion} — the "
+                  f"creature is alive; continuing.", flush=True)
+        return True
+
+
 from alien_baby.crawler.mimo_crawler_env import MimoCrawlerEnv
 from alien_baby.crawler.her_wrapper import HERCrawlerWrapper
 from alien_baby.crawler.crawler_cnn_extractor import StereoCrawlerCNN, PIXEL_LATENT_DIM
@@ -160,7 +210,7 @@ def make_env(rank, seed, strength_scale, spawn_cone_deg, max_steps, n_substeps,
              near_contact_bonus_scale=0.0, near_contact_range=0.12,
              actuate_hands=False, contact_reward=None,
              action_mode="torque", spawn_radius=None,
-             spawn_disc_lo=0.30, spawn_disc_hi=0.55):
+             spawn_disc_lo=0.30, spawn_disc_hi=0.55, step_cost=-0.05):
     def _init():
         if cart_mode != "none":
             # Phase G: cart substrate. HER not used; plain MimoCrawlerCartEnv.
@@ -211,6 +261,7 @@ def make_env(rank, seed, strength_scale, spawn_cone_deg, max_steps, n_substeps,
                 stereo=stereo,
                 action_mode=action_mode,
                 spawn_radius=spawn_radius,
+                step_cost=step_cost,
             )
             if her:
                 # HERCrawlerWrapper instantiates MimoCrawlerEnv internally and adds
@@ -296,6 +347,7 @@ def train(args):
                  her=args.her,
                  action_mode=_action_mode,
                  spawn_radius=_spawn_radius,
+                 step_cost=getattr(args, "step_cost", -0.05),
                  **cart_kwargs)
         for i in range(args.n_envs)
     ])
@@ -320,6 +372,7 @@ def train(args):
                  her=args.her,
                  action_mode=_action_mode,
                  spawn_radius=_spawn_radius,
+                 step_cost=getattr(args, "step_cost", -0.05),
                  **cart_kwargs)
     ])
     if args.her:
@@ -456,6 +509,16 @@ def train(args):
         else:
             model = SAC("MlpPolicy", train_env, **sac_kwargs)
 
+    # RND intrinsic reward (curiosity): wrap the TRAIN env only — the eval env
+    # stays pure-task so eval still measures the real objective. set_env() so
+    # both fresh and warm-started models pick up the wrapped env.
+    if getattr(args, "rnd", False):
+        from alien_baby.crawler.rnd_wrapper import RNDRewardWrapper
+        train_env = RNDRewardWrapper(train_env, coef=args.rnd_coef, verbose=1)
+        model.set_env(train_env)
+        print(f"  RND: ON  coef={args.rnd_coef} "
+              f"(intrinsic curiosity reward added to the train env)")
+
     callback_list = [
         CheckpointCallback(
             save_freq=max(args.checkpoint_interval // args.n_envs, 1),
@@ -474,6 +537,17 @@ def train(args):
             verbose=1,
         ),
     ]
+    # "Realm of possibility" liveness gate (default ON). Voids any run where
+    # the creature never moved, before any number from it can mean anything.
+    if not getattr(args, "no_liveness_gate", False):
+        callback_list.append(LivenessGateCallback(
+            gate_step=args.liveness_gate_step,
+            min_motion=args.liveness_min_motion,
+            out_dir=str(out_dir),
+            verbose=1,
+        ))
+        print(f"  liveness gate: ON  gate_step={args.liveness_gate_step}  "
+              f"min_motion={args.liveness_min_motion}")
     if getattr(args, "micoa", False):
         callback_list.append(MICOAConfirmationCallback(log_freq=500))
         if args.micoa_pred_horizons:
@@ -796,12 +870,40 @@ if __name__ == "__main__":
     parser.add_argument("--spawn-disc-hi", type=float, default=0.55,
                         help="Phase XVII steer: maximum ball spawn radius from platform center "
                              "in metres (default 0.55). Only used with --cart-mode steer.")
+    # "Make it move": curiosity drive + stop punishing existence + liveness gate
+    parser.add_argument("--rnd", action="store_true",
+                        help="Add Random Network Distillation intrinsic reward (curiosity) to "
+                             "the train env. Pays a novelty bonus that decays as states become "
+                             "familiar — directly counters the freeze attractor. Flat Box obs "
+                             "only (no --vision/--her). Default OFF (existing runs bit-identical).")
+    parser.add_argument("--rnd-coef", type=float, default=1.0,
+                        help="Weight on the normalized RND intrinsic reward (default 1.0). "
+                             "Ignored unless --rnd is set.")
+    parser.add_argument("--step-cost", type=float, default=-0.05,
+                        help="Per-step penalty in the free-body env ('cost of existing'). "
+                             "Default -0.05 (all prior runs bit-identical). Set 0.0 to stop "
+                             "punishing existence so 'do nothing' is no longer the smart move. "
+                             "Cart mode uses --hunger-base/--hunger-rate instead.")
+    parser.add_argument("--liveness-gate-step", type=int, default=10_000,
+                        help="'Realm of possibility' gate: env-timestep at which to check that "
+                             "the creature actually moved (default 10000 = first checkpoint).")
+    parser.add_argument("--liveness-min-motion", type=float, default=0.05,
+                        help="Gate threshold on mean body_motion (joint speed + body/cart "
+                             "translation). Below this = motionless = run VOID. Default 0.05 is "
+                             "a calibration starting point; the gate prints the measured value.")
+    parser.add_argument("--no-liveness-gate", action="store_true",
+                        help="Disable the liveness gate (not recommended). The gate exists so a "
+                             "run that never moved is voided, not analyzed.")
     args = parser.parse_args()
     # Convert numeric strings to float
     if args.ent_coef != "auto":
         args.ent_coef = float(args.ent_coef)
     if args.target_entropy != "auto":
         args.target_entropy = float(args.target_entropy)
+    # RND preconditions: flat Box obs only (the no-vision crawler).
+    if args.rnd and (args.vision or args.her):
+        raise SystemExit("--rnd supports flat Box observations only; not "
+                         "compatible with --vision or --her.")
     # MICOA preconditions: vision required; HER + MICOA out of scope for R36.
     if args.micoa:
         if not args.vision:
