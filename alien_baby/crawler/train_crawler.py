@@ -516,6 +516,10 @@ def train(args):
         from alien_baby.crawler.rnd_wrapper import RNDRewardWrapper
         train_env = RNDRewardWrapper(train_env, coef=args.rnd_coef, verbose=1)
         model.set_env(train_env)
+        # Wrap eval with a pass-through RND (augment=False) so its wrapper stack
+        # matches train — EvalCallback syncs VecNormalize stats by walking both
+        # stacks in lockstep and asserts equal depth. Eval reward stays pure.
+        eval_env = RNDRewardWrapper(eval_env, augment=False, verbose=0)
         print(f"  RND: ON  coef={args.rnd_coef} "
               f"(intrinsic curiosity reward added to the train env)")
 

@@ -52,8 +52,13 @@ class RNDRewardWrapper(VecEnvWrapper):
     """
 
     def __init__(self, venv, coef=1.0, lr=1e-4, out_dim=64,
-                 device="cpu", verbose=1):
+                 device="cpu", verbose=1, augment=True):
         super().__init__(venv)
+        # augment=False -> pure pass-through (no bonus, no predictor update).
+        # Used to wrap the EVAL env so its wrapper stack matches the train env
+        # (SB3's VecNormalize sync walks both stacks in lockstep), while keeping
+        # eval reward pure-task.
+        self.augment = bool(augment)
         obs_space = venv.observation_space
         if not hasattr(obs_space, "shape") or len(obs_space.shape) != 1:
             raise ValueError(
@@ -86,6 +91,8 @@ class RNDRewardWrapper(VecEnvWrapper):
 
     def step_wait(self):
         obs, rews, dones, infos = self.venv.step_wait()
+        if not self.augment:
+            return obs, rews, dones, infos
         norm_obs = self._normalize_obs(np.asarray(obs, dtype=np.float32))
         t = th.as_tensor(norm_obs, device=self.device)
 
