@@ -1835,3 +1835,21 @@ This reframes what we have been trying to do. The sequence of vision-encoder int
 **Confounds / limits:** single seed trained (3 rendered); 0.18 m spawn floor produced gimme contacts (fix: raise to ~0.30–0.50 m so every touch is real); 60K is short for directed crawling to emerge; broad-contact (not hand) metric; `body_motion` includes in-place flailing, so "alive" ≠ "translating".
 
 **Next:** directed-reach run — spawn floor ~0.30–0.50 m (kills gimmes), keep RND, extend to ~250K so approach/contact reward can shape pursuit now that the body is no longer frozen; optionally an outward curriculum to shape reaching.
+
+## Phase XVI — Directed-reach test: movement ≠ locomotion (rnd_directed_250k, 2026-06-17)
+
+**Setup:** the follow-up the 60K entry called for. Free body, position_offset, `--rnd --rnd-coef 0.1` (lowered so curiosity no longer drowns the task gradient — at coef 1.0 the per-episode novelty bonus ≈400 swamps approach ≈1.6), `--approach-reward-scale 10.0` (give pursuit a real gradient), `--step-cost 0.0`, `--spawn-radius 0.70 0.90` (winnability pre-checked: 0/20 step-0 contacts, start dist 0.71–0.90 m, on-platform — no gimmes), 250K, 16 envs, seed 0.
+
+**Result — freeze stays broken, but NO directed locomotion.**
+- Liveness gate **PASS at 10K** (body_motion 0.711) — sustained motion across 250K, no re-freeze.
+- **Zero contacts.** Eval ep_length = 600 on all 25 evals (every episode times out); eval mean_reward hovers at ~0 (range −0.07 to +0.24 ≈ 10 × net metres closed ≈ noise around zero). The creature ends each episode about as far from the ball as it started.
+- **Video (3 seeds, all TIMEOUT):** the body twists, splays its legs, and reorients continuously, but the **torso/CoM does not translate** toward the ball. It flails and turns *in place*; it never crawls across the floor. Start-vs-late frames: same hip location, ball still ~0.78 m away.
+
+**Conclusion — the bottleneck is translation (a gait), not movement.** RND + zero step-cost reliably produces *movement*, but movement here is in-place flailing/reorienting, which is a local optimum that satisfies RND's novelty appetite **without propulsion**. Because the torso never translates, the approach reward (even at ×10) never receives a positive sample to reinforce, so no pursuit gradient ever forms. This confirms the posoffset_smoke3 diagnosis at a finer grain: **crawling-from-prone is a motor-discovery problem for the *translation* primitive specifically** — curiosity and approach-shaping are insufficient because the gait is never sampled. The corrected slogan: *movement is reward-fixable; locomotion is not (it needs the gait discovered or supplied).*
+
+**Implications for next step (decision for human):** the indicated tools are the ones that supply or force *translation*, not more reward-shaping on a body that flails in place:
+1. **Imitation / demonstration** (smoke3's indicated tool): seed the policy with a crawling demo so the gait is in the buffer, then let RL refine. Highest-leverage but most setup.
+2. **Cart-steer pivot** (prior plan): give AB a movement primitive (commanded cart velocity) so pursuit is *possible by construction*, unblocking the directional-vision tests — at the cost of not solving crawling.
+3. **Propulsion affordance**: the position-offset clamps (shoulders/hips 0.4 rad) + prone default pose may not permit net propulsion at all; widen offsets / change default pose / add a directed hip-translation velocity bonus and re-test whether translation is even achievable before investing in imitation.
+
+**Limits:** single seed trained; 250K (longer might eventually sample a gait, but ~0 reward trend across 250K is a strong negative); approach reward rewards distance-closed, which can't fire without translation (a directed *velocity*-toward-target bonus that rewards even momentary closing speed was not tried and is the cheapest remaining shaping lever before pivoting).

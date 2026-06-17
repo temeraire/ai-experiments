@@ -1189,3 +1189,17 @@ If locomotion does not emerge even under position-offset control, the body itsel
 | From-scratch crawling / the freeze is unfixable by reward alone (posoffset_smoke3) | OVERTURNED (movement half) | rnd_movefirst_60k: RND + step_cost 0 broke the freeze; sustained motion, gate PASS 0.722. *Directed* locomotion still open. |
 | The freeze attractor is a do-nothing exploration/reward collapse, not physical impossibility | CONFIRMED | Curiosity reward makes motion optimal; freeze does not survive 60K. |
 | Directional-vision tests are blocked on AB having directional locomotion | STILL BLOCKED | Body moves but does not pursue; need approach reward / curriculum to convert motion → directed reaching. |
+
+### Theory Monitor Note — 2026-06-17 (directed reach: movement ≠ locomotion)
+
+**The freeze and the gait are two different problems — now cleanly separated.** rnd_directed_250k (RND coef 0.1, approach reward ×10, clean 0.70–0.90 m spawn, 250K) kept the freeze broken (gate PASS 0.711) but produced **zero contacts and zero net translation** — the body flails and reorients in place; the CoM never travels. Curiosity solved *movement*; it did not, and structurally cannot, solve *locomotion*, because in-place flailing already maximizes novelty without propulsion, so the translation gait is never sampled and the approach gradient never fires.
+
+**Updated table rows:**
+
+| Item | Status | Evidence |
+| --- | --- | --- |
+| Directed locomotion is reachable by breaking the freeze + approach-shaping | RULED OUT (this configuration) | rnd_directed_250k: 0 contacts, ~0 net translation across 250K despite approach×10; video shows in-place flailing only. |
+| The locomotion bottleneck is specifically the *translation gait*, not movement per se | CONFIRMED | Body moves continuously (gate 0.711) yet CoM does not travel; flailing is a no-propulsion novelty optimum. |
+| Curiosity (RND) is sufficient for the directional-vision precondition | RULED OUT | RND gives undirected in-place motion, not steerable pursuit; the precondition still requires a supplied/forced translation primitive (imitation or cart-steer). |
+
+**The fork (for human):** tools that *supply/force translation* (imitation-from-demonstration; or cart-steer to make pursuit possible by construction), or first cheaply establish whether translation is even *physically* achievable under the current offset clamps + prone pose (widen offsets / directed velocity-toward-target bonus) before investing in imitation.
