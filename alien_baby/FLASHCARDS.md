@@ -897,6 +897,21 @@ A: The basin RL training keeps sliding into where AB's policy collapses to "do n
 
 ---
 
+Q: What is the difference between movement and locomotion?
+A: Movement = any change in the body's configuration (limbs flailing, torso twisting) — the body doing something. Locomotion = the strict subset of movement that translates the whole body through space (the center of mass actually travels A→B). All locomotion is movement; most movement is not locomotion — you can flail every limb while your CoM stays put. The bridge is a gait. Corrected project slogan: movement is reward-fixable; locomotion is not (it needs the gait discovered or supplied).
+
+---
+
+Q: Why did rnd_directed_250k produce movement but not locomotion?
+A: RND rewards novelty, and novelty is cheap to get by fidgeting in place — so the body moved continuously (freeze broken) but the CoM never translated. Because it never translated, the approach reward (which can only fire on distance-closed) never got a positive sample, so no pursuit gradient ever formed. In-place flailing is a local optimum that satisfies RND's novelty appetite without propulsion.
+
+---
+
+Q: What is a "gait" and why is it the crawler bottleneck?
+A: The coordinated, repeating push-off pattern that turns movement into locomotion — the limbs push against the ground in the right sequence/phase so ground-reaction forces sum to net thrust instead of cancelling. The hard part isn't moving each joint; it's discovering the sequence that accumulates propulsion. A gait is a narrow region of action-space RND won't stumble into, and can't be reward-shaped if never sampled — so the indicated tools are ones that supply it (imitation) or force translation directly (velocity-toward-target bonus, cart-steer primitive).
+
+---
+
 Q: What is "geometric refuge"?
 A: When the spawn distribution accidentally puts the agent within touching distance of the ball without doing anything. The policy collects free reward by sitting still. Phase V.2 had this on the inside of the goal-threshold geometry.
 
