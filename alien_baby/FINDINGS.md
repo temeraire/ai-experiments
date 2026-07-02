@@ -2126,3 +2126,25 @@ The RL policy EXCEEDS the hand-drive affordance ceiling (0.225 m axial) in sever
 **Caveats:** single seed; privileged target obs (not vision — that's the next phase); ~35% still time out (approach-then-drift — a candidate for a small terminal-approach shaping term or longer episodes); VecNormalize stats must be matched to the model at eval (a best/final-VN mismatch understated an earlier eval as 36.7%; the matched final-model/final-VN figure is 57.5%). Metabolic-cost term from the full MIMo recipe not yet added (not needed for this result; may further reduce the drift-away failure mode).
 
 **Ablation caveat (important honesty correction) — the 57.5% is mostly a forward-crawl gait, not strong steering.** Running the theory-monitor's recommended diagnostic (zero the `target_obs` ball vector at eval) did NOT collapse the contact rate to the ~16.7% random-walk baseline as predicted: PPO best model scored **56.7% with the signal intact vs 46.7% with it zeroed** — only a ~10-point drop. Interpretation: the policy learned a largely **fixed forward-crawl gait** that succeeds because balls spawn in a **180° forward arc** (`spawn_cone_deg=180`), so "crawl forward" reaches ~half of them without needing the bearing; the directional signal adds only ~10 points of steering on top. This is the project's recurring confound (success-rate ≠ using the signal, cf. vision-ablation), now caught for the crawl task. **Revised claim:** we have reliable *forward* crawling that *weakly* steers — not yet strong directional homing. The honest test is a **360° spawn** (`crawl_ppo_360_3M`, launched): with balls in every direction the forward-crawl shortcut fails, so the directional signal becomes necessary, and the key metric is the **ablation gap** (intact vs zeroed contact rate) on that task. This does not undo the locomotion result (the body genuinely crawls, monotonic approach is real) — it corrects the *directedness* claim: how much the creature actually steers toward a specific bearing is what the 360° test will establish.
+
+## Phase XVI — Directional steering CONFIRMED, confound-free (crawl_ppo_360_3M, 2026-07-02)
+
+**The honest test resolves the confound in the strongest way: on a 360° spawn, the directional signal is decisively load-bearing.** The prior 57.5% (180° forward spawn) was ~47% forward-crawl + ~10% steering. This run removes the forward-crawl shortcut by spawning balls in ALL directions (`spawn_cone_deg 360`), so reaching a ball requires actually turning toward its bearing. PPO, 3M steps, otherwise identical to crawl_ppo_2M.
+
+**Ablation result (40-episode deterministic eval, matched VecNormalize):**
+
+| target_obs | Contacts | Mean toward-ball translation |
+|---|---|---|
+| **INTACT**  | **58%** (23/40) | **+0.255 m** |
+| **ZEROED**  | **12%** (5/40)  | **−0.234 m** (crawls *away*) |
+
+- **The ablation gap is now decisive (58% → 12%)** — collapsing to near the random-walk baseline exactly as the theory-monitor predicted, versus the mere 57→47 on the confounded 180° task. The directional signal is doing the work.
+- **With the bearing removed, mean toward-ball translation goes NEGATIVE (−0.234 m):** blind, the creature crawls forward into empty space and ends up *farther* from balls that spawned behind/beside it. This is the cleanest possible proof that it steers by the signal rather than a fixed gait.
+- **Same performance on the HARDER task:** 58% with balls in any direction ≈ the 57.5% it managed with only-forward balls — so the creature genuinely turns-and-crawls, it isn't just luckier on easy spawns.
+- **Training stable:** ep_rew_mean rose 40→66→84→111→130→150→169 monotonically (PPO stability holds on the harder task).
+
+**Verdict:** genuine **directional crawling to a target in any direction** is achieved and confound-proven. The creature perceives (via the privileged bearing) where the ball is, turns toward it, and crawls to it, reaching it 58% of the time; remove the bearing and it fails (12%, moves away). This is the real milestone — the 180° "57.5%" was a partial confound; the 360° "58% vs 12% ablated" is the honest, confound-free demonstration.
+
+**Corrected project status:** reliable, genuinely-directional crawling to a target is solved (privileged bearing). All four R49 causal-chain links hold, now on the fair task. The next phase is the core project question, now cleanly well-posed with a 58% upper-bound benchmark and a proven behavioral gap (12% without direction): **replace the privileged `target_obs` bearing with VISION** — can the creature learn to read the ball's direction from its cameras and drive the same turn-and-crawl behavior?
+
+**Caveats:** single seed; privileged bearing (not vision — next phase); ~42% still miss (turn-then-approach is harder than straight approach; longer training / metabolic-cost term are candidate refinements); rear-ball turning specifically not yet broken out by bearing bucket.
