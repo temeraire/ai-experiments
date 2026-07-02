@@ -1462,3 +1462,45 @@ A: From "A Walk in the Park" (2022): the policy outputs small OFFSETS around a d
 
 Q: What is a reverse / start-state curriculum?
 A: The principled way to enforce the winnability rule (Florensa 2017/2018): start every episode with the goal trivially achievable (target close, in reach, in view) and push start-states/goals outward only as success rate rises, so the agent always has a winnable episode and difficulty tracks competence. Replaces AB's hand-tuned spawn-cone/eccentricity scaffolds with a mechanism that never presents an impossible config. Pairs with automatic goal generation (goals of intermediate, feasible-but-not-mastered difficulty).
+
+---
+
+## Locomotion & imitation (crawler track, 2026-07)
+
+Q: What was the single biggest lever that unblocked crawling?
+A: The crawl-ready DEFAULT POSE. In position-offset control the actuator ranges are centred on a default pose; offsets only reach useful behaviour if that pose is locomotion-adjacent. Our old default was flat prone; re-centring on an arms-forward "commando" pose raised hand-driven translation 6× (0.039→0.225 m) and let RL discover crawling. Lesson: change the default pose, not just the clamp width.
+
+---
+
+Q: What is early / tip-termination and why does it matter for locomotion?
+A: Ending an episode (with a penalty) when the body fails — here when it tilts past 50°. DeepMimic: early termination "eliminates local optima by penalising the character when on the ground." Without it, lying still or rolling onto one's side and sliding are unpunished optima. It's the standard tool that makes from-scratch locomotion trainable.
+
+---
+
+Q: What is specification gaming, in our project's own example?
+A: Optimising the literal reward against its intent. Our case: rewarding |CoM velocity| (unsigned speed) was maximised by rocking in place — high speed, zero net displacement. Fix: a signed reward (approach = distance-closed toward the goal) plus structurally blocking the cheap exploit (tip-termination).
+
+---
+
+Q: Why couldn't the creature home on the ball until we added target_obs?
+A: The ball's position wasn't in the observation, so the approach reward fired only when random locomotion happened toward the ball — zero directional gradient (mean toward-ball translation exactly 0.000 m). Appending the ball's body-frame position converted the random walk into directed homing (+0.195 m). It's privileged info; vision is meant to supply it next.
+
+---
+
+Q: What is potential-based reward shaping?
+A: A dense reward = the change in a potential function (here, drop in distance-to-ball per step). Being a difference of a potential, it gives a smooth gradient toward the goal without changing the optimal policy — the safe way to guide sparse-reward tasks.
+
+---
+
+Q: Do you need motion-capture to use reference-motion imitation (DeepMimic/AMP)?
+A: No. Hand-authored keyframes work, and often just reference-state initialization (RSI — starting episodes from a few good poses of the target motion) suffices. We held this in reserve; the affordance fix made the gait discoverable without imitation, but RSI/DeepMimic is the indicated tool if a gait stays unsampled.
+
+---
+
+Q: Why did PPO succeed where SAC couldn't on the crawl task?
+A: SAC (off-policy, replay buffer) discovered directed crawling but never stabilised it — it burst to a good policy then regressed as the buffer drifted. PPO (on-policy, no replay drift) trained smooth-monotonically and roughly doubled contacts (23%→57%). MIMo's one working whole-body skill used PPO. On-policy stability can beat off-policy sample-efficiency for consolidating a sparse-reward motor skill.
+
+---
+
+Q: Crawling vs creeping — what's the difference?
+A: Clinically, "crawling" = belly on the floor (commando/belly-crawl); "creeping" = up on hands-and-knees. Our arms_fwd result is belly-crawl. Creeping is harder — it needs the body to support its weight (strength), which MIMo's rolling paper flags as a separate hard requirement.
