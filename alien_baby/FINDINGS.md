@@ -2096,3 +2096,31 @@ The RL policy EXCEEDS the hand-drive affordance ceiling (0.225 m axial) in sever
 **Next (running): crawl_targetobs_long_600k** — same config with max_steps 1200 + 600K training, to let the deliberate approach complete into actual contacts (the efficient episodes close ~0.45 m in 600 steps, so ~1000–1200 steps should reach the ball). After that, the throughline reopens: replace the privileged ball-direction obs with **vision** — the core project test, now finally well-posed because a directional action exists to serve.
 
 **Caveats:** single seed trained; privileged target obs (not vision — that's the point of the next phase); contact completion not yet demonstrated (the refinement run tests it); RND still on (may be unnecessary now that the signal is directional — an ablation worth running).
+
+## Phase XVI — RELIABLE directed crawling via PPO (the MIMo-recipe escalation) (crawl_ppo_2M, 2026-07-02)
+
+**Result.** Switching SAC→PPO (the algorithm MIMo's own working whole-body skill used, per the 2026-07-01 lit-scout) converted the *unstable* directed crawl into a *reliable* one. This is the night's culminating result: the creature crawls, belly-down, to a target it is given the direction to, and **reaches it in the majority of episodes.**
+
+**Why PPO** (escalation trigger): the SAC target_obs runs proved directed crawling *emerges* (mean toward-ball +0.08…+0.20 m, 7–23% contacts) but never *stabilises* — every SAC run showed burst-to-40/70-then-regress, `best_model` caught a lucky peak, nothing locked in (Pattern-Learning "no stable lock-in"). No SAC knob (RND on/off, episode length) fixed it; the instability was algorithm-deep. The scout found MIMo's only working whole-body behaviour (supine→prone rolling) used **PPO + shaping**, not sparse-contact SAC. `train_crawler_ppo.py` reuses the identical crawl env/reward/pose/tip-termination/target_obs and swaps only the algorithm.
+
+**Setup:** PPO (MlpPolicy [256,256], lr 3e-4, n_steps 1024, batch 512, 10 epochs, ent_coef 0), same env as crawl_targetobs: wide body, arms_fwd pose, signed approach reward ×10 (|velocity| term zeroed), tip-termination 50°/−5, target_obs (body-frame ball vector), spawn 0.70–0.80, max_steps 1000, 2M steps, 16 envs, seed 0. No RND.
+
+**Result — stable AND better (40-episode deterministic eval, matched VecNormalize):**
+
+| Metric | SAC best (any target_obs run) | PPO crawl_ppo_2M |
+|---|---|---|
+| Training curve | burst-to-70-then-regress; final eval ~0 | **smooth monotonic → plateau ~180** |
+| Contact rate | 23.3% | **57.5%** (23/40) |
+| Mean toward-ball Δd | +0.195 | **+0.257 m** |
+| Mean end distance | ~0.53 m | **0.476 m** (from 0.733) |
+| Tip-terminated | 0% | 7.5% |
+
+- **Training stability** (the whole point): ep_rew_mean rose 97→112→139→164→179→187 then held ~170–187 — monotonic, no collapse. Eval mean_reward sustained ~120–183 (vs SAC's mostly-zero). This is the stable lock-in SAC never achieved.
+- **Per-step trajectories confirm clean crawl-to-contact:** seed 0 `0.77→0.69→0.55→0.46→0.30→TOUCH@381`; seed 14 `0.72→0.66→0.57→0.50→TOUCH@553`. Monotonic distance decline to contact.
+- **Failure mode of the ~35% timeouts:** approach-then-lose-it (seed 7 stalls at 0.50; seed 21 approaches to 0.54 then drifts back to 1.02) — NOT "never approaches." The homing behaviour is present in every episode; ~57% complete it.
+
+**Verdict:** reliable directed crawling to a target is achieved. Escalating to the MIMo recipe (PPO) was the correct call — it fixed the SAC instability and roughly doubled the contact rate. From 0% directed contact at project start to 57.5%.
+
+**The project throughline is now fully unblocked.** The R49 causal chain: (1) affordance → translation achievable [hand_drive]; (2) → RL discovers locomotion [crawl_minimal]; (3) locomotion + ball-direction obs → directed homing [crawl_targetobs]; (4) PPO → *reliable* directed homing [crawl_ppo_2M]. All four links confirmed. The next phase is the core project test, now well-posed for the first time: **replace the privileged ball-direction observation with VISION** — can the creature learn to use its cameras to provide the ball bearing that the privileged signal currently supplies?
+
+**Caveats:** single seed; privileged target obs (not vision — that's the next phase); ~35% still time out (approach-then-drift — a candidate for a small terminal-approach shaping term or longer episodes); VecNormalize stats must be matched to the model at eval (a best/final-VN mismatch understated an earlier eval as 36.7%; the matched final-model/final-VN figure is 57.5%). Metabolic-cost term from the full MIMo recipe not yet added (not needed for this result; may further reduce the drift-away failure mode).
