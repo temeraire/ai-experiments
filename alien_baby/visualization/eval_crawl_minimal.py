@@ -25,8 +25,14 @@ RESULTS_DIR = pathlib.Path(__file__).parent.parent / "results"
 VIDEO_DIR   = RESULTS_DIR / "videos"
 VIDEO_DIR.mkdir(parents=True, exist_ok=True)
 
-CKPT = RESULTS_DIR / "crawl_minimal_400k_best" / "best_model.zip"
-VN_PATH = RESULTS_DIR / "crawl_minimal_400k" / "vec_normalize.pkl"
+import sys
+# Tag + target_obs are read from argv so this evals either the minimal (69-dim) or
+# the target_obs (72-dim) model:  python -m ...eval_crawl_minimal <run_tag> [--target-obs]
+_TAG = sys.argv[1] if len(sys.argv) > 1 and not sys.argv[1].startswith("-") else "crawl_minimal_400k"
+TARGET_OBS = "--target-obs" in sys.argv
+
+CKPT = RESULTS_DIR / f"{_TAG}_best" / "best_model.zip"
+VN_PATH = RESULTS_DIR / _TAG / "vec_normalize.pkl"
 
 # Match train_crawler args exactly:
 XML_PATH      = "alien_baby/crawler/mimo_crawler_pos_wide.xml"
@@ -67,6 +73,7 @@ def make_eval_env():
             crawl_pose=CRAWL_POSE,
             terminate_tilt_deg=TERM_TILT,
             tip_penalty=TIP_PENALTY,
+            target_obs=TARGET_OBS,
         )
         return env
     return _init
@@ -125,6 +132,7 @@ def run_eval(model, vec_env, n_eps=N_EVAL_EPS, seed_offset=0):
         crawl_pose=CRAWL_POSE,
         terminate_tilt_deg=TERM_TILT,
         tip_penalty=TIP_PENALTY,
+        target_obs=TARGET_OBS,
     )
 
     for ep in range(n_eps):
@@ -250,7 +258,7 @@ def print_summary(results):
 # --------------------------------------------------------------------------
 
 def render_episodes(model, vec_env, seeds=RENDER_SEEDS, max_steps=RENDER_STEPS,
-                    label="crawl_minimal_400k"):
+                    label=_TAG):
     """Render overhead + ringside for each seed into crawler_<label>_seed<N>.mp4."""
     inner_env = MimoCrawlerEnv(
         vision=False,
@@ -270,6 +278,7 @@ def render_episodes(model, vec_env, seeds=RENDER_SEEDS, max_steps=RENDER_STEPS,
         crawl_pose=CRAWL_POSE,
         terminate_tilt_deg=TERM_TILT,
         tip_penalty=TIP_PENALTY,
+        target_obs=TARGET_OBS,
     )
     renderer_overhead = mujoco.Renderer(inner_env.model, 480, 480)
     renderer_ringside = mujoco.Renderer(inner_env.model, 480, 480)

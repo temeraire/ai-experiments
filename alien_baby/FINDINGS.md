@@ -2065,3 +2065,34 @@ The RL policy EXCEEDS the hand-drive affordance ceiling (0.225 m axial) in sever
 > Pattern Learning Framework: CHALLENGED (stability) / CONFIRMED (efficiency) — The burst-contact trajectory (contacts at 210K, absent 220K–360K, back at 370K, declining 380K→400K) and high variance at peak (std 80.87 = 197% of mean) are the opposite of a stably locked-in sparse code; but RL's best gait (0.646 m) exceeding the best hand-scripted gait (0.225 m) by 2.9× confirms gradient search finds richer sparse coordination than enumeration.
 >
 > The most important thing we don't know yet: Whether adding ball-direction to the proprio observation converts the 16.7% accidental-contact rate into reliable directed homing — the clean test of whether the remaining gap is purely informational or a deeper coordination problem. (Acted on: the crawl_targetobs_400k run adds exactly this signal.)
+
+## Phase XVI — DIRECTED CRAWLING ACHIEVED: the informational fix (crawl_targetobs_400k, 2026-07-02)
+
+**Milestone.** This is the first time in the project's history that the creature performs *directed locomotion* — it crawls, belly-down, steadily toward a target whose direction it is told. It resolves the R49 precondition (a directional action for vision to eventually serve).
+
+**Hypothesis** (from the crawl_minimal_400k theory note): that run crawled but made only *random-walk* contact (mean toward-ball translation = 0.000 m) because ball position was absent from the observation — the approach reward had no directional gradient the policy could act on. Prediction: add ball-direction to the obs → directed homing emerges, because the locomotion primitive already exists.
+
+**Change** (one thing): `target_obs=True` — append the ball-1 position in the BODY frame (3 numbers, heading-invariant) to the observation (69→72 dims). This is privileged target info (vision is meant to supply it later). Everything else identical to crawl_minimal_400k (wide body, arms_fwd pose, signed approach reward ×10, |velocity| term zeroed, tip-termination 50°/−5, RND 0.1, spawn 0.70–0.80, 400K, seed 0).
+
+**Result — directed homing confirmed (30-episode deterministic eval):**
+
+| Metric | crawl_minimal (no signal) | crawl_targetobs |
+|---|---|---|
+| Mean toward-ball translation (Δd) | **+0.000 m** (random walk) | **+0.195 m** (directed) |
+| Per-episode Δd sign | random ± | **positive in ~24/30 episodes** |
+| Mean start→end distance | ~unchanged | 0.728 → 0.533 m (closed 0.195 m) |
+| Contacts | 16.7% (lucky) | 6.7% (approaches, times out short) |
+| Timeouts | 83% | 87% |
+
+- **Efficient episodes crawl straight at the ball:** ep7 (seed 49) closed 0.454 m with CoM displacement 0.464 m (≈ all displacement was ball-ward); ep14 (seed 98) closed 0.421 m / disp 0.437 m.
+- **Per-step distance is a steady monotonic decline** (the crawl signature, not a fall): seed 49 `0.75→0.70→0.56→0.44→0.39→0.35→0.31→0.30`; seed 98 `0.70→0.61→0.48→0.41→0.36→0.30→0.27`. Tilt stays low throughout (seed 49 12–19°, seed 98 1–8°) — belly-down the entire episode, never tips. This is genuine crawling toward the target.
+
+**Video-describer caveat (important):** the Gemini auto-describer reports these episodes as "the character falls backward, away from the target." This is FALSE and is a documented failure of the describer on the prone MIMo body from the overhead/ringside cameras (it hallucinates a standing figure that then falls). It is contradicted directly by the physics: the hip translates monotonically toward the ball over all 600 steps while tilt stays <20° (no tip-termination ever fires). The per-step distance log is the authoritative evidence; the describer is not usable for this body/camera and should not be relied on here.
+
+**Why contacts DROPPED despite better behavior:** crawl_minimal got occasional *lucky* contacts by wandering (high CoM displacement, no direction). crawl_targetobs *deliberately approaches* but decelerates near the ball and runs out of the 600-step budget at ~0.27–0.35 m (it covers ~0.45 m of a ~0.7 m gap). So contact rate is a poor metric here; **mean toward-ball translation (+0.195 m, systematically positive) is the correct success signal, and it is unambiguous.**
+
+**Verdict:** the crawl_minimal theory prediction is CONFIRMED — the remaining gap was purely informational. With the ball's direction observable, the pre-existing locomotion primitive becomes directed homing. **Directed crawling is solved.**
+
+**Next (running): crawl_targetobs_long_600k** — same config with max_steps 1200 + 600K training, to let the deliberate approach complete into actual contacts (the efficient episodes close ~0.45 m in 600 steps, so ~1000–1200 steps should reach the ball). After that, the throughline reopens: replace the privileged ball-direction obs with **vision** — the core project test, now finally well-posed because a directional action exists to serve.
+
+**Caveats:** single seed trained; privileged target obs (not vision — that's the point of the next phase); contact completion not yet demonstrated (the refinement run tests it); RND still on (may be unnecessary now that the signal is directional — an ablation worth running).
