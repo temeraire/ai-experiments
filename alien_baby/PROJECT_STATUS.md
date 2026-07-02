@@ -167,21 +167,24 @@ Theoretical framing: in Taylor's notation, M (forward-paddle) must FAIL unless m
 | **Phase XVI R49 (MICOA+vision + aux ball-position decode loss, 250K)** | **REPRESENTATION FIX FAILED. Lateral R² = 0.010 (chance; below proprio control 0.043 and below R43 ~0.08 baseline; well under 0.30 success bar). Forward R² = 0.157 (decode loss caught distance, not direction). Ecc sweep: 20,19,19,8,4,0 — roughly on par with R43, no gain. Ablation high (1.29–2.04) but confounded by kl_pred_k1 explosion (244; healthy 0.5–2) and sigma_combined near-collapse (0.117). Ablation-profile flip (ecc=0 lower, off-center high-flat) auto-flagged as "recruited at margin" — NOT a positive finding; this is the known high-ablation-under-encoder-pathology trap (cf. R41). REFRAME: cart substrate makes vision directionally pointless because AB cannot steer; fix is locomotion under position-offset control.** | **R49, 2026-06-16** |
 | **rnd_propulsion_400k (propulsion-affordance test, position_offset, 400K, seed 0)** | **TRANSLATION NOT ACHIEVABLE (Verdict B). Eval mean_reward peaked 64.46 ± 22.44 at 310K then collapsed to 11.14 at final. ep_len_mean=600 on all 40 evals = zero ball contacts throughout. Velocity_bonus (×2.0) fired on in-place CoM oscillation (rocking), not net floor translation. Peak-then-regression pattern confirms no stable gait was found. Video (3 seeds, all TIMEOUT): seeds 0 and 1 collapse/fall prone, ball stays stationary, no floor-crossing. Option-3 "widen the reward" from rnd_directed_250k is tested and closed.** | **rnd_propulsion_400k, 2026-07-01** |
 
+| **crawl_minimal_400k (wide XML + arms_fwd pose, 400K, seed 0)** | **FIRST NON-ZERO CONTACT RATE in any free-body crawler run. Eval reward: 0.03 (10K) → peak 41.12 ± 80.87 (370K). Deterministic eval: 5/30 contacts (16.7%), 0/30 tip-terminated, 25/30 timed out. Mean CoM displacement 0.298 m (best single episode 0.646 m, exceeds hand-drive ceiling 0.225 m). Mean dist change = 0.000 m: locomotion discovered but undirected (ball position not in proprio). Video confirms real belly-down body translation in touch episodes. Verdict: (B) PARTIAL.** | **crawl_minimal_400k, 2026-07-02** |
+
 ## Last run
 
-- **Tag:** rnd_propulsion_400k — propulsion-affordance test (Option-3)
-- **Date:** 2026-07-01
-- **Setup:** Free body, position_offset, `--rnd --rnd-coef 0.1 --step-cost 0.0 --velocity-bonus-scale 2.0 --approach-reward-scale 10.0 --spawn-radius 0.70 0.80`, 400K steps, 16 envs, seed 0. Specifically designed to test whether velocity_bonus paid for any CoM speed could unlock propulsion.
+- **Tag:** crawl_minimal_400k — first non-zero contact rate in any free-body crawler run
+- **Date:** 2026-07-02
+- **Setup:** Wide body (mimo_crawler_pos_wide.xml) + arms_fwd crawl pose + tip-termination (50°, −5 penalty). `--action-mode position_offset --velocity-bonus-scale 0.0 --approach-reward-scale 10.0 --step-cost 0.0 --rnd --rnd-coef 0.1 --spawn-radius 0.70 0.80`, 400K steps, 16 envs, seed 0.
 - **Key results:**
-  - Eval mean_reward: 6.82 (10K) → peak 64.46 ± 22.44 (310K) → 11.14 (400K final)
-  - ep_len_mean = 600.00 on all 40 evals — zero ball contacts throughout the run
-  - Liveness gate: PASS at 10K (body_motion=0.711) — body moves, does not freeze
-  - Video (3 seeds rendered, all TIMEOUT 600 steps): bodies fall/collapse prone, ball stationary, no floor-crossing locomotion
-  - Peak-then-regression (310K peak, collapse by 330K): transient CoM oscillation (rocking), not a stable gait
-  - **Verdict: (B) TRANSLATION NOT ACHIEVABLE** under current config (0.4 rad clamps, prone default pose, 400K). Option-3 "widen the reward" from rnd_directed_250k is tested and closed.
-- See FINDINGS.md rnd_propulsion_400k entry for full eval trajectory table, video paths, peak-regression analysis, and comparison to prior runs.
+  - Eval reward: 0.03 (10K) → peak 41.12 ± 80.87 (370K, best_model) → 20.29 ± 60.73 (400K final)
+  - Deterministic eval (30 eps from best_model.zip): **5/30 contacts (16.7%)**, 0/30 tip-terminated, 25/30 timed out
+  - Mean CoM displacement all: 0.298 m; touch episodes: 0.379 m; best single episode: 0.646 m (EXCEEDS hand-drive ceiling 0.225 m)
+  - Mean dist change to ball = **+0.000 m** — locomotion is undirected (ball XY not in proprio obs)
+  - Liveness gate: PASS at 10K (body_motion=1.277)
+  - Video (seed 56 / ep8, seed 63 / ep9): belly-down body translation confirmed toward ball; (seed 0,1): spinning/rolling without contact
+  - **Verdict: (B) PARTIAL** — real locomotion discovered, contacts genuine, but steering not yet learned. Ball position must be added to proprio obs for homing to emerge.
+- See FINDINGS.md crawl_minimal_400k entry for full tables, displacement table, video paths, eval trajectory, and comparison to prior runs.
 
-### Previous run (Phase XVI R49, 2026-06-16)
-- MICOA + vision + auxiliary ball-position decode loss, 250K steps. Representation-fix hypothesis refuted: lateral R² = 0.010 (chance). kl_pred_k1 exploded (244). Cart substrate gives AB no directional action so even a perfect encoder has no job. Fix is locomotion upstream, not encoder downstream.
-- See FINDINGS.md Phase XVI R49 entry for full tables and caveats.
+### Previous run (rnd_propulsion_400k, 2026-07-01)
+- Propulsion-affordance test: 0 contacts after 400K, eval reward peaked 64.46 at 310K then collapsed. Velocity_bonus fired on rocking not translation. Option-3 closed.
+- See FINDINGS.md rnd_propulsion_400k entry for full details.
 ---

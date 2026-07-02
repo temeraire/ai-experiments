@@ -267,6 +267,7 @@ def make_env(rank, seed, strength_scale, spawn_cone_deg, max_steps, n_substeps,
                 crawl_pose=crawl_pose,
                 terminate_tilt_deg=terminate_tilt_deg,
                 tip_penalty=tip_penalty,
+                target_obs=target_obs,
             )
             if her:
                 # HERCrawlerWrapper instantiates MimoCrawlerEnv internally and adds

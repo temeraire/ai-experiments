@@ -1960,3 +1960,100 @@ Best net translation = **0.039 m**, far below the 0.05 m bar and nowhere near a 
 **Caveats:** the four hand-chosen gaits are not exhaustive — a cleverer open-loop pattern might do marginally better, but all four sensible gaits clustering at 0.03–0.04 m (and static hold at ~0) is strong evidence the ceiling is low. Single seed (the physics is deterministic given the pose, so seed matters little here). CoM metric is the root free-joint xy. The clamp values above are read from `mimo_crawler_pos.xml`; widening them is a one-line-per-actuator XML change but should be paired with a re-tuned kp and an integrator/stability check (the clamps were originally tightened for numerical stability).
 
 **Addendum — widened-clamp verification (same day):** to de-risk the recommended fix, a throwaway diagnostic body variant `mimo_crawler_pos_wide.xml` was created (23 limb/spine actuators widened: shoulders ±0.4→±0.9, hip_flex −0.57/+0.23→−1.1/+0.6, knees −0.92/−0.12→−1.6/+0.1, hip_bend ±0.2→±0.45, etc.; original body untouched, no training) and hand-driven with the same four gaits. Result: **numerically STABLE** (root z steady ~2.09, no explosion — so widening with the existing kp is safe under implicitfast), and best net CoM translation rose to **0.092 m** (belly_crawl) vs 0.039 m narrow — a ~2.4× gain that crosses the 0.05 m "achievable" bar. **But** the other three gaits barely moved (0.025–0.032 m) and the belly_crawl video shows a slow, awkward contorting drag "struggling to move from prone," not a clean crawl. **Refined conclusion:** range-of-motion is a *genuine contributing* cause (cause B is partly real — widening helps and is stable), but widening the clamps *alone* is **necessary-but-likely-not-sufficient** for confident locomotion; the prone default pose (and, on top of a now-adequate ROM, gait discovery — cause A) still matter. Indicated next step for the human: (1) adopt a widened-clamp body (verified stable), (2) also reconsider the prone default pose toward a crawl-ready posture, then (3) re-run this hand-drive test to confirm a *clean* >0.15 m hand-driven crawl exists before committing RL/imitation compute. Widening values here are a first pass, not tuned; hand gaits are not optimized (RL may exceed them once ROM permits).
+
+
+---
+
+## 2026-07-02 — crawl_minimal_400k: first non-zero contact rate in any free-body crawler run
+
+**Hypothesis:** The previous affordance chain established that (1) the original clamps blocked translation physically (hand-drive best = 0.039 m), (2) widening the clamps to `mimo_crawler_pos_wide.xml` raised the ceiling to 0.092 m (marginal), and (3) a pose search found the "arms_fwd" commando-crawl pose (both shoulders forward, elbows slightly bent) gives 0.225 m axial belly-down translation — the first hand-drive result crossing the 0.15 m bar. This run tests the minimal-change RL hypothesis: given a body that CAN physically translate (wide XML + arms_fwd pose), will RL discover locomotion toward the ball? The unsigned velocity bonus was zeroed (previously gameable by rocking); approach-toward-ball reward was kept at ×10; tip-over termination (50° tilt, −5 penalty) was added to block the roll-onto-side exploit that prior runs used to avoid the upright stability problem.
+
+**Setup:** `python alien_baby/crawler/train_crawler.py --action-mode position_offset --xml-path alien_baby/crawler/mimo_crawler_pos_wide.xml --crawl-pose arms_fwd --velocity-bonus-scale 0.0 --approach-reward-scale 10.0 --step-cost 0.0 --terminate-tilt-deg 50 --tip-penalty -5 --spawn-radius 0.70 0.80 --rnd --rnd-coef 0.1 --steps 400000 --n-envs 16 --seed 0 --run-tag crawl_minimal_400k`. Per-step reward = `10.0 × (prev_dist − curr_dist) + 0.1 × RND_intrinsic`. No unsigned velocity term. No step cost.
+
+**Numbers:**
+
+| Metric | Value |
+|---|---|
+| Eval reward (10K, pure task) | 0.03 ± 0.14 |
+| Best eval reward (370K) | **41.12 ± 80.87** — new high-water mark; best_model saved here |
+| Final eval reward (400K) | 20.29 ± 60.73 |
+| Final eval ep_length | 553.85 ± 134.51 |
+| ep_rew_mean (rollout, VecNorm + RND) | 98.4 → 71.6 (includes intrinsic; not comparable to eval) |
+| Steps completed | 400,000 (normal finish, no errors) |
+| Liveness gate | **PASS** at 10K (body_motion = 1.277 ≥ 0.05) |
+| Deterministic eval: contacts (30 eps) | **5/30 = 16.7%** — first non-zero contact rate in project history for a free-body crawler |
+| Deterministic eval: tip-terminated | **0/30 = 0%** — tip-termination killed the tipping exploit entirely |
+| Deterministic eval: timed out | 25/30 = 83.3% |
+| Mean start distance to ball | 0.728 m |
+| Mean end distance to ball | 0.728 m |
+| Mean distance change (+ = closer) | **+0.000 m** |
+| Mean CoM displacement, all episodes | 0.298 m |
+| Mean CoM displacement, touch episodes (n=5) | 0.379 m |
+| Mean CoM displacement, no-touch episodes (n=25) | 0.282 m |
+| Correlation (CoM displacement, contact) | +0.258 |
+
+**Eval trajectory (eval rewards, key waypoints):**
+
+| Steps | Eval reward | Note |
+|---|---|---|
+| 10K | 0.03 | first eval; New best |
+| 90K | 0.09 | New best; still no contacts |
+| 210K | **20.01 ± 60.45** | **first contact ever in eval**; New best |
+| 220K–360K | −0.70 to +0.42 | back to near-zero; contacts disappeared again |
+| 370K | **41.12 ± 80.87** | **highest eval reward in project history**; New best; best_model saved |
+| 380K | 40.69 ± 81.76 | maintained |
+| 400K | 20.29 ± 60.73 | final |
+
+Contacts arrive in bursts at 210K and 370–380K rather than monotonically. The high std (80.87) at the peak means most episodes still timeout but a small fraction achieve large positive rewards (200 per contact). Expected reward from 5/30 contacts = ~33 + approach reward ≈ consistent with 41.12 peak.
+
+**Is it crawling? (displacement/contact table, 30 deterministic episodes):**
+
+| Episode | Outcome | Start dist | End dist | Dist change | CoM disp |
+|---|---|---|---|---|---|
+| ep 8 | TOUCH | 0.704 | 0.312 | +0.391 | 0.415 |
+| ep 9 | TOUCH | 0.772 | 0.139 | +0.633 | 0.646 |
+| ep 15 | TOUCH | 0.737 | 0.399 | +0.338 | 0.348 |
+| ep 24 | TOUCH | 0.710 | 0.514 | +0.196 | 0.229 |
+| ep 29 | TOUCH | 0.695 | 0.531 | +0.164 | 0.259 |
+| Mean (touch) | — | 0.724 | 0.379 | +0.344 | 0.379 |
+| ep 23 | TIMEOUT | 0.767 | 1.454 | −0.687 | 0.718 |
+| ep 17 | TIMEOUT | 0.757 | 1.133 | −0.375 | 0.535 |
+| Mean (no-touch) | — | 0.728 | 0.750 | −0.022 | 0.282 |
+| **Mean (all 30)** | — | **0.728** | **0.728** | **+0.000** | **0.298** |
+
+Key observation: mean dist change = 0.000 m is the clearest possible readout of undirected movement. The body moves (0.298 m average), and when the random movement carries it toward the ball, contact happens. But there is no consistent steering. Note also that ep23 (no-touch) has a CoM displacement of 0.718 m — larger than any touch episode — because the body moved far but in the wrong direction. RL has discovered locomotion but not direction.
+
+The RL policy EXCEEDS the hand-drive affordance ceiling (0.225 m axial) in several episodes, confirming that joint coordination discovered by RL is richer than any of our hand-scripted gaits.
+
+**Video evidence** (`alien_baby/results/videos/crawler_crawl_minimal_400k_seed{0,1,2}.mp4` and `_touch_ep8.mp4`, `_touch_ep9.mp4`):
+
+- **Seed 0 (timeout, dist_change +0.159 m):** Gemini describes the body rotating counter-clockwise around its axis near the ball in the overhead view. Body drifts 0.159 m closer but never contacts. This is a spinning/rocking pattern, not a directed crawl.
+- **Seed 1 (timeout, dist_change −0.220 m):** Gemini describes the body falling backward, then rolling chaotically, ending near the ball but without contact. "Movement characterized by an initial, somewhat controlled lean that quickly transitions into an uncontrolled fall and subsequent rolling." Body ends up near the ball through a chaotic path, but distances itself 0.220 m net by episode end.
+- **Touch ep8, seed 56 (contact at step 223, dist_change +0.391 m):** Gemini confirms a belly-down, directed slide. "The agent deliberately changes its pose by falling/lying down to become level with the target, and then crawls towards it." Body falls forward from arms_fwd starting pose and slides/crawls across the floor. "Movement is fluid and appears goal-oriented towards the red ball." This is genuine directed body translation.
+- **Touch ep9, seed 63 (contact at step 394, dist_change +0.633 m):** Gemini describes "an initial fall forward onto its side, landing flat, then slides/crawls body toward the red ball." Body travels 0.633 m closer to ball over 394 steps. Confirms real locomotion, not spawn-luck.
+
+**Comparison to prior runs and hand-drive ceiling:**
+
+| Run | Contacts | Net CoM translation | Note |
+|---|---|---|---|
+| rnd_movefirst_60k | Yes (gimme) | Not tested honestly | Spawn inside body footprint |
+| rnd_directed_250k | 0 | Zero (flailing in place) | Old narrow clamps |
+| rnd_propulsion_400k | 0 | Zero (oscillation) | Old narrow clamps, old pose |
+| hand_drive belly_crawl (old clamps) | — | 0.039 m | Physically blocked |
+| hand_drive belly_crawl (wide clamps) | — | 0.092 m | Marginal |
+| hand_drive arms_fwd pose (wide clamps) | — | 0.225 m | First real affordance |
+| **crawl_minimal_400k (RL, wide, arms_fwd)** | **5/30 = 16.7%** | **0.298 m avg, 0.646 m best** | **RL exceeds hand-drive ceiling** |
+
+**Verdict: (B) PARTIAL.** Contact rate 16.7% is the first genuine non-zero contact rate in any free-body crawler run. Body CoM displacement (0.298 m average, 0.646 m best) exceeds the hand-drive affordance ceiling, confirming RL has discovered real locomotion primitives. The 0% tip-termination rate confirms the arms_fwd pose + tip-penalty has eliminated the tipping exploit. BUT: mean dist change = 0.000 m and correlation (displacement, contact) = +0.258 confirm that movement is undirected. Contacts come from random drift that happens to carry the body into the ball. The approach reward (×10) cannot teach steering because ball position is not in the proprio observation — the policy observes its own XY position but not the ball's, so it cannot infer which direction reduces the approach-reward gradient. What to fix: add ball-direction information to the proprio observation (`target_obs=True` or a temporary ball-xy vector), which gives the approach reward a signal the policy can act on to produce consistent homing.
+
+**Is vision load-bearing?** N/A — this run has no vision (pure proprio). Vision cannot be evaluated until the body can steer toward a target. This run establishes the precondition: the body can now physically translate and make contact. Vision comes next.
+
+**Theory signals:** The Behavioral Prediction Framework predicts useful internal models emerge when actions produce discriminable outcomes. Here, every direction of locomotion produces a *similar* approach-reward gradient in expectation (the ball is equally likely to be in any direction within the 180° spawn cone), so the prediction of "move this direction → ball closer" never becomes discriminable. The body learns to move but not where. This is consistent with the framework: prediction-of-consequence requires a distinguishable consequence, which requires ball-position information in the observation. The Pattern Learning Framework notes that the 0.298 m locomotion displacement emerging from RL — exceeding the 0.225 m hand-drive ceiling — suggests RL has found sparse stable patterns for joint coordination that are richer than hand-scripted gaits. The locomotion pattern is real; it lacks directional context.
+
+**Honest caveats:**
+- Single seed (seed 0). The contact bursts (210K, 370K) are not monotonic, so a different seed might discover locomotion earlier or later.
+- The ep_len std (134.51 at 400K) and the burst-pattern in eval rewards suggest the locomotion behavior is not yet stable — the policy discovers contact-able trajectories inconsistently. This is early-stage SAC with a sparse reward: more steps may consolidate the behavior.
+- The contact rate (16.7%) matches the expected rate from undirected random walk given the spawn geometry: ball in a 0.70–0.80 m ring, body travels ~0.3 m, probability of overlap is non-trivial. We cannot distinguish "RL discovered a directed gait" from "RL discovered locomotion and the ball fell within reach by chance" without seeing dist_change > 0 consistently. Right now mean dist_change = 0 makes it clear: chance, not direction.
+- The best_model was saved at 370K. The final model (400K) shows slightly lower eval reward (20.29 vs 41.12), suggesting some regression in the last 30K steps.
+
+**Next question:** Does adding ball position to the proprio observation (a 2-vector ball_xy or target_obs=True) convert the undirected locomotion into consistent ball-homing, producing dist_change reliably > 0 and contact rate > 50%?

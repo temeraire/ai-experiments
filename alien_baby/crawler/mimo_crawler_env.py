@@ -102,7 +102,8 @@ class MimoCrawlerEnv(gym.Env):
                  xml_path=None,
                  crawl_pose=None,
                  terminate_tilt_deg=None,
-                 tip_penalty=0.0):
+                 tip_penalty=0.0,
+                 target_obs=False):
         super().__init__()
         self.vision = vision
         self.max_steps = max_steps
@@ -140,6 +141,12 @@ class MimoCrawlerEnv(gym.Env):
         self.crawl_pose = crawl_pose or {}
         self.terminate_tilt_deg = terminate_tilt_deg
         self.tip_penalty = float(tip_penalty)
+        # target_obs: append the ball-1 position in the BODY frame (3 numbers) to the
+        # observation. This is the directional signal a go-to-target crawler needs —
+        # without it the approach reward has no gradient the policy can act on (the
+        # crawl_minimal_400k run crawled but only made *random-walk* contact). This is
+        # privileged target info; vision is meant to eventually supply it.
+        self.target_obs = target_obs
         # Phase XVI R49: action_mode selects torque vs position-offset control.
         # "torque": original ctrl=action*strength_scale (no change from prior phases).
         # "position_offset": action∈[-1,1] is mapped linearly onto each actuator's
@@ -182,7 +189,8 @@ class MimoCrawlerEnv(gym.Env):
             vis_dim = VISION_DIM_STEREO if stereo else VISION_DIM_MONO
         else:
             vis_dim = 0
-        n_obs = PROPRIO_DIM + memory_dim + vis_dim
+        target_dim = 3 if target_obs else 0
+        n_obs = PROPRIO_DIM + memory_dim + target_dim + vis_dim
         self.observation_space = spaces.Box(
             low=-np.inf, high=np.inf, shape=(n_obs,), dtype=np.float32
         )
@@ -481,6 +489,16 @@ class MimoCrawlerEnv(gym.Env):
                 1.0 if getattr(self, "_ball2_touched", False) else 0.0,
             ], dtype=np.float32)
             proprio = np.concatenate([proprio, mem])
+
+        if self.target_obs:
+            # Ball-1 position relative to the body, rotated into the body frame so the
+            # signal is heading-invariant (the policy can read "ball is forward-left").
+            tgt_jid  = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_JOINT, "target_free")
+            tgt_qadr = self.model.jnt_qposadr[tgt_jid]
+            ball_w = self.data.qpos[tgt_qadr:tgt_qadr + 3]
+            R = self.data.xmat[self._root_body_id].reshape(3, 3)
+            ball_ego = (R.T @ (ball_w - root_pos)).astype(np.float32)
+            proprio = np.concatenate([proprio, ball_ego])
 
         if not self.vision:
             return proprio
