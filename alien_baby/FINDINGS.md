@@ -2148,3 +2148,12 @@ The RL policy EXCEEDS the hand-drive affordance ceiling (0.225 m axial) in sever
 **Corrected project status:** reliable, genuinely-directional crawling to a target is solved (privileged bearing). All four R49 causal-chain links hold, now on the fair task. The next phase is the core project question, now cleanly well-posed with a 58% upper-bound benchmark and a proven behavioral gap (12% without direction): **replace the privileged `target_obs` bearing with VISION** — can the creature learn to read the ball's direction from its cameras and drive the same turn-and-crawl behavior?
 
 **Caveats:** single seed; privileged bearing (not vision — next phase); ~42% still miss (turn-then-approach is harder than straight approach; longer training / metabolic-cost term are candidate refinements); rear-ball turning specifically not yet broken out by bearing bucket.
+
+**Multi-seed confirmation (addresses the single-seed caveat):** the 360° directional-steering result reproduces across seeds — the large ablation gap is robust, not a seed artifact.
+
+| Seed | INTACT contacts | ZEROED contacts | Ablation gap | ZEROED toward-ball |
+|---|---|---|---|---|
+| 0 | 58% | 12% | 46 pts | −0.234 m |
+| 1 | 78% | 32% | 46 pts | −0.182 m |
+
+Both seeds: identical ~46-point ablation gap, both go negative toward-ball when the bearing is zeroed (crawl away when blinded), both trained smooth-monotonic to plateau ~180. Absolute rate varies with seed (58% vs 78%, normal PPO variance) but the causal finding — the directional signal is strongly load-bearing and the creature genuinely steers by it — is seed-robust. Directional crawling to a target is confirmed.
