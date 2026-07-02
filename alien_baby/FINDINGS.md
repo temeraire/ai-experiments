@@ -2057,3 +2057,11 @@ The RL policy EXCEEDS the hand-drive affordance ceiling (0.225 m axial) in sever
 - The best_model was saved at 370K. The final model (400K) shows slightly lower eval reward (20.29 vs 41.12), suggesting some regression in the last 30K steps.
 
 **Next question:** Does adding ball position to the proprio observation (a 2-vector ball_xy or target_obs=True) convert the undirected locomotion into consistent ball-homing, producing dist_change reliably > 0 and contact rate > 50%?
+
+> **Theory Monitor Note — 2026-07-02**
+>
+> Behavioral Prediction Framework: PARTIALLY CONFIRMED (locomotion) / UNTESTABLE (direction) — The 0.646 m best-episode CoM translation exceeding the 0.225 m hand-drive ceiling confirms a real internal locomotion coordination program has formed; but the mean dist_change of +0.000 m across 30 eval episodes shows no model of "move toward the ball" exists, structurally expected because ball position is absent from the observation — the creature cannot form a directional predictive model from a signal that does not include direction.
+>
+> Pattern Learning Framework: CHALLENGED (stability) / CONFIRMED (efficiency) — The burst-contact trajectory (contacts at 210K, absent 220K–360K, back at 370K, declining 380K→400K) and high variance at peak (std 80.87 = 197% of mean) are the opposite of a stably locked-in sparse code; but RL's best gait (0.646 m) exceeding the best hand-scripted gait (0.225 m) by 2.9× confirms gradient search finds richer sparse coordination than enumeration.
+>
+> The most important thing we don't know yet: Whether adding ball-direction to the proprio observation converts the 16.7% accidental-contact rate into reliable directed homing — the clean test of whether the remaining gap is purely informational or a deeper coordination problem. (Acted on: the crawl_targetobs_400k run adds exactly this signal.)

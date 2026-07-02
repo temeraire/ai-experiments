@@ -1238,3 +1238,28 @@ Whether net CoM translation is physically achievable under the current 0.4 rad p
 
 ### Recommended diagnostic (a MEASUREMENT, not a training run)
 Hand-drive an open-loop scripted joint-position sequence on the CURRENT body (MimoCrawlerEnv, action_mode=position_offset) — no RL, no learning — and check whether the torso CoM drifts >~5 cm from start over several cycles. YES → translation is physically achievable → invest in imitation-from-demonstration (cause A). NO → the clamp range/pose is the geometric wall → widen shoulder/hip offsets to ~0.8 rad or change default pose (cause B) before any further RL or imitation work. (Note: the existing hand_drive_test.py targets the OLD PlatformCreatureEnv, not this body — a current-body version is needed.)
+
+---
+
+## 2026-07-02 — crawl_minimal_400k: The affordance chain closes; the A/B ambiguity is resolved
+
+**Run context:** The hand_drive affordance diagnostic settled Cause A vs Cause B toward B: translation was physically blocked by the original clamp range + prone default pose (best hand-drive net CoM 0.039 m narrow, 0.225 m wide+arms_fwd). crawl_minimal_400k is the RL test of the Cause-B fix: wide XML, arms_fwd crawl-ready default pose, tip-termination (50°, −5), non-gameable signed reward (approach only, velocity bonus zeroed). 400K SAC, 16 envs, seed 0. Result: 5/30 deterministic contacts (16.7%), 0 tip-terminated, mean CoM displacement 0.298 m, best 0.646 m (> hand-drive ceiling 0.225 m), mean dist_change +0.000 m. First non-zero contact rate in any free-body crawler run.
+
+**Cause A vs Cause B — RESOLVED.** Cause B (physical affordance) was the dominant bottleneck; supplying the affordance (wide clamps + arms_fwd pose) let RL discover locomotion within 400K and exceed the hand-drive ceiling by 2.9×, so Cause A (gait undiscoverability) is ruled out as primary. The physics was the wall, not RL's discovery capacity.
+
+**"Movement is reward-fixable; locomotion is not" thesis — superseded.** Correct under the old config, but the complete statement is now: locomotion requires (a) the translation gait to be physically achievable (wide clamps + crawl-ready pose) AND (b) a reward that cannot be optimized more cheaply by rocking or tipping. Both met for the first time here. Permanent contributions retained: the freeze-attractor vs translation-gait distinction (two separate problems solved in sequence), and the demonstration that paying for |CoM speed| is gameable by rocking (reward must be signed + the tipping exploit structurally blocked).
+
+**Framework 1 — Behavioral Prediction: PARTIALLY CONFIRMED (locomotion) / UNTESTABLE (direction).** RL found coordination exceeding any hand-scripted gait (0.646 vs 0.225 m) — a real "joint commands → floor translation" model that generalizes across novel within-episode poses. But mean dist_change +0.000 m shows no "move toward ball" model — structurally blocked because ball position is unobserved, not a refutation; becomes testable once ball-direction is in the obs.
+
+**Framework 2 — Pattern Learning: CHALLENGED (stability) / CONFIRMED (efficiency).** Burst-contact trajectory + high peak variance (std 197% of mean) = pattern discovered-and-lost, not stably locked in. But RL's 2.9× gap over the hand-drive ceiling confirms gradient search finds richer sparse coordination than enumeration. The locomotion primitive is real but not yet stably encoded.
+
+**The binding constraint is now informational, not physical.** The approach reward fires on decreasing ball distance, but ball position is absent from the obs, so the "move in direction X → reward" gradient is never directionally discriminable (ball uniform on the 0.70–0.80 m ring → every heading equally likely to help). Reward fires accidentally (16.7%); the policy cannot learn *why*. mean dist_change = 0.000 m is the direct readout. Fix: add ball-direction to the obs (done — crawl_targetobs_400k appends a body-frame ball vector). More training under the old obs would raise CoM displacement but never mean dist_change.
+
+**Throughline to vision (R49 reframe now operational).** Causal chain status:
+1. Wide clamps + arms_fwd pose → translation physically achievable [hand_drive, CONFIRMED]
+2. Translation achievable → RL discovers locomotion [crawl_minimal_400k, CONFIRMED]
+3. Locomotion + ball-direction obs → directed homing [UNDER TEST — crawl_targetobs_400k]
+4. Directed homing + vision → vision replaces the privileged target signal [FUTURE — the core vision test]
+Steps 1–2 are the project's first fully confirmed links. The cart-era (VII–XVI) broke on step 1; its vision nulls are now explained structurally, not as encoder failures.
+
+**Most important thing we don't know yet:** Whether the ball-direction obs converts the 16.7% accidental-contact rate into reliable directed homing (mean dist_change reliably > 0) — the clean test of informational-gap vs deeper coordination problem (does directed locomotion need asymmetric gaits the symmetric primitive can't produce?).
