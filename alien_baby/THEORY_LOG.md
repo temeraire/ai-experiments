@@ -1203,3 +1203,38 @@ If locomotion does not emerge even under position-offset control, the body itsel
 | Curiosity (RND) is sufficient for the directional-vision precondition | RULED OUT | RND gives undirected in-place motion, not steerable pursuit; the precondition still requires a supplied/forced translation primitive (imitation or cart-steer). |
 
 **The fork (for human):** tools that *supply/force translation* (imitation-from-demonstration; or cart-steer to make pursuit possible by construction), or first cheaply establish whether translation is even *physically* achievable under the current offset clamps + prone pose (widen offsets / directed velocity-toward-target bonus) before investing in imitation.
+
+---
+
+## 2026-07-01 — rnd_propulsion_400k: The propulsion-affordance verdict and what it opens
+
+**Run context:** Third run in the RND crawler sequence. rnd_movefirst_60k broke the freeze attractor (undirected movement is reward-fixable). rnd_directed_250k confirmed movement without a translation gait is not locomotion (0 contacts, ~0 net CoM displacement). rnd_propulsion_400k (Option 3) tests the simplest remaining hypothesis: pay explicitly for any horizontal CoM speed (velocity_bonus_scale=2.0) and see whether the free body can translate its CoM across the floor at all. Verdict B (TRANSLATION NOT ACHIEVABLE, under this configuration) closes Option 3. Reproduced across seed 0 and seed 1 (both: ep_len 600 throughout, reward peaks then regresses, 0 contacts).
+
+**What Option 3 found:** velocity_bonus rewards |v_CoM_horizontal| — always positive, equally satisfied by left-right rocking or forward crawling. The policy found in-place CoM rocking as the cheapest path to the bonus and rode it to eval reward 64.46 ± 22.44 at 310K, then lost it (11.14 at 400K). Video from peak: body collapses to prone, ball stationary, no floor-crossing. The policy optimized the instrument, not the behavior the instrument was meant to measure.
+
+### Framework 1: Behavioral Prediction Framework — UNTESTABLE (core) / CHALLENGED (dynamics)
+The core claim (agent builds a cause-and-effect model and uses it) is only testable when the causal chain (joint commands → net floor translation) physically exists. Whether the 0.4 rad clamps + prone pose permit propulsion is unresolved, so we cannot distinguish "framework untestable due to missing physical precondition" from "framework tested and no model formed." But a genuine locomotion model found at ~310K should be refined and stabilized, not erased within 20K steps — the peak-then-collapse (±22.44 = 35% CV at peak) is negative evidence against a locomotion model forming.
+
+### Framework 2: Pattern Learning Framework — CHALLENGED
+Predicts smooth improvement + low variance once a pattern locks in. The rise-to-64-then-collapse-to-11 trajectory and 35% CV at peak show the opposite: transient specialization into a single narrow rocking pattern that the optimizer then moved away from. No stable sparse code locked in.
+
+### "Movement is reward-fixable; locomotion is not" thesis — STRENGTHENED, with a new qualifier
+Paying velocity_bonus ×2.0 for any horizontal CoM speed produced in-place rocking (not translation) as the optimal response — confirming an explicit speed reward cannot reinforce a gait that is never sampled. New qualifier: the "locomotion is not reward-fixable" clause may have two distinct causes, and this run cannot separate them:
+- **Cause A (gait-discovery failure):** the translation gait exists under these clamps but RL cannot discover it from random init (no positive sample ever enters the buffer). Fix = supply/force the gait (imitation seeding; cart-steer).
+- **Cause B (physical-affordance failure):** the 0.4 rad clamps + prone pose do not permit the limb geometry that generates net ground-reaction propulsion. Body can rock but cannot push off. Fix = relax constraints (widen clamps to ~0.8 rad; change default pose). If B is operative, imitation will ALSO fail.
+
+### Affordance / winnability reframe (from R49) — DEEPENED
+R49 located the affordance failure in action-space TYPE (torque → position-offset). This run extends it to action-space RANGE: the 0.4 rad clamp limits + prone pose may block propulsion geometry independently of type. rnd_propulsion_400k closes all reward-shaping options and isolates the remaining wall as either cause A or cause B.
+
+### What verdict B does / does not prove
+Proves: under 0.4 rad clamps + prone pose + 400K SAC + RND + velocity_bonus×2.0, zero contacts, zero net translation, zero positive approach samples ever; the highest-reward behavior was in-place rocking; peak-then-regression rules out a stable gait discovered then lost; replicated across 2 seeds.
+Does NOT prove: that net translation is physically impossible here (only that RL+curiosity+velocity_bonus couldn't find it in 400K); that the velocity_bonus instrument was valid (|v_CoM| is direction/sign-blind — rocking games it); that cause B is absent.
+
+### THEORETICAL CONCERN
+Three consecutive crawler runs (rnd_movefirst_60k, rnd_directed_250k, rnd_propulsion_400k, ~710K steps total) made zero ball contacts and never crossed the floor. Both downstream project goals require locomotion: (1) vision becoming load-bearing requires AB to steer; (2) the R49 "directional contacts → directional visual code" hypothesis needs directed locomotion. The affordance question is cheap to resolve and should be the very next step before more training.
+
+### Most important thing we don't know yet
+Whether net CoM translation is physically achievable under the current 0.4 rad position-offset clamps + prone default pose. This single yes/no decides the next move: widen clamps / change pose (cause B) vs imitation seeding (cause A). Spending weeks on the wrong cause is the primary risk.
+
+### Recommended diagnostic (a MEASUREMENT, not a training run)
+Hand-drive an open-loop scripted joint-position sequence on the CURRENT body (MimoCrawlerEnv, action_mode=position_offset) — no RL, no learning — and check whether the torso CoM drifts >~5 cm from start over several cycles. YES → translation is physically achievable → invest in imitation-from-demonstration (cause A). NO → the clamp range/pose is the geometric wall → widen shoulder/hip offsets to ~0.8 rad or change default pose (cause B) before any further RL or imitation work. (Note: the existing hand_drive_test.py targets the OLD PlatformCreatureEnv, not this body — a current-body version is needed.)

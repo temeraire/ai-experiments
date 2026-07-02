@@ -42,6 +42,16 @@ STEP_COST           = -0.05
 VELOCITY_BONUS_SCALE = 0.05
 APPROACH_REWARD_SCALE = 2.0   # reward per metre of progress toward the ball
 
+# Crawl-ready default-pose presets (2026-07-02, minimal-change track). Keys are
+# actuator indices in the widened body (mimo_crawler_pos_wide.xml); values are the
+# joint angle (rad) the position-offset range is re-centred on. "arms_fwd" = the
+# commando/belly-crawl pose the pose search found best (0.225 m axial hand-driven
+# translation, belly-down): both shoulders swung forward (act 7,11) + elbows slightly
+# bent (act 10,14). Everything else stays at its widened neutral.
+CRAWL_POSES = {
+    "arms_fwd": {7: 0.7, 11: 0.7, 10: -0.4, 14: -0.4},
+}
+
 CAM_H = 32
 CAM_W = 32
 
@@ -89,7 +99,10 @@ class MimoCrawlerEnv(gym.Env):
                  stereo=True,
                  action_mode="torque",
                  step_cost=STEP_COST,
-                 xml_path=None):
+                 xml_path=None,
+                 crawl_pose=None,
+                 terminate_tilt_deg=None,
+                 tip_penalty=0.0):
         super().__init__()
         self.vision = vision
         self.max_steps = max_steps
@@ -117,6 +130,16 @@ class MimoCrawlerEnv(gym.Env):
         self.random_start_orientation = random_start_orientation
         self.memory_obs = memory_obs
         self.stereo = stereo
+        # Crawl-ready default pose (2026-07-02, minimal-change track). crawl_pose is a
+        # dict {actuator_index: center_angle_rad}: the position-offset ranges for those
+        # actuators are re-centred on the angle (offsets around a locomotion-adjacent
+        # pose, per "A Walk in the Park") and the joints start there. terminate_tilt_deg
+        # ends the episode (with tip_penalty) if the body's dorsal axis tilts past that
+        # many degrees from world-up — kills the tip-over/roll exploit. All default
+        # off/None so prior runs are unchanged.
+        self.crawl_pose = crawl_pose or {}
+        self.terminate_tilt_deg = terminate_tilt_deg
+        self.tip_penalty = float(tip_penalty)
         # Phase XVI R49: action_mode selects torque vs position-offset control.
         # "torque": original ctrl=action*strength_scale (no change from prior phases).
         # "position_offset": action∈[-1,1] is mapped linearly onto each actuator's
@@ -137,6 +160,20 @@ class MimoCrawlerEnv(gym.Env):
         if action_mode == "position_offset":
             self._act_lo  = self.model.actuator_ctrlrange[:, 0].copy()
             self._act_hi  = self.model.actuator_ctrlrange[:, 1].copy()
+            # Crawl-ready pose: re-centre selected actuators' ranges on the pose angle,
+            # keeping the half-width (clamped to the joint's hard limit).
+            if self.crawl_pose:
+                half = (self._act_hi - self._act_lo) / 2.0
+                for i, c in self.crawl_pose.items():
+                    jid = self.model.actuator_trnid[i, 0]
+                    if self.model.jnt_limited[jid]:
+                        jlo, jhi = self.model.jnt_range[jid]
+                        h = min(half[i], c - jlo, jhi - c)
+                    else:
+                        h = half[i]
+                    h = max(float(h), 0.05)
+                    self._act_lo[i] = c - h
+                    self._act_hi[i] = c + h
             self._act_mid = (self._act_lo + self._act_hi) / 2.0
             self._act_half = (self._act_hi - self._act_lo) / 2.0
 
@@ -157,6 +194,7 @@ class MimoCrawlerEnv(gym.Env):
         self._root_joint_id = mujoco.mj_name2id(
             self.model, mujoco.mjtObj.mjOBJ_JOINT, "root"
         )
+        self._root_body_id = self.model.jnt_bodyid[self._root_joint_id]
         self._target_geom_id = mujoco.mj_name2id(
             self.model, mujoco.mjtObj.mjOBJ_GEOM, "target_geom"
         )
@@ -224,6 +262,11 @@ class MimoCrawlerEnv(gym.Env):
         # Small random joint noise so episodes differ
         for adr in self._jpos_adr:
             self.data.qpos[adr] += self.np_random.uniform(-0.05, 0.05)
+        # Crawl-ready pose: start the selected joints at their re-centred angle so the
+        # body begins in the locomotion-adjacent pose (not flat-neutral).
+        for i, c in self.crawl_pose.items():
+            jid = self.model.actuator_trnid[i, 0]
+            self.data.qpos[self.model.jnt_qposadr[jid]] = c
 
         # Place balls. If fixed_ball_positions is set, override random spawn.
         # If only 1 fixed position, ball2 is parked far off-platform.
@@ -260,12 +303,31 @@ class MimoCrawlerEnv(gym.Env):
             self._ball2_active = False
 
         mujoco.mj_forward(self.model, self.data)
+        # Crawl track: let the body drop the few cm onto the platform and settle into
+        # the crawl-ready pose BEFORE the episode starts, holding the neutral targets.
+        # Otherwise the settling rotation would be misread as a tip-over. Gated on the
+        # crawl config so all other runs' reset is bit-identical.
+        if self.crawl_pose or self.terminate_tilt_deg is not None:
+            for _ in range(40):
+                self.data.ctrl[:] = self._act_mid
+                mujoco.mj_step(self.model, self.data)
+        # Reference dorsal(up) axis in body frame, for tip detection: the body-frame
+        # vector that points to world-up in the settled starting pose.
+        R0 = self.data.xmat[self._root_body_id].reshape(3, 3)
+        self._up_local = R0.T @ np.array([0.0, 0.0, 1.0])
         self._step = 0
         self._contact_rewarded = False
         self._ball1_touched = False
         self._ball2_touched = False
         self._prev_ball_dist = self._ball_dist()
         return self._get_obs(), {}
+
+    def _up_tilt_deg(self):
+        """Degrees the body's dorsal axis has tilted from world-up (tip-over detector)."""
+        R = self.data.xmat[self._root_body_id].reshape(3, 3)
+        up_world = R @ self._up_local
+        c = float(np.clip(up_world[2] / (np.linalg.norm(up_world) + 1e-9), -1.0, 1.0))
+        return float(np.degrees(np.arccos(c)))
 
     # ------------------------------------------------------------------
     def step(self, action):
@@ -321,6 +383,15 @@ class MimoCrawlerEnv(gym.Env):
 
         # Keep the old `_contact_rewarded` flag for backward compat
         self._contact_rewarded = self._ball1_touched
+
+        # Tip-over termination: if the body rolls/tips past the allowed dorsal tilt,
+        # end the episode with a penalty. Removes the "roll onto side and slide" and
+        # "flip over" exploits that game a raw-displacement reward (see DeepMimic:
+        # early termination eliminates the on-the-ground local optima).
+        if self.terminate_tilt_deg is not None and not terminated:
+            if self._up_tilt_deg() > self.terminate_tilt_deg:
+                reward += self.tip_penalty
+                terminated = True
 
         # Liveness signal for the "realm of possibility" gate: how much the
         # creature is actually doing = hip translation speed + mean actuated

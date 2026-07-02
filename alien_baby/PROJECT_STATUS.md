@@ -165,23 +165,23 @@ Theoretical framing: in Taylor's notation, M (forward-paddle) must FAIL unless m
 | **0.075 "anomaly" — DIAGNOSED (2026-06-15)** | **Not a point spike but a dead BAND ~[0.070-0.080]; real and seed-independent (original 6/20,10/20 were low-side noise, true rate ~0.45-0.55 at 30 eps). Mechanism (on video): glancing blow knocks the mid-size ball to the wall, fixed-base creature can't recover it. A contact-dynamics ARTIFACT, not a size-generalization hole. Geometric (ball mass unchanged by radius).** | **diag_0075_anomaly.py / render_0075_diag.py, 2026-06-15** |
 | **Hand-touch finding (2026-06-15)** | **both_HAND = 0 across every size AND every ecc bin, on the WHOLE cart line (R44/R45/R46/R48) — the two-ball task is never completed with two hands. But hands DO engage for one ball (any_HAND up to 21/30), rising with eccentricity where a real reach is needed. The cart carries AB's BODY into the ball (cart geom is a non-colliding visual marker, never pushes the ball). Reframe: body-bump = valid unconditioned "world-is-consistent" signal; hand-reach = intentional/conditioned signal. both_HAND=0 is a DEVELOPMENTAL STAGE, not a bug. Track hand-touch fraction over training as the real progress metric.** | **rescore_hand_touch.py + rescore_hand_touch_ecc.py, 2026-06-15** |
 | **Phase XVI R49 (MICOA+vision + aux ball-position decode loss, 250K)** | **REPRESENTATION FIX FAILED. Lateral R² = 0.010 (chance; below proprio control 0.043 and below R43 ~0.08 baseline; well under 0.30 success bar). Forward R² = 0.157 (decode loss caught distance, not direction). Ecc sweep: 20,19,19,8,4,0 — roughly on par with R43, no gain. Ablation high (1.29–2.04) but confounded by kl_pred_k1 explosion (244; healthy 0.5–2) and sigma_combined near-collapse (0.117). Ablation-profile flip (ecc=0 lower, off-center high-flat) auto-flagged as "recruited at margin" — NOT a positive finding; this is the known high-ablation-under-encoder-pathology trap (cf. R41). REFRAME: cart substrate makes vision directionally pointless because AB cannot steer; fix is locomotion under position-offset control.** | **R49, 2026-06-16** |
+| **rnd_propulsion_400k (propulsion-affordance test, position_offset, 400K, seed 0)** | **TRANSLATION NOT ACHIEVABLE (Verdict B). Eval mean_reward peaked 64.46 ± 22.44 at 310K then collapsed to 11.14 at final. ep_len_mean=600 on all 40 evals = zero ball contacts throughout. Velocity_bonus (×2.0) fired on in-place CoM oscillation (rocking), not net floor translation. Peak-then-regression pattern confirms no stable gait was found. Video (3 seeds, all TIMEOUT): seeds 0 and 1 collapse/fall prone, ball stays stationary, no floor-crossing. Option-3 "widen the reward" from rnd_directed_250k is tested and closed.** | **rnd_propulsion_400k, 2026-07-01** |
 
 ## Last run
 
-- **Tag:** Phase XVI R49 — MICOA + vision + auxiliary ball-position decode loss
-- **Date:** 2026-06-16
-- **Setup:** 250K-step run byte-for-byte identical to Phase XIII R43 (MICOA + vision, cart substrate, static ball, random box ±0.08 m jitter, seed 42, n_envs=8) plus a new `Linear(64,2)` auxiliary decode head on `mu_v` (MSE loss, coef 1.0, attached to MICOA encoder optimizer) trained to predict egocentric ball position [x_ego, y_ego] at every step. Pre-registered success bar: lateral R² ≥ 0.30 on reachable band. Branch: `exp/phase-xvi-R49-aux-decode`. Checkpoints: `alien_baby/results/phase_xvi_R49_micoa_vision_auxdecode(_best)`.
+- **Tag:** rnd_propulsion_400k — propulsion-affordance test (Option-3)
+- **Date:** 2026-07-01
+- **Setup:** Free body, position_offset, `--rnd --rnd-coef 0.1 --step-cost 0.0 --velocity-bonus-scale 2.0 --approach-reward-scale 10.0 --spawn-radius 0.70 0.80`, 400K steps, 16 envs, seed 0. Specifically designed to test whether velocity_bonus paid for any CoM speed could unlock propulsion.
 - **Key results:**
-  - Ball-x decode probe (reachable |x_ego| ≤ 0.20): mu_v lateral R² = 0.010 (proprio control 0.043) — at chance, BELOW baseline, far under 0.30 bar. REFUTED.
-  - Forward decode: mu_v R² = 0.157 (proprio 0.360) — the decode head learned to predict distance but not direction.
-  - Eccentricity sweep both/20: 20, 19, 19, 8, 4, 0 — no improvement over R43.
-  - abl_L2: 1.29 @ecc=0.00, ~1.95–2.04 off-center (elevated/flipped vs R43, but confounded by encoder pathology).
-  - MICOA end-of-run diagnostics: kl_pred_k1=244 (exploded; healthy 0.5–2), kl_agreement=148, sigma_combined=0.117 (near-collapse threshold 0.10). Aux_ball_decode loss drifted from ~0.10 early back to 0.20 — decode and predictive-KL losses fought each other.
-  - Vision: NOT load-bearing in any directionally useful sense. The encode-what-matters-via-aux-loss approach is refuted on this substrate.
-  - Reframe: cart substrate gives AB no directional action; a vision encoder that perfectly encodes left/right direction would have nothing to do with that information. Fix is upstream (locomotion under position-offset control), not downstream (better encoder loss).
-- See FINDINGS.md Phase XVI entry for full tables, caveats, and the affordance/winnability reframe.
+  - Eval mean_reward: 6.82 (10K) → peak 64.46 ± 22.44 (310K) → 11.14 (400K final)
+  - ep_len_mean = 600.00 on all 40 evals — zero ball contacts throughout the run
+  - Liveness gate: PASS at 10K (body_motion=0.711) — body moves, does not freeze
+  - Video (3 seeds rendered, all TIMEOUT 600 steps): bodies fall/collapse prone, ball stationary, no floor-crossing locomotion
+  - Peak-then-regression (310K peak, collapse by 330K): transient CoM oscillation (rocking), not a stable gait
+  - **Verdict: (B) TRANSLATION NOT ACHIEVABLE** under current config (0.4 rad clamps, prone default pose, 400K). Option-3 "widen the reward" from rnd_directed_250k is tested and closed.
+- See FINDINGS.md rnd_propulsion_400k entry for full eval trajectory table, video paths, peak-regression analysis, and comparison to prior runs.
 
-### Previous run (Phase XV R46/R47/R48, 2026-06-15)
-- Three 250K DroQ proprio-only runs testing object-variety zero-shot transfer. R46 held-out sizes: 17/20 (interpolation), 16/20 (extrapolation). R47 held-out ellipsoid: 20/20 at center. R48 combined variety: 20/20 ellipsoid and capsule at center, best ecc=0.15 margin in project (13/20). 0.075 anomaly diagnosed as [0.070-0.080] knock-away band. both_HAND = 0 everywhere (developmental stage).
-- See FINDINGS.md Phase XV entry for full per-shape and per-size tables and verified numbers.
+### Previous run (Phase XVI R49, 2026-06-16)
+- MICOA + vision + auxiliary ball-position decode loss, 250K steps. Representation-fix hypothesis refuted: lateral R² = 0.010 (chance). kl_pred_k1 exploded (244). Cart substrate gives AB no directional action so even a perfect encoder has no job. Fix is locomotion upstream, not encoder downstream.
+- See FINDINGS.md Phase XVI R49 entry for full tables and caveats.
 ---

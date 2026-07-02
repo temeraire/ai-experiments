@@ -184,7 +184,7 @@ class LivenessGateCallback(BaseCallback):
         return True
 
 
-from alien_baby.crawler.mimo_crawler_env import MimoCrawlerEnv
+from alien_baby.crawler.mimo_crawler_env import MimoCrawlerEnv, CRAWL_POSES
 from alien_baby.crawler.her_wrapper import HERCrawlerWrapper
 from alien_baby.crawler.crawler_cnn_extractor import StereoCrawlerCNN, PIXEL_LATENT_DIM
 from alien_baby.crawler.mimo_crawler_env import PROPRIO_DIM
@@ -210,7 +210,8 @@ def make_env(rank, seed, strength_scale, spawn_cone_deg, max_steps, n_substeps,
              near_contact_bonus_scale=0.0, near_contact_range=0.12,
              actuate_hands=False, contact_reward=None,
              action_mode="torque", spawn_radius=None,
-             spawn_disc_lo=0.30, spawn_disc_hi=0.55, step_cost=-0.05):
+             spawn_disc_lo=0.30, spawn_disc_hi=0.55, step_cost=-0.05,
+             xml_path=None, crawl_pose=None, terminate_tilt_deg=None, tip_penalty=0.0):
     def _init():
         if cart_mode != "none":
             # Phase G: cart substrate. HER not used; plain MimoCrawlerCartEnv.
@@ -262,6 +263,10 @@ def make_env(rank, seed, strength_scale, spawn_cone_deg, max_steps, n_substeps,
                 action_mode=action_mode,
                 spawn_radius=spawn_radius,
                 step_cost=step_cost,
+                xml_path=xml_path,
+                crawl_pose=crawl_pose,
+                terminate_tilt_deg=terminate_tilt_deg,
+                tip_penalty=tip_penalty,
             )
             if her:
                 # HERCrawlerWrapper instantiates MimoCrawlerEnv internally and adds
@@ -334,6 +339,15 @@ def train(args):
     _action_mode  = getattr(args, "action_mode",  "torque")
     _spawn_radius = getattr(args, "spawn_radius",  None)
 
+    # Minimal-change crawl track (2026-07-02): widened body + crawl-ready default pose
+    # + tip-termination. All None/0 unless the flags are set, so defaults are unchanged.
+    _xml_path     = getattr(args, "xml_path", None)
+    _crawl_pose   = CRAWL_POSES.get(getattr(args, "crawl_pose", None) or "", None)
+    _term_tilt    = getattr(args, "terminate_tilt_deg", None)
+    _tip_penalty  = getattr(args, "tip_penalty", 0.0)
+    _crawl_kwargs = dict(xml_path=_xml_path, crawl_pose=_crawl_pose,
+                         terminate_tilt_deg=_term_tilt, tip_penalty=_tip_penalty)
+
     # Training envs
     train_env = VecEnvCls([
         make_env(i, args.seed, args.strength_scale, args.spawn_cone_deg,
@@ -348,6 +362,7 @@ def train(args):
                  action_mode=_action_mode,
                  spawn_radius=_spawn_radius,
                  step_cost=getattr(args, "step_cost", -0.05),
+                 **_crawl_kwargs,
                  **cart_kwargs)
         for i in range(args.n_envs)
     ])
@@ -373,6 +388,7 @@ def train(args):
                  action_mode=_action_mode,
                  spawn_radius=_spawn_radius,
                  step_cost=getattr(args, "step_cost", -0.05),
+                 **_crawl_kwargs,
                  **cart_kwargs)
     ])
     if args.her:
@@ -898,6 +914,22 @@ if __name__ == "__main__":
     parser.add_argument("--no-liveness-gate", action="store_true",
                         help="Disable the liveness gate (not recommended). The gate exists so a "
                              "run that never moved is voided, not analyzed.")
+    # Minimal-change crawl track (2026-07-02)
+    parser.add_argument("--xml-path", dest="xml_path", default=None,
+                        help="Override body XML (e.g. alien_baby/crawler/mimo_crawler_pos_wide.xml "
+                             "for the widened-clamp body).")
+    parser.add_argument("--crawl-pose", dest="crawl_pose", default=None,
+                        choices=list(CRAWL_POSES.keys()),
+                        help="Re-centre the position-offset ranges on a crawl-ready default pose "
+                             "(offsets around a locomotion-adjacent pose, per 'A Walk in the Park'). "
+                             "'arms_fwd' = commando/belly-crawl pose. Requires --action-mode "
+                             "position_offset and the widened body via --xml-path.")
+    parser.add_argument("--terminate-tilt-deg", dest="terminate_tilt_deg", type=float, default=None,
+                        help="End the episode (with --tip-penalty) if the body's dorsal axis tilts "
+                             "past this many degrees from world-up. Kills the tip-over/roll-and-slide "
+                             "exploit (DeepMimic-style early termination). Off by default.")
+    parser.add_argument("--tip-penalty", dest="tip_penalty", type=float, default=0.0,
+                        help="Reward added when the tip-termination fires (use a negative value).")
     args = parser.parse_args()
     # Convert numeric strings to float
     if args.ent_coef != "auto":

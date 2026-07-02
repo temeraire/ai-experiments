@@ -356,14 +356,14 @@ The deeper lesson: **emergent behavior requires environmental pressure, not just
 
 ### Motivation
 
-v6/v7 gave the agent a gaze camera but not a strong reason to orient. The theory-faithful move was to give the agent a world where getting orientation wrong has consequences: a creature on a finite platform that can roll off and fall. v8 is the first environment in this project where wrong perception kills you. "Gravity is the pencil tap."
+v6/v7 gave the agent a gaze camera but not a strong reason to orient. The theory-faithful move was to give the agent a world where getting orientation wrong has consequences: a creature on a finite platform that can roll off and fall. v8 is the first environment in this project where wrong perception kills you. This is reflective of what can occur in the real world.
 
 The creature is a torso-sled with two arms and a pan/tilt head. No legs. The working metaphor is a skateboarder-without-legs: push with hands, body rolls. Survival is grounded in physics — not architectural weight freezing (v2/v3/v5) and not reward shaping (v6 implicit).
 
 ### What this session focused on
 
 Three parallel threads:
-1. **Body physics that's actually drivable** (this was the hard part).
+1. **Body physics that are actually drivable** (this was the hard part).
 2. **Visualization methodology** — ringside camera, temporal smoothing, and a blur-to-sharpen overlay keyed to vision-ablation sensitivity.
 3. **Environmental pressure for gaze** — narrow FOV + target placement bias.
 
@@ -1853,3 +1853,110 @@ This reframes what we have been trying to do. The sequence of vision-encoder int
 3. **Propulsion affordance**: the position-offset clamps (shoulders/hips 0.4 rad) + prone default pose may not permit net propulsion at all; widen offsets / change default pose / add a directed hip-translation velocity bonus and re-test whether translation is even achievable before investing in imitation.
 
 **Limits:** single seed trained; 250K (longer might eventually sample a gait, but ~0 reward trend across 250K is a strong negative); approach reward rewards distance-closed, which can't fire without translation (a directed *velocity*-toward-target bonus that rewards even momentary closing speed was not tried and is the cheapest remaining shaping lever before pivoting).
+
+
+---
+
+## 2026-07-01 — rnd_propulsion_400k: propulsion-affordance test — can the body translate its CoM at all?
+
+**Hypothesis (Option-3 affordance test from rnd_directed_250k):** Three explanations were open for why rnd_directed_250k produced in-place flailing with zero net CoM translation: (1) gait is learnable but needs more time or imitation seeding; (2) cart-steer pivot is the right path; (3) the position-offset clamps (0.4 rad shoulders/hips) and prone default pose physically block propulsion — the body cannot produce net CoM translation under any reward. This run tests Option 3: pay explicitly for ANY horizontal CoM speed via velocity_bonus_scale=2.0, across 400K steps with RND curiosity and no step-cost. If the body can translate, the velocity_bonus should find it and eval reward should grow monotonically. If it cannot translate, eval reward will reflect only in-place CoM oscillation.
+
+**Setup:** Free body (no cart), position_offset action mode, `--rnd --rnd-coef 0.1`, `--step-cost 0.0`, `--velocity-bonus-scale 2.0` (reward any horizontal CoM speed), `--approach-reward-scale 10.0`, `--spawn-radius 0.70 0.80` (0% step-0 contacts), 400K steps, 16 envs, seed 0. Per-step reward = `2.0 × |v_CoM_horizontal|  +  10.0 × (prev_dist − curr_dist)  +  0.1 × RND_intrinsic`. The velocity_bonus uses `norm(qvel[root_x], qvel[root_y])` — always positive, fires equally on symmetric oscillation (rocking) as on forward translation. It cannot distinguish the two.
+
+**Numbers:**
+
+- ep_rew_mean (rollout, VecNorm + RND): 84.8 → 101 (training env; inflated by RND intrinsic and VecNormalize scaling — not comparable to eval)
+- eval mean_reward: 6.82 (10K) → **peak 64.46 ± 22.44 (310K)** → 11.14 (400K final)
+- loco_speed_mean: N/A (metric not separately logged; implied from eval reward below)
+- touch_rate: **0/N across all 40 evals** — ep_len_mean = 600.00 on every eval
+- Steps completed: 400,000 (normal finish, no crashes, no errors)
+- Liveness gate: **PASS at 10K** (body_motion = 0.711 ≥ 0.05 threshold)
+
+**Eval reward trajectory — key waypoints:**
+
+| Steps | Eval mean_reward | Note |
+|---|---|---|
+| 10K | 6.82 | first eval, "New best" |
+| 110K | 11.58 | local peak |
+| 250K | 23.06 | gradual build |
+| 290K | 36.40 | acceleration phase |
+| **310K** | **64.46 ± 22.44** | **all-time peak** |
+| 320K | 59.28 | still elevated |
+| 330K | 14.27 | steep drop |
+| 350K | 7.72 | near noise floor |
+| 400K | 11.14 | final (near 100K baseline) |
+
+**Implied mean torso speed at peak:** 64.46 / 600 steps / 2.0 = **≈ 0.054 m/s average horizontal CoM speed**. This is the magnitude of the instantaneous CoM velocity vector — it is positive regardless of direction. A body rocking left-right at 0.054 m/s average speed (zero net displacement) earns exactly the same reward as one translating forward at 0.054 m/s.
+
+**Video evidence (mandatory per CLAUDE.md):**
+
+Rendered 3 episodes from `alien_baby/results/rnd_propulsion_400k_best/best_model.zip` (saved at ~310K peak). Script: `alien_baby/visualization/render_crawler.py`, `--action-mode position_offset --spawn-radius 0.70 0.80`. Videos at `alien_baby/results/videos/crawler_rnd_propulsion_400k_seed{0,1,2}.mp4`. All three episodes: **TIMEOUT (600 steps, 0 contacts)**.
+
+- **Seed 0:** RINGSIDE view shows creature lying on its side, rolling to its back. The red ball sits near its head throughout and does NOT move closer over the episode. Creature ends lying on its back, ball unmoved from spawn position. No locomotion across the floor.
+- **Seed 1:** Creature starts upright/hunched, then slowly collapses to its right side — limbs splay out and it lies flat. The ball is described as "completely stationary throughout the entire video in both perspectives." The collapse is the entirety of the creature's behavior; it then lies inert. No approach, no CoM displacement across the floor.
+- **Seed 2:** Gemini description failed (API timeout; Claude fallback also failed). Two seeds with consistent collapse-and-lie behavior provides sufficient qualitative evidence.
+
+**Start-vs-end CoM position (qualitative from video):** In both described seeds, the ball did not move and the creature's torso ended in essentially the same floor region it occupied when first making contact with the surface (seed 0 fell from side to back; seed 1 fell from standing to prone). The hip/CoM did not cross the floor from start to a clearly different destination. This is not locomotion; it is postural collapse.
+
+**Peak-then-regression — what it tells us:**
+
+The 310K peak (64.46, std ±22.44) followed by immediate collapse (330K: 14.27, final: 11.14) has the signature of a **fragile transient oscillation, not a stable gait**:
+
+1. High std at the peak (±22.44 = 35% of mean) means some episodes scored very high and others much lower — the behavior was not locked in.
+2. A stable translating gait would show monotonically rising eval reward. Instead, the reward returned to baseline within 30K steps of the peak.
+3. The most likely mechanism: around 300K steps the policy settled temporarily into a motor pattern producing rapid in-place CoM rocking (higher oscillation → higher velocity_bonus), then SAC gradient updates (entropy declining, RND novelty saturating) moved the policy out of that narrow configuration.
+4. The acceleration phase (250K→290K→310K) does not indicate a gait being discovered — it indicates the policy increasingly specializing in fast rocking, which then got refined away.
+
+If a stable translating gait had been discovered at 310K, subsequent training should have reinforced it further rather than erasing it within 20K steps.
+
+**Translation verdict: (B) TRANSLATION NOT ACHIEVABLE under current configuration.**
+
+Zero ball contacts over 400K steps. Zero approach reward in any sustained sense. Eval reward peaks attributable to transient CoM oscillation, not net displacement. Video confirms no floor-crossing behavior. Option 3 from the rnd_directed_250k entry is now tested and closed: paying with velocity_bonus_scale=2.0 for any CoM speed did not unlock propulsion. Under the current constraints (0.4 rad clamps, prone default pose, position_offset servos), the body cannot reliably produce the net ground reaction forces needed to translate itself across the floor.
+
+**Comparison to prior runs:**
+
+| Run | Eval mean_reward | Contacts | Net CoM translation? |
+|---|---|---|---|
+| rnd_movefirst_60k | ~150 (gimme contacts) | Yes (spawn inside body footprint) | Not honestly tested |
+| rnd_directed_250k | ≈ 0 (no velocity bonus) | 0 | No |
+| **rnd_propulsion_400k** | **Peak 64.46, final 11.14** | **0** | **No** |
+
+rnd_directed_250k had near-zero eval reward because there was no velocity_bonus and approach was zero (no translation). rnd_propulsion_400k has higher eval reward because the velocity_bonus fires on oscillation. The underlying body behavior is identical in both: no floor-crossing locomotion.
+
+**Honest caveats:**
+
+- Single seed (seed 0). The parallel seed-1 run of the identical config was described as running at task submission time; this entry should be updated when that result arrives.
+- "Translation not achievable" means under the CURRENT config (0.4 rad clamps, prone default pose, 400K). Wider clamps (e.g. 0.8 rad) or a different default pose may unlock propulsion — that is untested.
+- The velocity_bonus rewards |v_CoM|, not v_CoM toward the ball. A directed "velocity-toward-target" bonus might produce stronger directed gradient, but if the body cannot generate sustained net horizontal force in any direction, no scalar of that reward fixes the physics.
+- 400K SAC steps is moderate by locomotion literature standards, but zero ball contacts across all 40 evals (zero positive approach samples ever in the buffer) is a very strong negative signal. RL cannot reinforce what never appears.
+
+**Is vision load-bearing?** N/A — this is a locomotion Phase A run with no visual input. Vision cannot become load-bearing until the body can produce directed translation. The previous diagnosis stands: the correct fix is upstream (locomotion primitive) not downstream (encoder).
+
+**Theory signals:** The Behavioral Prediction Framework predicts that useful internal predictive structure emerges from actions that produce predictable changes in the world. For a body that cannot produce net floor translation, every action's predicted next state is essentially the same local posture space — the CoM stays where it is regardless of joint commands. The system may converge on a correct-but-useless internal model: "actions do not move me across the floor." The Pattern Learning Framework predicts that the encoder should lock in sparse stable codes for recurring patterns. The peak-then-regression in eval reward suggests the policy briefly settled on a fast-rocking pattern but could not stabilize it — consistent with a pattern that was explored but not sufficiently reinforced before the SAC update moved away from it.
+
+**Next question:** Is CoM translation physically impossible under these clamp constraints (0.4 rad, prone pose), or merely undiscoverable by RL from random initialization? A five-minute test — hand-coding a diagonal hip/shoulder motor sequence in a preflight render, checking whether a single crawl step produces net hip displacement — would distinguish between "physics blocks it" and "RL cannot discover it," and would determine whether widening the clamps is the right fix before investing in imitation-seeding.
+
+## Phase XVI — Affordance diagnostic: translation is PHYSICALLY BLOCKED, not undiscovered (hand_drive_crawler, 2026-07-01)
+
+**Why this test:** rnd_propulsion_400k returned Verdict B (no net CoM translation despite paying velocity_bonus×2.0 for any CoM speed; reproduced across seed 0 and seed 1). Verdict B could not by itself separate two causes: (A) the crawl gait is physically possible under the 0.4 rad position-offset clamps but RL never sampled it (→ fix = imitation seeding), vs (B) the clamps + prone default pose physically block propulsion (→ fix = widen clamps / change pose; imitation would ALSO fail). This is the cheap open-loop measurement (no RL, no learning, no env/model/training changes) that disambiguates them, per the theory-monitor's recommendation.
+
+**Method** (new additive diagnostic `alien_baby/visualization/hand_drive_crawler.py`): bypass the policy and hand-drive `MimoCrawlerEnv` (action_mode=position_offset, spawn 0.70–0.80) with scripted position-offset targets at **full amplitude (a=±1.0 → the clamp extremes)** in four sensible gaits — synchronous limb paddle, alternating/diagonal crawl (contralateral antiphase), belly-crawl (arms pull, legs push, quarter-cycle phased), and full-amplitude static hold. The body is settled into its prone equilibrium first (1 s) so the spawn-drop is not miscounted. Net horizontal displacement of the root/CoM measured over 8 s per pattern. Grounding verified: after settle the body has **11 solid contacts with the platform** (head, both hands, both upper legs, torso) — this is a grounded body with purchase, not a floating one.
+
+**Result — the body cannot translate even when hand-driven at maximum amplitude:**
+
+| Pattern | Net CoM |Δxy| | Max excursion |
+|---|---|---|
+| synchronous | 0.027 m | 0.027 m |
+| alternating (diagonal crawl) | **0.039 m** | 0.039 m |
+| belly_crawl | 0.037 m | 0.037 m |
+| hold (static push) | 0.004 m | 0.006 m |
+
+Best net translation = **0.039 m**, far below the 0.05 m bar and nowhere near a real crawl stride (~0.1–0.3 m). Video (overhead panel): the body bobs/bends in place — cyclic knee-flexion — with no translation toward the ball. (The ringside oblique camera led the auto-describer to perceive a faint "slide down an incline," but the measured root xy is start≈end, i.e. in-place motion; there is no incline in the flat platform.)
+
+**Verdict: (B) TRANSLATION PHYSICALLY BLOCKED — cause B, not cause A.** The bottleneck is range-of-motion: the position-offset clamps are tiny — `hip_bend ±0.2 rad (≈±11°)`, `chest_lean ±0.157 rad`, shoulders `±0.4 rad (≈±23°)`, hip flex asymmetric ≈ (−0.57, +0.23) rad. A crawl stride needs far larger joint excursions than these clamps permit, so no controller — learned or hand-coded — can produce net propulsion within them. This is why three RL runs (rnd_movefirst_60k, rnd_directed_250k, rnd_propulsion_400k) all produced movement-without-locomotion: not a discovery failure, an affordance failure.
+
+**Implication (decision for human):** the indicated fix is to **widen the offset clamps (e.g. shoulders/hips toward ~0.8 rad, hip_bend/chest beyond ±0.2) and/or change the prone default pose**, then re-run this same hand-drive test to confirm translation becomes achievable before spending any RL compute. **Imitation-from-demonstration is NOT indicated yet** — it would fail for the same reason RL did (the body cannot execute the stride within the current clamps). Widen the affordance first; discovery is only worth solving once the gait is physically possible.
+
+**Caveats:** the four hand-chosen gaits are not exhaustive — a cleverer open-loop pattern might do marginally better, but all four sensible gaits clustering at 0.03–0.04 m (and static hold at ~0) is strong evidence the ceiling is low. Single seed (the physics is deterministic given the pose, so seed matters little here). CoM metric is the root free-joint xy. The clamp values above are read from `mimo_crawler_pos.xml`; widening them is a one-line-per-actuator XML change but should be paired with a re-tuned kp and an integrator/stability check (the clamps were originally tightened for numerical stability).
+
+**Addendum — widened-clamp verification (same day):** to de-risk the recommended fix, a throwaway diagnostic body variant `mimo_crawler_pos_wide.xml` was created (23 limb/spine actuators widened: shoulders ±0.4→±0.9, hip_flex −0.57/+0.23→−1.1/+0.6, knees −0.92/−0.12→−1.6/+0.1, hip_bend ±0.2→±0.45, etc.; original body untouched, no training) and hand-driven with the same four gaits. Result: **numerically STABLE** (root z steady ~2.09, no explosion — so widening with the existing kp is safe under implicitfast), and best net CoM translation rose to **0.092 m** (belly_crawl) vs 0.039 m narrow — a ~2.4× gain that crosses the 0.05 m "achievable" bar. **But** the other three gaits barely moved (0.025–0.032 m) and the belly_crawl video shows a slow, awkward contorting drag "struggling to move from prone," not a clean crawl. **Refined conclusion:** range-of-motion is a *genuine contributing* cause (cause B is partly real — widening helps and is stable), but widening the clamps *alone* is **necessary-but-likely-not-sufficient** for confident locomotion; the prone default pose (and, on top of a now-adequate ROM, gait discovery — cause A) still matter. Indicated next step for the human: (1) adopt a widened-clamp body (verified stable), (2) also reconsider the prone default pose toward a crawl-ready posture, then (3) re-run this hand-drive test to confirm a *clean* >0.15 m hand-driven crawl exists before committing RL/imitation compute. Widening values here are a first pass, not tuned; hand gaits are not optimized (RL may exceed them once ROM permits).
