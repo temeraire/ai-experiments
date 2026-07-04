@@ -28,12 +28,47 @@ from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 from stable_baselines3.common.callbacks import CheckpointCallback, CallbackList
 
+from stable_baselines3.common.callbacks import BaseCallback
+
 from alien_baby.crawler.mimo_crawler_env import CRAWL_POSES
 from alien_baby.crawler.train_crawler import make_env, LivenessGateCallback, _SafeSaveEvalCallback
 from alien_baby.crawler.crawler_cnn_extractor import StereoCrawlerCNN
 
 RESULTS = pathlib.Path(__file__).parent.parent / "results"
 XML = "alien_baby/crawler/mimo_crawler_pos_wide_hs.xml"   # has the head_yaw actuator
+
+# Search-shaping curriculum: (fraction of total steps, spawn_cone_deg). Start narrow so the
+# policy masters gait+approach where forward-crawl works, then widen so the ball moves off the
+# static view and SEARCH becomes necessary — build the skills in sequence, not all at once.
+CONE_SCHEDULE = [(0.0, 44.0), (0.15, 68.0), (0.35, 90.0), (0.60, 136.0)]
+
+
+class CurriculumConeCallback(BaseCallback):
+    """Widen spawn_cone_deg on train + eval envs as training progresses."""
+
+    def __init__(self, schedule, total_steps, eval_env, verbose=0):
+        super().__init__(verbose)
+        self.schedule = schedule
+        self.total = total_steps
+        self.eval_env = eval_env
+        self._current = None
+
+    def _target_cone(self):
+        frac = self.num_timesteps / max(1, self.total)
+        cone = self.schedule[0][1]
+        for f, c in self.schedule:
+            if frac >= f:
+                cone = c
+        return cone
+
+    def _on_step(self):
+        cone = self._target_cone()
+        if cone != self._current:
+            self._current = cone
+            self.training_env.set_attr("spawn_cone_deg", cone)
+            self.eval_env.set_attr("spawn_cone_deg", cone)
+            print(f"[curriculum] step {self.num_timesteps}: spawn cone -> +/-{cone/2:.0f}")
+        return True
 
 
 def _chime():
@@ -88,12 +123,17 @@ def main():
     p.add_argument("--run-tag", default="head_search_v1")
     p.add_argument("--device", default="mps")
     p.add_argument("--warmstart-cnn", default=None)
+    p.add_argument("--curriculum", action="store_true",
+                   help="search-shaping: widen the spawn cone over training (CONE_SCHEDULE)")
     args = p.parse_args()
 
     tag = args.run_tag
+    # With the curriculum, envs START at the first (narrow) cone; the callback widens them.
+    if args.curriculum:
+        args.spawn_cone_deg = CONE_SCHEDULE[0][1]
     print(f"\n=== HEAD-SEARCH training: {tag} ===")
-    print(f"  steps={args.steps} n_envs={args.n_envs} cone=+/-{args.spawn_cone_deg/2:.0f} "
-          f"ent={args.ent_coef} device={args.device}")
+    print(f"  steps={args.steps} n_envs={args.n_envs} start_cone=+/-{args.spawn_cone_deg/2:.0f} "
+          f"curriculum={args.curriculum} ent={args.ent_coef} device={args.device}")
 
     train_env, eval_env = build_envs(args)
     model = PPO(
@@ -119,6 +159,8 @@ def main():
                               deterministic=True, render=False),
         LivenessGateCallback(gate_step=10_000, min_motion=0.05, out_dir=ckpt_dir),
     ]
+    if args.curriculum:
+        callbacks.append(CurriculumConeCallback(CONE_SCHEDULE, args.steps, eval_env))
     model.learn(total_timesteps=args.steps, callback=CallbackList(callbacks), progress_bar=False)
     model.save(str(RESULTS / f"{tag}_final"))
     train_env.save(str(RESULTS / tag / "vec_normalize.pkl"))
