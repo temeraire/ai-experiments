@@ -1416,3 +1416,29 @@ for these tests; on this body it was not enough (reach still covers ±22°).
 
 Honest status: representation SOLVED; behavioral reinforcement UNPROVEN and unprovable on ±22°;
 next step is head-search for a winnable-yet-vision-necessary task.
+
+### HEAD-SEARCH RESULT (head_search_v1, ~800K) — FIRST BEHAVIORALLY-NECESSARY VISION WIN
+
+The head-search phase (±68° cone, ball off the static ±22° view, active head-yaw actuator added)
+gives the payoff the ±22° confound made impossible. Clean eval (40 eps, ±68°):
+- contact **47.5%** with vision vs **35.0%** pixels-ablated → vision gap **+12.5 pts**.
+- mean-toward **+0.073 m with vision vs −0.036 m ablated** — the cleanest signal: WITH vision net
+  motion is TOWARD the ball; WITHOUT it, AWAY. Vision reverses the behavior's direction.
+- substrate held: tip 5% (upright 95%), disp 0.650 m (active search+crawl).
+- VIDEO (frame-verified, not Gemini): creature starts facing forward with the ball off to the side,
+  then rotates its body toward the off-cone ball and crawls to contact. Genuine search + directed
+  approach to a ball forward-crawl cannot reach.
+
+**Why this matters:** for the first time in the project, vision is BEHAVIORALLY LOAD-BEARING —
+ablating it drops contacts AND flips net motion away from the target, on a task (±68°) where the
+diagnostic proved forward-crawl fails (bearing worth +20 pts). Contrast ±22°, where vision was
+net-zero/negative because forward-crawl already solved it. Representation (Stage A, R²=0.84) + a
+task that NEEDS direction = a real behavioral win. This is the "reinforced" half, finally shown on
+a winnable-yet-vision-necessary task.
+
+**Honest limits:** modest gap (+12.5, not +40). The 35% ablated baseline is inflated by undirected
+search-wander stumbling onto balls over 1000 steps (not a true zero floor). The from-scratch policy
+plateaued bimodal (~100 eval reward, half episodes solved) — gait+search+vision learned together on
+the action side from scratch is hard; more training and/or a search-shaping curriculum (start narrow,
+widen the cone) should raise both the contact rate and the ablation gap. Single seed. But the sign is
+unambiguous and video-confirmed: vision drives the creature to find and reach balls it otherwise can't.

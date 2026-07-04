@@ -112,3 +112,30 @@ for a winnable >±30° spawn forward-crawl can't solve. See THEORY_LOG/FINDINGS 
 
 ## Next (if a stage succeeds): generalization — move target (kept winnable), vary shape
 (torus/cone/column), add grasp DOF. Then the prism-ghost aftereffect (PRISM_GHOST_PROPOSAL.md).
+
+## HEAD-SEARCH PHASE — set up + launched (the fix for the ±22° confound)
+Prechecks (both mandatory, both passed):
+- HS-1 (diag_confound.py): bearing becomes NECESSARY at ±68° — teacher true 72.5% vs zero 52.5%
+  (+20 pts), vs only +7.5 at ±22°. Forward-crawl reach is finally exceeded. Target cone = ±68°.
+- HS-2 (cam_visibility_preflight --head-swivel-deg): GOTCHA — when PRONE, head_swivel ROLLS
+  (its axis points forward), not yaws; head_tilt_side is the pan/yaw joint. ±60° head-yaw brings
+  ±75° of world into view → wide cone is winnable by turning the head. BUT head_tilt_side had NO
+  actuator → added `act:head_yaw` (nu 25→26, appended last so crawl-pose indices unchanged).
+Setup: `train_head_search.py` — vision PPO on ±68° cone (`mimo_crawler_pos_wide_hs.xml`),
+StereoCrawlerCNN encoder WARM-STARTED from Stage A (R²=0.84), entropy 0.01 for search
+exploration, arms_fwd pose, approach+contact reward. Smoke passed; untrained preflight frames
+confirm prone body + ball spawning off-cone (~−68°) on the platform (reachable) + sane cameras.
+Launched 2M steps (`head_search_v1`). HONEST SCOPE: this is the hard follow-on — gait + search +
+steering are learned together (action side from scratch; only the vision encoder is warm-started),
+so a first run is exploratory. Monitoring via checkpoints; success = contacts above the zero-bearing
+baseline WITH vision, i.e. the first behaviorally-necessary vision win.
+
+### HEAD-SEARCH progress (head_search_v1, 400K/2M) — LIFT-OFF
+Deterministic eval reward: ~0 through 275K (from-scratch gait+search learning phase), then
+300K→20, 350K→61, 375K→**142**, 400K→100 (7 New-best events, still improving). That 142 matches
+Stage B's rewards on the EASY ±22° cone — but achieved from scratch on the HARD ±68° cone where the
+ball spawns off-view. Bimodal (±90 std) = some episodes solved, some not; mean rising 0→140 is real
+learning: the creature is starting to search, turn toward off-cone balls, and reach them. Liveness
+PASSED (body_motion 1.61). CRUCIAL TEST PENDING: clean contact + pixel-ablation eval at ~800K — if
+contacts collapse when pixels are zeroed, that is the project's FIRST behaviorally-necessary vision
+win (vision load-bearing where forward-crawl provably fails).

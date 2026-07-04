@@ -2235,3 +2235,15 @@ covers the entire camera-visible ±22° cone, so the bearing is behaviorally nea
   (head_swivel to fixate an off-cone ball) enabling a >±30–45° winnable spawn forward-crawl can't
   solve. Added `spawn_cone_min_deg` to the env for lateral-band tests. Best Stage B checkpoint is
   the 50K one, but the honest headline is Stage A (representation), not a behavioral win.
+
+### HEAD-SEARCH RESULT (2026-07-04) — vision behaviorally load-bearing at last
+±68° cone (vision-necessary per diag_confound; ball off the static view; added act:head_yaw so the
+policy can pan when prone). Vision PPO, encoder warm-started from Stage A, 800K/2M. Clean eval (40 eps):
+- contact **47.5%** (pixels ablated **35.0%**) → vision gap **+12.5 pts**.
+- mean_toward **+0.073 m** with vision vs **−0.036 m** ablated (vision flips net motion from AWAY to TOWARD).
+- substrate: tip 5%, disp 0.650 m (searching+crawling). Video frame-verified: turns toward off-cone
+  ball and crawls to it.
+FIRST behaviorally-necessary vision win in the project (contrast ±22° where vision was net-zero because
+forward-crawl solved it). Modest magnitude (partial from-scratch learning; ablated 35% inflated by
+undirected search-wander). Next: more training + search-shaping curriculum (narrow→wide cone).
+Files: train_head_search.py, mimo_crawler_pos_wide_hs.xml (act:head_yaw), diag_confound.py.
