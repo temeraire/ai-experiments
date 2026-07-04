@@ -47,7 +47,8 @@ def _tilt_quat(model, cid, alpha_deg):
     model.cam_quat[cid] = q
 
 
-def measure(xml, fovy, radius, bearings, settle_steps, seed, tag, tilt_deg=None):
+def measure(xml, fovy, radius, bearings, settle_steps, seed, tag, tilt_deg=None,
+            head_swivel_deg=0.0, head_joint="robot:head_tilt_side"):
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     env = MimoCrawlerEnv(
         vision=True, stereo=True, crawl_pose=CRAWL_POSES["arms_fwd"],
@@ -69,6 +70,13 @@ def measure(xml, fovy, radius, bearings, settle_steps, seed, tag, tilt_deg=None)
     # Settle the body into the crawl pose with neutral (pose-holding) action.
     for _ in range(settle_steps):
         env.step(np.zeros(env.action_space.shape, dtype=np.float32))
+    # Optionally turn the head (head-search precheck): does turning the head bring off-cone
+    # balls into view? NOTE: when PRONE, head+Z points FORWARD, so head_swivel = ROLL, not yaw.
+    # The joint that PANS left-right when prone is head_tilt_side (vertical axis). Default to it.
+    if head_swivel_deg:
+        sw_jid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, head_joint)
+        data.qpos[model.jnt_qposadr[sw_jid]] = np.deg2rad(head_swivel_deg)
+        mujoco.mj_forward(model, data)
     settled_qpos = data.qpos.copy()
 
     root_qadr = model.jnt_qposadr[env._root_joint_id]
@@ -143,8 +151,13 @@ if __name__ == "__main__":
     p.add_argument("--tag", default="baseline")
     p.add_argument("--tilt-deg", type=float, default=None,
                    help="degrees below horizontal for both eyes (15=current XML)")
+    p.add_argument("--head-swivel-deg", type=float, default=0.0,
+                   help="turn the head this many degrees (head-search visibility precheck)")
+    p.add_argument("--head-joint", default="robot:head_tilt_side",
+                   help="which head joint pans (prone: head_tilt_side yaws; head_swivel rolls)")
     p.add_argument("--bearings", type=float, nargs="+",
                    default=[-45, -30, -22, -15, -7, 0, 7, 15, 22, 30, 45])
     args = p.parse_args()
     measure(args.xml, args.fovy, args.radius, args.bearings,
-            args.settle_steps, args.seed, args.tag, args.tilt_deg)
+            args.settle_steps, args.seed, args.tag, args.tilt_deg, args.head_swivel_deg,
+            args.head_joint)

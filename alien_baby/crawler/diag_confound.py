@@ -9,10 +9,10 @@ from alien_baby.crawler.stage_a_distill import load_teacher
 XML = "alien_baby/crawler/mimo_crawler_pos_wide.xml"
 
 
-def run(min_deg, source, n=40, seed=123):
+def run(cone_deg, source, min_deg=0.0, n=40, seed=123):
     teacher, norm = load_teacher("cpu")
     env = MimoCrawlerEnv(vision=False, target_obs=True, crawl_pose=CRAWL_POSES["arms_fwd"],
-                         action_mode="position_offset", xml_path=XML, spawn_cone_deg=44.0,
+                         action_mode="position_offset", xml_path=XML, spawn_cone_deg=cone_deg,
                          spawn_cone_min_deg=min_deg, spawn_radius=(0.70, 0.80),
                          random_start_orientation=False, max_steps=1000, step_cost=0.0,
                          approach_reward_scale=10.0, velocity_bonus_scale=0.0,
@@ -37,7 +37,9 @@ def run(min_deg, source, n=40, seed=123):
 
 
 if __name__ == "__main__":
-    for label, mn in [("FULL cone +/-22", 0.0), ("LATERAL band +/-15-22", 30.0)]:
-        t = run(mn, "true"); z = run(mn, "zero")
-        print(f"{label:24s}: true-bearing {t*100:.1f}%  zero-bearing {z*100:.1f}%  "
+    # Find the cone where the bearing becomes NECESSARY (true >> zero) — i.e. where the
+    # ball is beyond forward-crawl reach so only steering (vision) can succeed.
+    for cone in [44.0, 90.0, 135.0, 180.0]:
+        t = run(cone, "true"); z = run(cone, "zero")
+        print(f"cone +/-{cone/2:>3.0f}: true-bearing {t*100:5.1f}%  zero-bearing {z*100:5.1f}%  "
               f"=> bearing worth {(t-z)*100:+.1f} pts")
