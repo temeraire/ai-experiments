@@ -1296,3 +1296,78 @@ Single seed (all PPO results seed 0); privileged target obs, not vision (57.5% i
 > **The most important thing we don't know yet:** Whether vision can supply the ball-direction bearing that the privileged `target_obs` vector provides — the core project question, now finally testable.
 >
 > **Recommended diagnostic (a measurement):** Zero the `target_obs` vector in a deterministic eval of the PPO best_model; confirm contacts collapse toward the ~16.7% random-walk baseline, validating that the 57.5% is genuinely caused by the directional signal and that vision has a real behavioral gap to fill.
+
+---
+
+## 2026-07-04 — Vision phase (Stages A/B/C): the "integrated but inert" failure splits in two, and "reinforced not destroyed" is demonstrated
+
+**Setup.** With directed crawl-to-ball solved via a privileged bearing (`target_obs`, PPO 57.5%),
+the open question was whether VISION can supply that bearing while REINFORCING, not destroying, the
+proprioceptive gait. Precondition fixed first: the head-cam saw only ±15°; widening fovy 90→120 and
+matching the spawn cone to ±22° makes the ball a clear 4–14 px blob across the cone (winnability).
+Three architectures, all preserving the motor policy by freezing it: A = distil bearing from pixels
+into the frozen teacher (supervised); B = reward-grow vision into the frozen teacher's bearing slot;
+C = zero-init additive residual vision head on the frozen blind crawler (No More Blind Spots, Duan
+2025). Honest floor on ±22° = blind base 20%; ceiling = teacher 73–77.5%.
+
+### The decisive result: "integrated but inert" was never one failure — it is two
+For years the vision null was one undifferentiated fact (ablation says vision is wired in; behaviour
+says it adds nothing). This phase separates it cleanly:
+
+1. **Representation — SOLVED (refutes the strong prior).** Stage A: a CNN reconstructs the ball's
+   lateral bearing from pixels at **teacher-driven held-out R² = 0.841** (in-sample 0.95), versus the
+   project's chronic R² ≈ 0.01–0.08. The direction IS in the pixels and the encoder generalises it.
+   The years-long "representation failure" was an artifact of an UNWINNABLE camera (ball out of frame
+   / a horizon speck) + no supervised pressure — not an inability of pixels to carry direction.
+   (Caveat: student-driven held-out lateral R² = −0.01 is DAgger distribution shift, not a
+   representation failure — fixable with more DAgger; does not affect on-policy Stage C.)
+
+2. **Reward-driven recruitment — the real bottleneck (Stage C).** Residual grown by reward ALONE:
+   contact stayed at the 20% blind floor (inert) while the pixel-ablation gap was +16.7 pts
+   (integrated) and the SUBSTRATE was preserved (disp 0.235 vs 0.219, tip 3.3% vs 2.5%). Because
+   Stage A already proved the representation exists, this isolates the failure as **policy-gradient,
+   not representation**: on a cone where forward-crawl already earns 20%, reward is too weak a teacher
+   to grow the steering, even though the direction is decodable in the pixels. This is the precise
+   modern statement of the old null.
+
+3. **The fix — distil then RL (Stage B, warm-started from A).** Initialise the vision head from
+   Stage A's bearing CNN (R²=0.84), freeze the teacher: vision reads direction at init, the teacher
+   steers immediately, reward only fine-tunes. Clean eval (50K): **contact 63.3%** (20→63, toward the
+   73–77.5% ceiling); **pixels-ablated 20.0% = exactly the blind floor** (+43.3 pt vision gap); gait
+   preserved (tip 6.7%, upright ~93%) and locomotion ENHANCED (disp 0.504 vs 0.219, speed 2.14 vs
+   0.30 mm/step). Generalises: nearer balls 80%, farther 0.85–0.95 → 50% (graceful), cone ±15 → 75%,
+   ±30 → 60%. Video-confirmed by direct frame inspection (prone crawl to contact in distinct board
+   positions — directed, not spawn-luck).
+
+### Framework reading — "vision reinforces proprioception rather than destroying it"
+This is the concrete in-silico instance of the user's target claim, operationalised as the
+substrate/capability split:
+- **NOT DESTROYED:** the motor policy is frozen (preserved by construction), and pixel-ablation
+  recovers EXACTLY the 20% proprioceptive baseline — never below. The proprioceptive competence is
+  intact and fully recoverable; vision did not overwrite it.
+- **REINFORCED:** vision supplies the world-derived bearing the proprioceptive policy lacked, lifting
+  behaviour +43 pts and making locomotion more purposeful. Removing vision degrades gracefully to
+  the preserved baseline (the "coexistence," not "overwrite," pattern of Taylor Ch. 9 — here via a
+  frozen substrate rather than a replay buffer).
+
+### Honest limits (do not overclaim)
+- Stage B's success uses distil-then-RL (supervised A → reward B), NOT reward alone. Reward alone
+  (Stage C) could not recruit vision on this cone. The "reward alone grows vision" claim is REFUTED
+  here; "supervision builds the representation, reward uses it" is what worked (matches
+  Distillation-PPO / Learning-by-Cheating from the 2026-07-04 literature scout).
+- Stage B is sensor SUBSTITUTION (vision replaces the privileged bearing on a frozen policy) — the
+  first time vision is behaviourally load-bearing in this project, but NOT yet the deeper
+  interpenetration (vision reshaping the proprioceptive representation). The prism-ghost aftereffect
+  (PRISM_GHOST_PROPOSAL.md) is now unblocked and is the next real test of interpenetration.
+- Substrate tip-rate rose 2.5→6.7% (still low): the vision policy moves more aggressively. Preserved,
+  not pristine.
+- Single seed; Stage B evaluated at 50K (a longer run is training). The ±22° cone is forward-crawl-
+  confounded on contact rate — hence R² and the ablation-to-floor gap, not raw contacts, carry the
+  argument.
+
+### Methodological note — Gemini video description is UNRELIABLE for the prone crawler
+On BOTH the blind base and Stage B videos, Gemini described the prone belly-crawler as "a person
+trying to stand up and failing / flailing / never completing the task," directly contradicting the
+measured contacts. It anthropomorphises MIMo (reads prone crawl as failed standing) and mistakes the
+floor ball for "part of the head." Direct frame inspection (Read on extracted PNGs) is the reliable
+check for this body; treat Gemini's posture/task verdicts on the crawler with suspicion.

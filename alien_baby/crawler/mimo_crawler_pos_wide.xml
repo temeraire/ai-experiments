@@ -260,8 +260,13 @@
                      camera-right = head-Y = world+X (lateral, natural L/R)
                      camera-up    = mostly head-X (= world+Z) with 15° forward tilt
                      look direction = 15° below head+Z (= 15° below horizontal in world) -->
-              <camera name="left_eye"  pos=".07  .0245 .067375" xyaxes="0 -1 0  -0.966 0 0.259" fovy="90"/>
-              <camera name="right_eye" pos=".07 -.0245 .067375" xyaxes="0 -1 0  -0.966 0 0.259" fovy="90"/>
+              <!-- fovy widened 90->120 (2026-07-04): the ball at the 0.70-0.80 m spawn
+                   ring sits on the visual horizon and exits the frame by ~+/-20 deg at
+                   fovy=90. fovy=120 keeps the ball a clear 4-14 px blob across a
+                   symmetric +/-22 deg cone (cam_visibility_preflight.py), which is the
+                   matched winnable spawn cone for the vision phase. -->
+              <camera name="left_eye"  pos=".07  .0245 .067375" xyaxes="0 -1 0  -0.966 0 0.259" fovy="120"/>
+              <camera name="right_eye" pos=".07 -.0245 .067375" xyaxes="0 -1 0  -0.966 0 0.259" fovy="120"/>
             </body>
           </body>
         </body>

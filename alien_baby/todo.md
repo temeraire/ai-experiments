@@ -1,3 +1,56 @@
+# Vision-as-reinforcement plan (A → B → C) — proposed 2026-07-04, AWAITING SIGN-OFF
+
+## Goal
+Demonstrate that what proprioception learned (the crawl gait + posture) is **reinforced, not
+destroyed**, when vision is introduced — vision supplies the ball bearing that proprio lacks,
+without degrading the motor substrate. Staged as three residual/adapter designs of increasing
+ambition, all behind one shared camera fix.
+
+## Measurement contract (applies to every stage)
+Report competence as **substrate vs capability**, not one number:
+- **Substrate (must be PRESERVED):** CoM displacement, mean speed, tip-rate, gait smoothness.
+- **Capability (must CLIMB):** contact rate + mean-dist-toward-ball (bearing-dependent).
+- **Reinforced** = substrate holds/improves AND capability climbs (12–32% → toward 57.5%) AND
+  vision-ablation degrades *gracefully* to ≥ proprio baseline (never below).
+- **Destroyed** = substrate falls when vision is added, or removing vision leaves policy < baseline.
+
+## Prerequisite (GATES ALL THREE — shared, do once)
+- [ ] P0. Fix head-cam FOV so the ball is a clear centred blob across the spawn cone
+  (2026-07-02 preflight: only ±15° visible, need ±45°). Widen `left_eye`/`right_eye` fovy in
+  `mimo_crawler_pos_wide.xml`; re-run the visibility preflight until it passes. No vision run
+  launches until this passes (winnability rule).
+- [ ] P1. Add substrate/capability logging to `eval_phase_v.py` (gait metrics beside contacts).
+
+## Stage A — vision fills the slot (distilled) [GATE run, cheapest]
+- [ ] A1. Roll out frozen `crawl_ppo_2M_best` in the vision env (target_obs + vision both ON;
+  env already emits true bearing beside pixels) to collect (pixels → true ego-bearing) pairs.
+- [ ] A2. Train CNN `g(pixels)→3-vector` by regression to the true bearing (reuse StereoCrawlerCNN).
+- [ ] A3. Eval: inject `g(pixels)` into slot [69:72] (raw units → through the saved
+  `vec_normalize.pkl`), motor policy frozen. Report decode-R² and substrate/capability.
+- **Success:** decode-R² > 0.30 AND contacts recover toward 57.5% with substrate unchanged.
+- **Gate:** weak R² here ⇒ camera/representation problem — STOP, fix before B/C.
+
+## Stage B — vision fills the slot, grown by reward [only if A passes]
+- [ ] B1. Same frozen motor policy; make `g` the only trainable module; train by PPO reward
+  (gradient reward → frozen actor → g). Warm-start `g` from Stage A's weights. Let value
+  head/log-std train; keep actor trunk frozen.
+- [ ] B2. Eval: substrate/capability + vision-ablation graceful-degradation check.
+- **Success:** capability climbs under reward alone (no bearing supervision) with substrate intact.
+
+## Stage C — additive action residual on a blind base [own mini-project]
+- [ ] C0. PREREQ: train a competent blind/proprio-only crawler (no target_obs) to freeze as base.
+- [ ] C1. PPO `ActorCriticPolicy` subclass: action = frozen_blind_action + zero-init CNN residual
+  (translate `dialogue_policy.py`'s dual-stream pattern from SAC → PPO).
+- [ ] C2. Train residual by reward; eval substrate/capability + ablation.
+- **Success:** vision-added steering lifts a policy that never had a bearing, substrate preserved.
+
+## Notes / known integration details
+- `StereoCrawlerCNN` infers `[proprio|memory|pixels]` and ignores a target_obs slot — fine for
+  A/B (true slot not routed through it); needs a 3-line tweak for any integrated bearing+vision policy.
+- If A/B/C land, the payoff experiment is the prism-ghost aftereffect (`PRISM_GHOST_PROPOSAL.md`).
+
+---
+
 # Alien Baby: Rebuild Plan
 
 ## Goal

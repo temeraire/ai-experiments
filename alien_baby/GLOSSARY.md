@@ -301,3 +301,38 @@ Named ideas from the outside literature that map onto our "integrated but inert"
 **PPO-vs-SAC for locomotion stability.** SAC (off-policy, replay buffer) discovered directed crawling but never *stabilised* it — every run burst to a good policy then regressed as the buffer drifted (no stable lock-in). PPO (on-policy, no replay drift) trained smooth-monotonically to a plateau and roughly doubled the contact rate (23% → 57%). MIMo's one working whole-body skill used PPO; the lesson is that on-policy stability can matter more than off-policy sample-efficiency for consolidating a sparse-reward motor skill.
 
 **Creeping vs crawling (clinical).** In infant development, "crawling" = belly on the floor (commando/belly-crawl); "creeping" = up on hands-and-knees. Our arms_fwd result is belly-crawl. Worth distinguishing because hands-and-knees creeping demands supporting body weight (strength), which the MIMo rolling paper flags as a hard, separate requirement.
+
+## Vision-phase terms (added 2026-07-04)
+
+**Substrate / capability split** — the measurement contract for "reinforced not destroyed." Report a
+policy's competence as two separate things, not one number: the SUBSTRATE (proprioceptive: crawl
+gait, posture/tip-rate, displacement, speed) which must be PRESERVED, and the CAPABILITY (vision:
+contact rate, distance-toward-ball) which must CLIMB. "Reinforced" = capability climbs while
+substrate holds; "destroyed" = substrate falls when vision is added.
+
+**Vision load-bearing gap (pixel-ablation gap)** — contact rate with real pixels minus contact rate
+with the pixel block zeroed. A large positive gap that degrades to (not below) the blind baseline
+means vision is doing real behavioral work and proprio is recoverable. Stage B: 63.3% → 20.0%
+(+43 pts). Distinguish from an ablation gap that drops BELOW baseline (vision made the policy depend
+on pixels without adding value — the Stage C / "integrated but inert" pattern).
+
+**Distil-then-RL (distillation-then-reward-finetune)** — the winning recipe of the vision phase:
+first SUPERVISE a vision encoder to predict the privileged signal (Stage A, bearing from pixels,
+R²=0.84), then WARM-START a reward-trained policy from it (Stage B) so reward only has to USE the
+representation, not discover it. Reward ALONE (Stage C) failed to grow vision. Matches the
+literature's Learning-by-Cheating / Distillation-PPO recipes.
+
+**Representation failure vs policy-gradient failure** — two distinct reasons vision can be inert.
+Representation failure: the encoder never builds the signal (decode R²≈0). Policy-gradient failure:
+the signal is decodable but reward doesn't connect it to behavior. The vision phase proved AB's was
+the SECOND (R²=0.84 but reward-alone inert), overturning the long-assumed "representation failure."
+
+**Residual vision head (zero-init additive adapter)** — a trainable CNN whose output is ADDED to a
+frozen base policy's action, with the final layer initialized to zero so at start the policy == the
+base (gait preserved by construction). Vision can then only ADD, never destroy. From "No More Blind
+Spots" (Duan 2025) / residual RL / ControlNet zero-init. Used in Stage C (`ResidualVisionPolicy`).
+
+**Winnability preflight (camera visibility check)** — a mandatory pixel-level measurement, before any
+vision run, that the target is a clear blob (≥ a few px) across the spawn cone at the true training
+resolution. `cam_visibility_preflight.py`. Catches the "vision task is unwinnable because the target
+is off-frame / a horizon speck" trap that produced years of false "vision can't learn" nulls.

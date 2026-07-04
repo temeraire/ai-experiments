@@ -2159,3 +2159,62 @@ The RL policy EXCEEDS the hand-drive affordance ceiling (0.225 m axial) in sever
 Both seeds: identical ~46-point ablation gap, both go negative toward-ball when the bearing is zeroed (crawl away when blinded), both trained smooth-monotonic to plateau ~180. Absolute rate varies with seed (58% vs 78%, normal PPO variance) but the causal finding — the directional signal is strongly load-bearing and the creature genuinely steers by it — is seed-robust. Directional crawling to a target is confirmed.
 
 **3-seed set complete (2026-07-02):** seed 2 = 70% intact / 20% zeroed (gap 50, toward-ball −0.356 m blinded). Full set — seed 0: 58/12, seed 1: 78/32, seed 2: 70/20. **Mean 69% intact vs 21% zeroed, a ~47-point ablation gap across all three seeds, every seed crawling away from the ball when the bearing is removed.** Directional crawling to a target in any direction is confirmed and robust. This closes the crawler-locomotion arc: the creature has a reliable, genuinely-directional turn-and-crawl-to-target behavior driven by a (privileged) ball-direction signal. Next phase (blocked on a camera-FOV winnability decision — see VISION_PHASE_PROPOSAL_2026_07_02.md): replace the privileged bearing with vision.
+
+---
+
+## 2026-07-04 — Vision phase A/B/C: vision becomes behaviorally load-bearing (reinforced, not destroyed)
+
+**One-line:** With the camera fixed to actually see the ball, vision reads its direction from pixels
+(decode R²=0.84, up from ~0.08) and — warm-started into a frozen motor policy — lifts contact from
+the 20% blind floor to 63%, recovering the 20% baseline exactly when vision is ablated. The
+proprioceptive gait is preserved; vision reinforces it.
+
+### Camera fix (winnability gate)
+- The vision phase was blocked: head-cam saw only ~±15°. Diagnosed with a new pixel-level harness
+  (`visualization/cam_visibility_preflight.py`): the ball at the 0.70–0.80 m ring sits on the far
+  horizon; arms occlude the sides; tilt doesn't change horizontal span; even fovy=150 can't see ±45°.
+- Fix: **fovy 90→120** in `mimo_crawler_pos_wide.xml`, matched spawn cone **±22°** → ball a clean
+  4–14 px blob across the cone, horizontal position monotonic with bearing. Visually confirmed.
+
+### Blind base (Stage C substrate) — `crawl_ppo_blind_base` (PPO, 1.5M, no target_obs)
+- Competent prone crawler: contact 20% (undirected), mean_disp 0.219 m, tip 2.5%. Video-confirmed
+  belly-crawl (Gemini wrongly said "on its back"; frames corrected it).
+
+### Stage A — distil bearing from pixels into frozen teacher (`stage_a_distill.py`)
+- Lateral decode-R²: in-sample 0.945/0.952 (BC/DAgger); **teacher-driven held-out 0.841** (fwd 0.648,
+  z 0.779). Student-driven held-out −0.011 = DAgger distribution shift (only 1 round), not a
+  representation failure. **Representation failure fixed** (was R²≈0.01–0.08 for years).
+
+### Stage C — residual grown by reward ALONE (`train_stage_c.py`, ResidualVisionPolicy), 300K
+- Contact 20.0% (= blind floor) | pixels-ablated 3.3% | ablation gap +16.7 pts | substrate preserved
+  (disp 0.235, tip 3.3%). **Integrated but inert.** Since A proved the representation exists, this is
+  a POLICY-GRADIENT failure, not representation: reward alone can't grow steering on a cone where
+  forward-crawl already gets 20%.
+
+### Stage B — reward-grow vision into frozen teacher's bearing slot, WARM-STARTED from Stage A CNN
+(`train_stage_b.py --warmstart-cnn`, SlotFillVisionPolicy). Eval on 50K best_model, ±22°, 30 eps:
+
+| Metric | Value | Baseline |
+|---|---|---|
+| Contact rate | **63.3%** | blind floor 20%, teacher ceiling 73–77.5% |
+| Contact, pixels ablated | **20.0%** | = blind floor exactly (graceful) |
+| Vision load-bearing gap | **+43.3 pts** | (Stage C: +16.7, inert) |
+| mean_toward | +0.218 m | blind +0.173 |
+| Substrate: mean_disp | 0.504 m | blind 0.219 (enhanced) |
+| Substrate: mean_speed | 2.14 mm/step | blind 0.30 (enhanced) |
+| Substrate: tip_rate | 6.7% | blind 2.5% (still upright ~93%) |
+
+Generalization battery (same policy, no retrain): radius 0.55–0.65 → 80%; 0.85–0.95 → 50% (graceful);
+1.0–1.1 → 20% (floor, far beyond training); cone ±15° → 75%; ±30° → 60%. Generalizes across distance
+and cone width. Video (`results/videos/eval_stage_b_ws_50k.mp4`) confirmed by direct frame inspection:
+prone crawl to contact in distinct board positions (directed, not spawn-luck). Gemini misread it as
+"failed standing" — unreliable for this body; use frames.
+
+**Interpretation:** motor policy frozen (preserved) + pixel-ablation recovers the 20% baseline =
+NOT DESTROYED; vision supplies the world-derived bearing, +43 pts, enhanced locomotion = REINFORCED.
+The winning recipe is **distil-then-RL** (A builds the representation, B uses it); reward alone (C)
+does not. Sensor substitution achieved; deeper interpenetration (prism-ghost aftereffect) now unblocked.
+
+**New files:** `visualization/cam_visibility_preflight.py`, `crawler/eval_crawler.py`,
+`crawler/stage_a_distill.py`, `crawler/residual_vision_policy.py` + `train_stage_c.py`,
+`crawler/slotfill_vision_policy.py` + `train_stage_b.py`, `crawler/eval_vision_policy.py`.

@@ -1504,3 +1504,37 @@ A: SAC (off-policy, replay buffer) discovered directed crawling but never stabil
 
 Q: Crawling vs creeping — what's the difference?
 A: Clinically, "crawling" = belly on the floor (commando/belly-crawl); "creeping" = up on hands-and-knees. Our arms_fwd result is belly-crawl. Creeping is harder — it needs the body to support its weight (strength), which MIMo's rolling paper flags as a separate hard requirement.
+
+## Vision-phase cards (added 2026-07-04)
+
+**Q: What is the "substrate/capability split" and why use it?**
+A: A way to measure "reinforced not destroyed": track the proprioceptive SUBSTRATE (gait, tip-rate,
+displacement, speed — must be preserved) separately from the visual CAPABILITY (contact rate — must
+climb). Reinforced = capability up, substrate held. It stops a single success number from hiding a
+degraded gait.
+
+**Q: What is the "vision load-bearing gap"?**
+A: Contact rate with pixels minus contact rate with pixels zeroed. Stage B: 63.3% → 20.0% (+43 pts),
+and 20% is exactly the blind baseline — so vision does real directional work and proprio is fully
+recoverable. A gap that drops BELOW baseline instead means "integrated but inert."
+
+**Q: Why did reward-alone (Stage C) fail to grow vision but warm-started Stage B succeed?**
+A: Because the bottleneck was policy-gradient, not representation. The bearing IS decodable from
+pixels (Stage A R²=0.84), but on a cone where forward-crawl already scores, reward is too weak to
+grow steering. Warm-starting the vision head from the distilled encoder (distil-then-RL) hands reward
+a working representation, so it only has to use it.
+
+**Q: Representation failure vs policy-gradient failure — which was AB's vision problem?**
+A: Policy-gradient. For years it looked like a representation failure (decode R²≈0.08), but that was
+an unwinnable camera. Fix the camera + supervise, and R²=0.84 — the encoder can build direction; the
+real failure was reward not connecting that signal to behavior.
+
+**Q: What is a zero-init residual vision head?**
+A: A trainable CNN whose output is added to a frozen base policy's action, final layer initialized to
+zero, so at init the policy equals the frozen base (gait preserved) and vision can only ADD. From
+"No More Blind Spots" / residual RL / ControlNet zero-init.
+
+**Q: Why can't you trust Gemini's description of the crawler videos?**
+A: It anthropomorphizes the prone MIMo infant as a person "trying to stand and failing," and reads
+the floor ball as part of its head — contradicting measured contacts. For this body, inspect
+extracted frames directly instead.
