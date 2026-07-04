@@ -2218,3 +2218,20 @@ does not. Sensor substitution achieved; deeper interpenetration (prism-ghost aft
 **New files:** `visualization/cam_visibility_preflight.py`, `crawler/eval_crawler.py`,
 `crawler/stage_a_distill.py`, `crawler/residual_vision_policy.py` + `train_stage_c.py`,
 `crawler/slotfill_vision_policy.py` + `train_stage_b.py`, `crawler/eval_vision_policy.py`.
+
+### CORRECTION (2026-07-04, same night) — Stage B behavioral result was confounded
+A polished 300K Stage B eval went net-negative (55% with pixels vs 75% ablated). Diagnostic
+(`diag_confound.py`, teacher, true vs zero bearing): FULL ±22° → 82.5% vs 75.0% (bearing worth
++7.5 pts); LATERAL band ±15–22° → 65% vs 65% (+0.0 pts). The forward-crawl reach envelope (~0.28 m)
+covers the entire camera-visible ±22° cone, so the bearing is behaviorally nearly irrelevant there.
+- The earlier "+43 pt gap" (63% vs g(0)=20%) was an unstable-ablation-baseline artifact; the fair
+  no-vision control (teacher + zero bearing) is 75%, and Stage B (55–63%) is BELOW it → vision did
+  not reinforce behavior on this cone; it slightly hurt (added noise). RL fine-tuning also eroded
+  the distilled encoder (50K read better than 300K).
+- STILL SOLID: Stage A representation, decode-R²=0.84 (vision reads direction). Stage C inert with
+  gait preserved (consistent — bearing wasn't needed).
+- Root cause: winnable cone (±22°, camera-limited) ⊄ vision-necessary cone (> ~±30° forward-crawl
+  reach). No overlap ⇒ behavioral vision value cannot be shown here. Fix: HEAD-SEARCH phase
+  (head_swivel to fixate an off-cone ball) enabling a >±30–45° winnable spawn forward-crawl can't
+  solve. Added `spawn_cone_min_deg` to the env for lateral-band tests. Best Stage B checkpoint is
+  the 50K one, but the honest headline is Stage A (representation), not a behavioral win.

@@ -90,6 +90,7 @@ class MimoCrawlerEnv(gym.Env):
 
     def __init__(self, vision=False, max_steps=DEFAULT_MAX_STEPS,
                  spawn_radius=None, spawn_cone_deg=DEFAULT_SPAWN_CONE_DEG,
+                 spawn_cone_min_deg=0.0,
                  strength_scale=1.0, n_substeps=4, render_mode=None,
                  approach_reward_scale=APPROACH_REWARD_SCALE,
                  velocity_bonus_scale=VELOCITY_BONUS_SCALE,
@@ -109,6 +110,11 @@ class MimoCrawlerEnv(gym.Env):
         self.max_steps = max_steps
         self.spawn_radius = spawn_radius or DEFAULT_SPAWN_RADIUS
         self.spawn_cone_deg = spawn_cone_deg
+        # spawn_cone_min_deg: if >0, exclude the near-forward wedge so |bearing| lies in
+        # [min/2, max/2] with random sign — a LATERAL-BAND spawn. Makes forward-crawl fail
+        # and the ball's direction behaviorally necessary (defeats the +/-22 forward-crawl
+        # confound). Default 0.0 keeps every prior run bit-identical.
+        self.spawn_cone_min_deg = float(spawn_cone_min_deg)
         self.strength_scale = strength_scale
         self.approach_reward_scale = approach_reward_scale
         self.velocity_bonus_scale = velocity_bonus_scale
@@ -301,7 +307,13 @@ class MimoCrawlerEnv(gym.Env):
         else:
             # Original random spawn behavior for ball 1
             angle_rad = np.deg2rad(self.spawn_cone_deg / 2)
-            theta = self.np_random.uniform(-angle_rad, angle_rad)
+            if self.spawn_cone_min_deg > 0.0:
+                # Lateral-band: |theta| in [min/2, max/2], random sign.
+                lo = np.deg2rad(self.spawn_cone_min_deg / 2)
+                mag = self.np_random.uniform(lo, angle_rad)
+                theta = mag if self.np_random.uniform() < 0.5 else -mag
+            else:
+                theta = self.np_random.uniform(-angle_rad, angle_rad)
             r     = self.np_random.uniform(*self.spawn_radius)
             bx, by = r * np.sin(theta), r * np.cos(theta)
             self.data.qpos[tgt1_qadr:tgt1_qadr + 3] = [bx, by, PLATFORM_TOP_Z + 0.053]

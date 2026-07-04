@@ -1371,3 +1371,48 @@ trying to stand up and failing / flailing / never completing the task," directly
 measured contacts. It anthropomorphises MIMo (reads prone crawl as failed standing) and mistakes the
 floor ball for "part of the head." Direct frame inspection (Read on extracted PNGs) is the reliable
 check for this body; treat Gemini's posture/task verdicts on the crawler with suspicion.
+
+### CORRECTION (same night, 2026-07-04) — the Stage B behavioral claim was CONFOUNDED; walk it back
+
+A polished 300K Stage B eval showed vision going NET-NEGATIVE (contact 55% with pixels vs 75%
+pixels-ablated), which forced a re-examination. Decisive diagnostic (`diag_confound.py`, frozen
+teacher, proprio, true vs zero bearing):
+- FULL cone ±22°: true-bearing 82.5% vs zero-bearing 75.0% → bearing worth only **+7.5 pts**.
+- LATERAL band ±15–22° (near-forward excluded): true 65.0% vs zero 65.0% → **+0.0 pts**.
+
+**The ±22° cone cannot demonstrate behavioral vision value, and neither can a lateral band inside
+it.** The creature's forward-crawl reach envelope (~0.28 m lateral at the 0.75 m ring) covers the
+ENTIRE camera-visible cone, so the ball's direction is behaviorally almost irrelevant anywhere
+vision can see it (true ≈ zero at every angle ≤ ±22°). This is deeper than cone width: it is a
+reach-envelope vs visible-cone mismatch.
+
+**What this means for the earlier Stage B entry (correct the overclaim):**
+- The "+43 pt vision gap" (63% real vs 20% g(0)-ablated) at 50K was an artifact of the pixel-
+  ablation baseline: g(zeros) is a drifting constant, NOT a fair "no-vision" control. The fair
+  control is the teacher fed a zero bearing = 75%. Stage B's real-pixel contact (55–63%) is BELOW
+  that 75%, so vision added noise and slightly HURT — it did NOT reinforce behavior.
+- RL fine-tuning also DEGRADED the distilled encoder: 50K (near the warm-start) read better than
+  300K. Reward on a confounded cone erodes the supervised R²=0.84 representation (un-distillation).
+
+**What still stands (unconfounded):**
+- Stage A representation: lateral decode-R² = **0.84**. Vision genuinely reads ball direction from
+  pixels. This is real and is the night's defensible result. The failure was never representation.
+- Stage C: reward-alone inert with the gait preserved — consistent (bearing wasn't needed, so
+  reward had nothing to teach).
+
+**Corrected conclusion.** Two constraints are in direct tension for this body+camera and do NOT
+overlap: (1) WINNABILITY caps the spawn cone at ±22° (that is all the head-cam can see); (2)
+BEHAVIORAL NECESSITY of the bearing requires balls OUTSIDE the ~±25–30° forward-crawl reach. There
+is no cone that is both visible AND requires vision. So "vision reinforces behavior" cannot be shown
+on this setup at all — not a training failure, a task-geometry impossibility. The representation is
+solved; the behavioral payoff has no room to exist here.
+
+**The clean fix (next experiment).** Make the ball require vision by putting it beyond forward-crawl
+reach AND bring it into view with an action: the HEAD-SEARCH phase (head_swivel to fixate an
+off-cone ball, then crawl), enabling a >±30–45° spawn that forward-crawl cannot solve. Only then can
+the R²=0.84 bearing convert to a contact gain. Alternatively: shrink the reach envelope (narrower
+body / shorter arms) or a farther/faster ball. Added `spawn_cone_min_deg` (lateral-band) to the env
+for these tests; on this body it was not enough (reach still covers ±22°).
+
+Honest status: representation SOLVED; behavioral reinforcement UNPROVEN and unprovable on ±22°;
+next step is head-search for a winnable-yet-vision-necessary task.

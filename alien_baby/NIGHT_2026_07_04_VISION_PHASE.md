@@ -82,11 +82,16 @@ direction at init; frozen teacher (gait + steering preserved) gets a good bearin
   1.0–1.1 → 20% (floor, far beyond training; one broken-episode outlier in mean_toward);
   cone ±15° → 75%. Generalizes across distance and cone width.
 
-This IS "reinforced, not destroyed": frozen motor policy preserved (ablation recovers the 20%
-baseline), vision supplies the decodable bearing (+43 pts), locomotion enhanced. **The A→B
-warm-start is the winning recipe** (distill-then-RL; matches Distillation-PPO from the lit scout):
-supervision builds the representation (A: R²=0.84), reward only has to use it (B). Reward ALONE
-(Stage C, no warm-start) could not — inert at floor. Video review + FINDINGS/THEORY_LOG pending.
+**CORRECTION (later same night): the Stage B behavioral win was CONFOUNDED — walked back.**
+A polished 300K eval went net-negative (55% pixels vs 75% ablated). Diagnostic (diag_confound.py):
+FULL ±22° true 82.5% vs zero 75.0% (bearing worth +7.5 pts); LATERAL band ±15–22° true=zero=65%.
+The forward-crawl reach envelope (~0.28 m) covers the whole camera-visible ±22° cone, so the bearing
+is behaviorally nearly irrelevant wherever vision can see. The "+43 pt gap" was an unstable-g(0)-
+baseline artifact; the fair no-vision control (teacher+zero bearing) is 75%, above Stage B's 55–63%
+→ vision did NOT reinforce behavior; it slightly hurt (noise). RL fine-tuning also degraded the
+distilled encoder. **What stands: Stage A representation (R²=0.84) — real, unconfounded.** Behavioral
+reinforcement is UNPROVABLE on ±22° (winnable cone ⊄ vision-necessary cone). Fix = HEAD-SEARCH phase
+for a winnable >±30° spawn forward-crawl can't solve. See THEORY_LOG/FINDINGS corrections.
 
 ## RUNNING / QUEUED
 - Stage A (`crawler/stage_a_distill.py`): distill bearing from pixels into frozen teacher,

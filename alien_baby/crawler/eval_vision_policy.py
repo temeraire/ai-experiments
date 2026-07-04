@@ -27,10 +27,10 @@ RESULTS = pathlib.Path(__file__).parent.parent / "results"
 XML = "alien_baby/crawler/mimo_crawler_pos_wide.xml"
 
 
-def make_env(cone_deg, radius, max_steps, seed):
+def make_env(cone_deg, radius, max_steps, seed, xml=XML):
     env = MimoCrawlerEnv(
         vision=True, stereo=True, target_obs=False, crawl_pose=CRAWL_POSES["arms_fwd"],
-        action_mode="position_offset", xml_path=XML, spawn_cone_deg=cone_deg,
+        action_mode="position_offset", xml_path=xml, spawn_cone_deg=cone_deg,
         spawn_radius=tuple(radius), random_start_orientation=False, max_steps=max_steps,
         step_cost=0.0, approach_reward_scale=10.0, velocity_bonus_scale=0.0,
         terminate_tilt_deg=50.0, tip_penalty=-5.0,
@@ -93,12 +93,13 @@ def main():
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--run-tag", default="vision_eval")
     p.add_argument("--battery", action="store_true", help="also sweep shapes/radii")
+    p.add_argument("--xml", default=XML, help="env XML (swap for shape-generalization probes)")
     args = p.parse_args()
 
     model = PPO.load(args.model, device="cpu")
-    print(f"\n=== eval {args.run_tag} ({type(model.policy).__name__}) ===\n  model={args.model}")
+    print(f"\n=== eval {args.run_tag} ({type(model.policy).__name__}) ===\n  model={args.model}\n  xml={args.xml}")
 
-    env = make_env(args.cone_deg, args.radius, args.max_steps, args.seed)
+    env = make_env(args.cone_deg, args.radius, args.max_steps, args.seed, xml=args.xml)
     m = evaluate(model, env, args.eval_eps, args.max_steps, ablate=False)
     a = evaluate(model, env, args.eval_eps, args.max_steps, ablate=True)
     print("\n  --- CAPABILITY (blind floor 20%, teacher ceiling 77.5% on +/-22) ---")
@@ -124,7 +125,7 @@ def main():
             be.close()
 
     if args.render_eps > 0:
-        renv = make_env(args.cone_deg, args.radius, args.max_steps, args.seed + 7)
+        renv = make_env(args.cone_deg, args.radius, args.max_steps, args.seed + 7, xml=args.xml)
         print(f"\n  video: {render(model, renv, args.run_tag, args.render_eps, args.max_steps)}")
         renv.close()
     env.close()
