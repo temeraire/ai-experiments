@@ -104,6 +104,9 @@ class MimoCrawlerEnv(gym.Env):
                  crawl_pose=None,
                  terminate_tilt_deg=None,
                  tip_penalty=0.0,
+                 tilt_cost=0.0,
+                 tilt_cost_deg=30.0,
+                 prism_offset_deg=0.0,
                  target_obs=False):
         super().__init__()
         self.vision = vision
@@ -147,6 +150,11 @@ class MimoCrawlerEnv(gym.Env):
         self.crawl_pose = crawl_pose or {}
         self.terminate_tilt_deg = terminate_tilt_deg
         self.tip_penalty = float(tip_penalty)
+        # Posture term: a small GRADED cost as the body's tilt rises above tilt_cost_deg
+        # toward the tip limit — discourages the aggressive near-tips a fast searcher makes,
+        # without penalizing normal prone motion (tilt~0). Default 0 = existing runs unchanged.
+        self.tilt_cost = float(tilt_cost)
+        self.tilt_cost_deg = float(tilt_cost_deg)
         # target_obs: append the ball-1 position in the BODY frame (3 numbers) to the
         # observation. This is the directional signal a go-to-target crawler needs —
         # without it the approach reward has no gradient the policy can act on (the
@@ -220,6 +228,20 @@ class MimoCrawlerEnv(gym.Env):
         )
         # MIMo body geom ids (anything not world/platform/rails/targets)
         self._mimo_body_ids = self._get_mimo_body_ids()
+
+        # Prism / ghost setup: vision sees a GHOST (mocap, non-physical) displaced from the
+        # REAL solid target by prism_offset_deg (bearing rotation). The real target is hidden
+        # from the head-cam (moved to geom group 3, disabled in the head-cam scene option) but
+        # stays visible in debug renders and stays solid+rewarding. Reward is real contact only.
+        self.prism_offset_deg = float(prism_offset_deg)
+        self._headcam_vopt = None
+        self._ghost_mocap_id = -1
+        if self.prism_offset_deg != 0.0:
+            self.model.geom_group[self._target_geom_id] = 3
+            self._headcam_vopt = mujoco.MjvOption()
+            self._headcam_vopt.geomgroup[3] = 0   # real ball invisible to the agent's cameras
+            gbody = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_BODY, "ghost")
+            self._ghost_mocap_id = int(self.model.body_mocapid[gbody])
 
         # Cache joint qpos/dof addresses for fast obs
         self._jpos_adr = np.array([
@@ -322,6 +344,14 @@ class MimoCrawlerEnv(gym.Env):
             self.data.qpos[tgt2_qadr + 3:tgt2_qadr + 7] = [1, 0, 0, 0]
             self._ball2_active = False
 
+        # Prism: place the GHOST at the real ball's bearing rotated by prism_offset_deg
+        # (same radius, same height). Vision sees the ghost; the real ball is hidden + solid.
+        if self.prism_offset_deg != 0.0 and self._ghost_mocap_id >= 0:
+            bx, by, bz = self.data.qpos[tgt1_qadr:tgt1_qadr + 3]
+            r = float(np.hypot(bx, by))
+            th = np.arctan2(bx, by) + np.deg2rad(self.prism_offset_deg)
+            self.data.mocap_pos[self._ghost_mocap_id] = [r * np.sin(th), r * np.cos(th), bz]
+
         mujoco.mj_forward(self.model, self.data)
         # Crawl track: let the body drop the few cm onto the platform and settle into
         # the crawl-ready pose BEFORE the episode starts, holding the neutral targets.
@@ -409,7 +439,10 @@ class MimoCrawlerEnv(gym.Env):
         # "flip over" exploits that game a raw-displacement reward (see DeepMimic:
         # early termination eliminates the on-the-ground local optima).
         if self.terminate_tilt_deg is not None and not terminated:
-            if self._up_tilt_deg() > self.terminate_tilt_deg:
+            tilt = self._up_tilt_deg()
+            if self.tilt_cost > 0.0 and tilt > self.tilt_cost_deg:
+                reward -= self.tilt_cost * (tilt - self.tilt_cost_deg) / 90.0
+            if tilt > self.terminate_tilt_deg:
                 reward += self.tip_penalty
                 terminated = True
 
@@ -515,13 +548,20 @@ class MimoCrawlerEnv(gym.Env):
         if not self.vision:
             return proprio
 
-        self._cam_renderer.update_scene(self.data, camera="left_eye")
+        _vopt = self._headcam_vopt   # hides the real ball (group 3) in prism mode; None otherwise
+        if _vopt is not None:
+            self._cam_renderer.update_scene(self.data, camera="left_eye", scene_option=_vopt)
+        else:
+            self._cam_renderer.update_scene(self.data, camera="left_eye")
         left_img = self._cam_renderer.render().copy().astype(np.float32) / 255.0
 
         if not self.stereo:
             return np.concatenate([proprio, left_img.ravel()])
 
-        self._cam_renderer.update_scene(self.data, camera="right_eye")
+        if _vopt is not None:
+            self._cam_renderer.update_scene(self.data, camera="right_eye", scene_option=_vopt)
+        else:
+            self._cam_renderer.update_scene(self.data, camera="right_eye")
         right_img = self._cam_renderer.render().copy().astype(np.float32) / 255.0
         return np.concatenate([proprio, left_img.ravel(), right_img.ravel()])
 

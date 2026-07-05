@@ -2255,3 +2255,14 @@ Search-shaping curriculum (cone ±22→±34→±45→±68) beat the flat run on 
 competence through every widening without collapse. Substrate: tip 10% (up from 5%; moves more
 aggressively). Video frame-verified. Curriculum made vision MORE behaviorally load-bearing, not just
 a better searcher. Files: train_head_search.py --curriculum (CurriculumConeCallback).
+
+### PRISM PRECHECK (2026-07-04) — vision = arousal/presence, not direction; prism blocked (reframe)
+Built prism-ghost env (hidden solid real + visible non-physical ghost at real-bearing+offset; head-cam
+sees only ghost — verified). Precheck: base head-search policy under prism offset 30/45/60/90/120 keeps
+reaching the REAL ball (67-93%) and moving toward the REAL bearing (80%) — reach is INVARIANT to visual
+displacement. Reconciles with the +22.5 ablation gap: zeroing pixels hurts (arousal lost), displacing
+doesn't (direction not vision-set). So vision on ±68 is load-bearing as a PRESENCE/ENGAGEMENT cue that
+triggers a broad proprio/touch search sweep; the sweep touch-homes on the only solid object. The policy
+does NOT use vision for reach DIRECTION (Stage A's R²=0.84 latent is present but unused for direction).
+Prism aftereffect needs a vision-DIRECTION-dependent reach first (remove the touch-search escape). Not
+launched. Infra committed: mimo_crawler_pos_wide_prism.xml, train_prism.py, eval_prism.py, env prism_offset_deg.

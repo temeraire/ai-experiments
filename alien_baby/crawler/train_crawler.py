@@ -211,7 +211,8 @@ def make_env(rank, seed, strength_scale, spawn_cone_deg, max_steps, n_substeps,
              actuate_hands=False, contact_reward=None,
              action_mode="torque", spawn_radius=None,
              spawn_disc_lo=0.30, spawn_disc_hi=0.55, step_cost=-0.05,
-             xml_path=None, crawl_pose=None, terminate_tilt_deg=None, tip_penalty=0.0):
+             xml_path=None, crawl_pose=None, terminate_tilt_deg=None, tip_penalty=0.0,
+             tilt_cost=0.0):
     def _init():
         if cart_mode != "none":
             # Phase G: cart substrate. HER not used; plain MimoCrawlerCartEnv.
@@ -267,6 +268,7 @@ def make_env(rank, seed, strength_scale, spawn_cone_deg, max_steps, n_substeps,
                 crawl_pose=crawl_pose,
                 terminate_tilt_deg=terminate_tilt_deg,
                 tip_penalty=tip_penalty,
+                tilt_cost=tilt_cost,
                 target_obs=target_obs,
             )
             if her:

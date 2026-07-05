@@ -84,6 +84,7 @@ def build_envs(args):
         velocity_bonus_scale=0.0, action_mode="position_offset",
         spawn_radius=tuple(args.spawn_radius), step_cost=0.0, xml_path=XML,
         crawl_pose=CRAWL_POSES["arms_fwd"], terminate_tilt_deg=50.0, tip_penalty=-5.0,
+        tilt_cost=args.tilt_cost,
     )
     train_env = DummyVecEnv([
         make_env(i, args.seed, 0.7, args.spawn_cone_deg, args.max_steps, 4, **ck)
@@ -125,6 +126,8 @@ def main():
     p.add_argument("--warmstart-cnn", default=None)
     p.add_argument("--curriculum", action="store_true",
                    help="search-shaping: widen the spawn cone over training (CONE_SCHEDULE)")
+    p.add_argument("--tilt-cost", type=float, default=0.0,
+                   help="graded posture penalty as body tilts toward the tip limit (0=off)")
     args = p.parse_args()
 
     tag = args.run_tag

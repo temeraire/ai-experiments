@@ -1470,3 +1470,46 @@ sharpened by a search-shaping curriculum. The ±22 confound is fully understood 
 Honest limits: single seed; ablated 42.5% still inflated by undirected search-wander (not a true zero
 floor); tip-rate up. Next candidates: multi-seed confirm; reduce tipping (posture reward / slower
 head/body); then the prism-ghost aftereffect (now genuinely unblocked — vision drives the reach).
+
+### PRISM PRECHECK (2026-07-04) — vision is AROUSAL/PRESENCE load-bearing, NOT direction. Prism blocked.
+
+Built the prism-ghost env (real target hidden+solid+rewarding via geom group 3; a mocap GHOST,
+visible+non-physical, rendered at real-bearing + offset; head-cam sees only the ghost — all
+verified). Before launching the adaptation run, ran the winnability precheck: does the head-search
+policy actually CHASE the ghost (a prerequisite for having anything to re-map)?
+
+**It does not.** Base head_search_curriculum_v1 under increasing prism offset (real-contact / ends-
+closer-to):
+| offset | 0 | 30 | 45 | 60 | 90 | 120 |
+| real-contact | (65) | 83% | 73% | 93% | 67% | 73% |
+| reach-to-REAL | – | 50% | 80% | 93% | 80% | 80% |
+
+The reach is **essentially invariant to visual displacement** — it finds the REAL (hidden, solid)
+ball regardless of where the ghost is rendered, even 120° away.
+
+**Reconciles with the ablation (+22.5 gap):** ZEROING the pixels drops contact (65→42.5) and flips
+motion away; DISPLACING the pixels does NOT. So vision is load-bearing as a **presence/arousal cue
+that triggers search** — not as the signal that sets reach DIRECTION. The directional homing is done
+by the policy's broad proprioceptive/tactile SEARCH SWEEP (it was trained to turn and scan the ±68
+cone; that sweep covers the real ball's location and touch-homes on the only solid object). Vision
+says "a ball exists — engage"; proprio/touch says "where."
+
+**Consequence:** the prism-ghost adaptation/aftereffect CANNOT be shown with this policy — it needs
+vision to drive the fine reach DIRECTION, and this policy doesn't. There is no "chase-the-ghost-and-
+miss" phase to adapt away from, hence no re-mapping and no aftereffect. Not launching the doomed run
+(precheck did its job, as with the ±22 confound and the head_swivel/head_tilt_side gotcha).
+
+**Corrects the head-search claim (be precise):** "vision behaviorally load-bearing" on ±68 is TRUE but
+means vision is necessary as an ENGAGEMENT/PRESENCE signal, NOT that the policy reads and uses ball
+DIRECTION from pixels. Stage A proved the LATENT encodes direction (R²=0.84); the POLICY does not USE
+it for direction (touch-search does). So the project-long "representation succeeds, behavior doesn't
+use it (for direction)" gap is REAL and now sharply localized: it's a policy/credit-assignment gap
+between an existing directional representation and a touch-dominated motor controller.
+
+**Prerequisite for a real prism experiment (redesign):** a policy whose FINE reach direction is
+vision-driven — i.e. remove the touch-search escape so direction MUST come from pixels. Candidates:
+(a) reward reaching the VISUAL location (ghost) directly, not a solid ball (a vision-guided reach
+task — but that is bribery toward vision, note it); (b) a precise/small target that a broad sweep
+can't stumble onto; (c) a distractor field of solid non-targets so touch-sweep is punished and only
+the visually-identified target pays — forcing vision to set direction. Until one of these makes the
+reach vision-direction-dependent, the prism aftereffect is premature.
