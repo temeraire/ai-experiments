@@ -1442,3 +1442,31 @@ plateaued bimodal (~100 eval reward, half episodes solved) — gait+search+visio
 the action side from scratch is hard; more training and/or a search-shaping curriculum (start narrow,
 widen the cone) should raise both the contact rate and the ablation gap. Single seed. But the sign is
 unambiguous and video-confirmed: vision drives the creature to find and reach balls it otherwise can't.
+
+### HEAD-SEARCH CURRICULUM (head_search_curriculum_v1, 1.9M) — sharpens the vision win
+
+Search-shaping curriculum (spawn cone ±22→±34→±45→±68 at 0/15/35/60% of steps) vs the flat
+head_search_v1. It carried competence through every widening (no collapse; brief dip then
+re-stabilise higher) and hit 202±1 reward — near-perfect consistent solving — on ±45 and ±68.
+
+Definitive clean eval on ±68 (40 eps), curriculum vs flat:
+| metric | curriculum | flat |
+| --- | --- | --- |
+| contact (vision) | **65.0%** | 47.5% |
+| contact (pixels ablated) | 42.5% | 35.0% |
+| **vision load-bearing gap** | **+22.5 pts** | +12.5 |
+| mean_toward vision→ablated | +0.106 → −0.092 | +0.073 → −0.036 |
+| substrate tip-rate | 10.0% | 5.0% |
+
+**Reading:** staging the difficulty didn't just make a better SEARCHER — it made vision MORE
+behaviorally load-bearing (ablation gap nearly doubled, 65% contact, stronger motion sign-flip:
+with vision the creature moves toward the ball, ablate it and it drifts away). Video frame-verified:
+turns toward the off-cone ball and crawls to it, more reliably than the flat run. Cost: tip-rate rose
+to 10% (still upright 90%) — the curriculum policy moves more aggressively.
+
+**Closes the arc.** Representation solved (Stage A, R²=0.84) → on a task that NEEDS direction (±68,
+forward-crawl fails) vision is behaviorally load-bearing (+22.5 pt ablation gap) → and the effect is
+sharpened by a search-shaping curriculum. The ±22 confound is fully understood and routed around.
+Honest limits: single seed; ablated 42.5% still inflated by undirected search-wander (not a true zero
+floor); tip-rate up. Next candidates: multi-seed confirm; reduce tipping (posture reward / slower
+head/body); then the prism-ghost aftereffect (now genuinely unblocked — vision drives the reach).

@@ -2247,3 +2247,11 @@ FIRST behaviorally-necessary vision win in the project (contrast ±22° where vi
 forward-crawl solved it). Modest magnitude (partial from-scratch learning; ablated 35% inflated by
 undirected search-wander). Next: more training + search-shaping curriculum (narrow→wide cone).
 Files: train_head_search.py, mimo_crawler_pos_wide_hs.xml (act:head_yaw), diag_confound.py.
+
+### HEAD-SEARCH CURRICULUM RESULT (2026-07-04) — vision win sharpened
+Search-shaping curriculum (cone ±22→±34→±45→±68) beat the flat run on the ±68 target: contact
+**65.0%** vs 47.5%, pixels-ablated 42.5% vs 35.0%, **vision gap +22.5 pts** (vs +12.5), mean_toward
++0.106→−0.092 (stronger sign-flip). Reached 202±1 reward (near-perfect) on ±45/±68; carried
+competence through every widening without collapse. Substrate: tip 10% (up from 5%; moves more
+aggressively). Video frame-verified. Curriculum made vision MORE behaviorally load-bearing, not just
+a better searcher. Files: train_head_search.py --curriculum (CurriculumConeCallback).
