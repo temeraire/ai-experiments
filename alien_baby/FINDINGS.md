@@ -2266,3 +2266,52 @@ triggers a broad proprio/touch search sweep; the sweep touch-homes on the only s
 does NOT use vision for reach DIRECTION (Stage A's R²=0.84 latent is present but unused for direction).
 Prism aftereffect needs a vision-DIRECTION-dependent reach first (remove the touch-search escape). Not
 launched. Infra committed: mimo_crawler_pos_wide_prism.xml, train_prism.py, eval_prism.py, env prism_offset_deg.
+
+### HEAD-SEARCH SEED REPLICATION, seed 1 (2026-07-05) — vision gap replicates in sign, not size; search is lateralized
+Same recipe as the curriculum run (cone ±22→±68, warm-started encoder, PPO), seed 1, 2M steps.
+Clean eval (40 eps, ±68): contact **70.0%** (ablated **57.5%**) → vision gap **+12.5 pts**;
+mean_toward +0.093 vs +0.008 ablated (weaker sign-flip than seed 0's +0.106/−0.092); tip **2.5%**
+(best substrate yet — seed 0 was 10%). Gap is positive both seeds, magnitude varies 12.5–22.5:
+seed 1's BLIND baseline is far stronger (57.5% vs 42.5%), which mechanically shrinks the gap.
+Bearing diagnostic (40 eps, per-spawn bearing logged): misses are NOT noise — **far-left spawns
+(< −45°) hit 1/9 (11%) vs far-right (> +45°) 7/8 (88%)**, center ~90%. Seed 1 learned a
+RIGHT-LATERALIZED search sweep; the left extreme of the cone is a systematic blind wedge (its one
+far-left hit took 700 steps of wander). Video note: first render (seed+7) drew 3 straight
+full-length misses and looked like total failure — per-episode logging + frame check on eval seed
+confirmed genuine fast reaches (67–237 steps). Don't judge a 70%-contact policy on a 3-episode video.
+Seed 2 (1.3M) + posture run (tilt-cost 1.0) queued in chain. Files: eval_vision_policy.py (unchanged).
+
+### HEAD-SEARCH SEED REPLICATION, seed 2 (2026-07-05) — gap +7.5; three-seed verdict: sign replicates, size doesn't
+Seed 2, 1.3M steps, same curriculum (cone widened 195K/455K/780K, rode every widening to eval
+reward 202±1 — the "near-perfect" training signature). Clean eval (40 eps, ±68): contact **45.0%**
+(ablated **37.5%**) → gap **+7.5 pts**; mean_toward **+0.200 vs +0.000** (largest toward-effect of
+any seed); tip 2.5%. Bearing diagnostic: NOT lateralized — weak at BOTH extremes (far-left 2/9,
+far-right 2/8, center 15/23): a narrow-symmetric search phenotype, despite the perfect-looking
+training eval (few-episode EvalCallback draws miss the cone extremes — same "aggregate hides the
+tails" trap again). Video frame-verified (approach + head-on-ball contact).
+**THREE-SEED VERDICT (task: multi-seed confirm +22.5):** gap is positive in 3/3 seeds — s0 +22.5,
+s1 +12.5, s2 +7.5 (mean ~+14) — but magnitude is seed-dependent and the +22.5 headline was the best
+of three, not typical. With 40-ep samples each gap alone is ~1σ; 3/3 positive + the toward-effect
+make the modest-real reading. The MOST seed-consistent vision signal is mean_toward: sighted ≥+0.09
+in all seeds, ablated ≤+0.01 in all seeds (vision reliably converts wander into net approach even
+when contact-gap is small). Search phenotype varies wildly by seed: broad (s0), right-lateralized
+(s1), narrow-symmetric (s2) — search strategy, and hence the blind baseline, is the main
+between-seed variance source; the vision contribution on top is steadier than the contact-gap
+suggests. Posture run (tilt-cost 1.0) still training.
+
+### POSTURE-TERM RESULT (2026-07-05) — tilt-cost fails its job AND erases the vision gap
+Seed 0, tilt-cost 1.0, same curriculum, 1.3M steps. Clean eval (40 eps, ±68):
+- tip rate **12.5%** vs 10% baseline → the posture term did NOT cut tipping (its one job). FAILED.
+- contact 62.5% (baseline 65.0%) — overall competence unchanged.
+- vision gap **−7.5 pts** (62.5% sighted vs **70.0% ablated** — the best BLIND performance of any
+  run) and mean_toward identical sighted/ablated (+0.152/+0.150) → vision is NOT load-bearing at
+  all in this policy. Same seed, same curriculum as the +22.5 run; the only change is the tilt term.
+Reading: the tilt penalty prices out the aggressive vision-triggered maneuvers (fast turns/lunges
+that risk tilting) and training converges on a conservative, broad BLIND sweep instead. The vision
+gap is FRAGILE TO REWARD SHAPING: an auxiliary term that leaves aggregate success intact can
+silently delete vision dependence. (Ironically the opposite of this branch's name — here the vision
+phase was destroyed, not reinforced, by shaping.) Rule going forward: any reward change in a vision
+phase must re-measure the ablation gap, not just success/tip rates. Do not use tilt-cost 1.0 in
+vision runs; posture control needs a mechanism that doesn't tax search dynamics (or a much smaller
+cost, gap-checked). Video frame-verified (healthy prone search, face-on-ball contact).
+Chain complete: s1 2M / s2 1.3M / posture 1.3M all evaluated.

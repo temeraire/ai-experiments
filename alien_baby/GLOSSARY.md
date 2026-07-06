@@ -336,3 +336,19 @@ Spots" (Duan 2025) / residual RL / ControlNet zero-init. Used in Stage C (`Resid
 vision run, that the target is a clear blob (≥ a few px) across the spawn cone at the true training
 resolution. `cam_visibility_preflight.py`. Catches the "vision task is unwinnable because the target
 is off-frame / a horizon speck" trap that produced years of false "vision can't learn" nulls.
+
+**Search lateralization.** When a policy's learned search sweep favors one side: seed 1 of the
+head-search replication finds far-right balls 88% of the time but far-left ones only 11%, because
+its head-yaw/body sweep turns right by habit. Matters for two reasons: (1) it hides inside an
+aggregate contact rate (70% overall looked fine until we binned misses by spawn bearing), and
+(2) it shifts the vision-ablation gap — a policy that blind-sweeps one side well has a higher
+blind baseline, so the same vision contribution shows up as a smaller gap. Diagnose by logging
+spawn bearing per episode and comparing left vs right extreme bins.
+
+**Reward-shaping fragility (of the vision gap).** The observation that vision dependence can be
+silently destroyed by an auxiliary reward term that doesn't touch vision at all. The posture run
+added a tilt penalty to the +22.5-gap recipe; contact stayed ~unchanged (62.5% vs 65%) but the
+ablation gap flipped to −7.5 — the policy re-solved the task as a conservative blind sweep because
+the penalty priced out the aggressive vision-triggered maneuvers. Lesson: after ANY reward change
+in a vision phase, re-measure the ablation gap; success and tip rates alone will not show that
+vision quietly stopped mattering.

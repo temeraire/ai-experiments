@@ -15,9 +15,10 @@ Setup: a real, solid, touchable target (e.g. a bottle) sits on the subject's **r
 simulated reversing prism, the head-camera renders the target as a **ghost on the left** (and
 suppresses the real target's pixels). The subject:
 1. sees the (ghost) target on the left,
-2. reaches left — and its hand passes **straight through** the ghost (no mass, no contact, no
-   reward),
-3. gropes with proprioception, finds the **real** target on the right, and touches it (reward).
+   1. reaches left — and its hand passes **straight through** the ghost (no mass, no contact, no
+      reward),
+
+2. gropes with proprioception, finds the **real** target on the right, and touches it (reward).
 
 Proprioception is ground truth; vision is the modality forced to yield. Over repeated trials the
 prediction is that the policy/representation **remaps** so the reversed visual input comes to
@@ -90,5 +91,5 @@ locomotion → affordance → vision-recruited chain working first.
   latent-remap + aftereffect. Be explicit we measure the mechanism, not a percept.
 - Held & Hein: adaptation requires **active, self-produced movement** — which RL reaching provides
   for free (the agent acts, it doesn't passively view).
-- The aftereffect test (Phase C) is what separates genuine recalibration from relearning; don't
-  skip it.
+  - The aftereffect test (Phase C) is what separates genuine recalibration from relearning; don't
+    skip it.

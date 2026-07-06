@@ -1538,3 +1538,15 @@ zero, so at init the policy equals the frozen base (gait preserved) and vision c
 A: It anthropomorphizes the prone MIMo infant as a person "trying to stand and failing," and reads
 the floor ball as part of its head — contradicting measured contacts. For this body, inspect
 extracted frames directly instead.
+
+**Q: What is search lateralization and how do we detect it?**
+A: A learned search sweep that favors one side — e.g. head-search seed 1 hits far-right spawns 88%
+but far-left 11%. Invisible in aggregate contact rate; detected by logging spawn bearing per episode
+and binning contact by left/right extremes. Also shrinks the measured vision gap by inflating the
+blind baseline on the favored side.
+
+**Q: What is reward-shaping fragility of the vision gap?**
+A: An auxiliary reward term (e.g. tilt penalty) can erase vision dependence without hurting overall
+success: the posture run kept ~the same contact rate as the +22.5-gap recipe but its gap flipped to
+−7.5, because the penalty made vision-triggered aggressive maneuvers unprofitable and training
+found a blind-sweep solution. Always re-measure the ablation gap after any reward change.
