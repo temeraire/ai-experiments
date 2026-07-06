@@ -107,8 +107,17 @@ class MimoCrawlerEnv(gym.Env):
                  tilt_cost=0.0,
                  tilt_cost_deg=30.0,
                  prism_offset_deg=0.0,
-                 target_obs=False):
+                 target_obs=False,
+                 decoy_ball=False,
+                 decoy_penalty=-5.0):
         super().__init__()
+        # decoy_ball: two-ball visual DISCRIMINATION mode. Ball2 (blue, identical
+        # size/physics to the red target) spawns in the cone each episode; touching
+        # it ends the episode with decoy_penalty. Touch cannot tell the balls apart,
+        # so reliably winning requires using the DIRECTION of the red one in vision
+        # (removes the touch-search escape documented in FINDINGS 2026-07-05).
+        self.decoy_ball = bool(decoy_ball)
+        self.decoy_penalty = float(decoy_penalty)
         self.vision = vision
         self.max_steps = max_steps
         self.spawn_radius = spawn_radius or DEFAULT_SPAWN_RADIUS
@@ -340,9 +349,21 @@ class MimoCrawlerEnv(gym.Env):
             bx, by = r * np.sin(theta), r * np.cos(theta)
             self.data.qpos[tgt1_qadr:tgt1_qadr + 3] = [bx, by, PLATFORM_TOP_Z + 0.053]
             self.data.qpos[tgt1_qadr + 3:tgt1_qadr + 7] = [1, 0, 0, 0]
-            self.data.qpos[tgt2_qadr:tgt2_qadr + 3] = [10.0, 10.0, 0.0]
-            self.data.qpos[tgt2_qadr + 3:tgt2_qadr + 7] = [1, 0, 0, 0]
-            self._ball2_active = False
+            if self.decoy_ball:
+                # Decoy (blue) mirrored across the midline, with a minimum angular
+                # separation of 30 deg so the two balls never sit in one touch sweep.
+                min_sep = np.deg2rad(30.0)
+                theta_d = -theta
+                if abs(theta_d - theta) < min_sep:
+                    theta_d = theta - np.sign(theta if theta != 0.0 else 1.0) * min_sep
+                self.data.qpos[tgt2_qadr:tgt2_qadr + 3] = [
+                    r * np.sin(theta_d), r * np.cos(theta_d), PLATFORM_TOP_Z + 0.053]
+                self.data.qpos[tgt2_qadr + 3:tgt2_qadr + 7] = [1, 0, 0, 0]
+                self._ball2_active = True
+            else:
+                self.data.qpos[tgt2_qadr:tgt2_qadr + 3] = [10.0, 10.0, 0.0]
+                self.data.qpos[tgt2_qadr + 3:tgt2_qadr + 7] = [1, 0, 0, 0]
+                self._ball2_active = False
 
         # Prism: place the GHOST at the real ball's bearing rotated by prism_offset_deg
         # (same radius, same height). Vision sees the ghost; the real ball is hidden + solid.
@@ -418,13 +439,18 @@ class MimoCrawlerEnv(gym.Env):
             reward += CONTACT_REWARD
             self._ball1_touched = True
         if self._ball2_active and ball2_hit and not self._ball2_touched:
-            reward += CONTACT_REWARD
+            # Decoy mode: the blue ball is a trap, not a second target.
+            reward += self.decoy_penalty if self.decoy_ball else CONTACT_REWARD
             self._ball2_touched = True
 
         # Termination rule:
         #   - Single-ball mode (ball2 inactive): terminate on first ball1 touch (legacy behavior)
-        #   - Two-ball mode (ball2 active): terminate only when BOTH balls touched
-        if self._ball2_active:
+        #   - Decoy mode (decoy_ball): terminate on EITHER touch — red wins, blue loses
+        #   - Two-ball mode (ball2 active, non-decoy): terminate when BOTH balls touched
+        if self.decoy_ball and self._ball2_active:
+            if self._ball1_touched or self._ball2_touched:
+                terminated = True
+        elif self._ball2_active:
             if self._ball1_touched and self._ball2_touched:
                 terminated = True
         else:

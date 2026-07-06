@@ -85,6 +85,7 @@ def build_envs(args):
         spawn_radius=tuple(args.spawn_radius), step_cost=0.0, xml_path=XML,
         crawl_pose=CRAWL_POSES["arms_fwd"], terminate_tilt_deg=50.0, tip_penalty=-5.0,
         tilt_cost=args.tilt_cost,
+        decoy_ball=args.decoy,
     )
     train_env = DummyVecEnv([
         make_env(i, args.seed, 0.7, args.spawn_cone_deg, args.max_steps, 4, **ck)
@@ -128,6 +129,9 @@ def main():
                    help="search-shaping: widen the spawn cone over training (CONE_SCHEDULE)")
     p.add_argument("--tilt-cost", type=float, default=0.0,
                    help="graded posture penalty as body tilts toward the tip limit (0=off)")
+    p.add_argument("--decoy", action="store_true",
+                   help="two-ball discrimination: blue decoy spawns each episode; touching it "
+                        "ends the episode with a penalty (removes the touch-search escape)")
     args = p.parse_args()
 
     tag = args.run_tag

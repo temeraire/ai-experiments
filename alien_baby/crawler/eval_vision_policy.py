@@ -29,13 +29,13 @@ RESULTS = pathlib.Path(__file__).parent.parent / "results"
 XML = "alien_baby/crawler/mimo_crawler_pos_wide.xml"
 
 
-def make_env(cone_deg, radius, max_steps, seed, xml=XML):
+def make_env(cone_deg, radius, max_steps, seed, xml=XML, decoy=False):
     env = MimoCrawlerEnv(
         vision=True, stereo=True, target_obs=False, crawl_pose=CRAWL_POSES["arms_fwd"],
         action_mode="position_offset", xml_path=xml, spawn_cone_deg=cone_deg,
         spawn_radius=tuple(radius), random_start_orientation=False, max_steps=max_steps,
         step_cost=0.0, approach_reward_scale=10.0, velocity_bonus_scale=0.0,
-        terminate_tilt_deg=50.0, tip_penalty=-5.0,
+        terminate_tilt_deg=50.0, tip_penalty=-5.0, decoy_ball=decoy,
     )
     env.reset(seed=seed)
     return env
@@ -46,23 +46,28 @@ def zero_pixels(obs, proprio_dim=PROPRIO_DIM):
 
 
 def evaluate(model, env, n_eps, max_steps, ablate=False):
-    contacts = tips = 0
+    contacts = tips = decoys = 0
     disps, tow, speeds = [], [], []
     for _ in range(n_eps):
         obs, _ = env.reset()
         root0 = obs[:2].copy(); d0 = env._ball_dist()
-        touched = False; steps = 0
+        touched = wrong = False; steps = 0
         for _ in range(max_steps):
             o = zero_pixels(obs) if ablate else obs
             act, _ = model.predict(o, deterministic=True)
             obs, _, term, trunc, info = env.step(act); steps += 1
             if info.get("touched_ball1"):
                 touched = True
+            if info.get("touched_ball2"):
+                wrong = True
             if term or trunc:
                 break
         disps.append(float(np.linalg.norm(obs[:2] - root0))); speeds.append(disps[-1] / max(1, steps))
-        tow.append(d0 - env._ball_dist()); contacts += int(touched); tips += int(term and not touched)
-    return dict(contact=contacts / n_eps, tip=tips / n_eps, disp=float(np.mean(disps)),
+        tow.append(d0 - env._ball_dist()); contacts += int(touched)
+        decoys += int(wrong and not touched)
+        tips += int(term and not touched and not wrong)
+    return dict(contact=contacts / n_eps, tip=tips / n_eps, decoy=decoys / n_eps,
+                disp=float(np.mean(disps)),
                 speed=float(np.mean(speeds)), toward=float(np.mean(tow)), n=n_eps)
 
 
@@ -113,17 +118,22 @@ def main():
     p.add_argument("--battery", action="store_true", help="also sweep shapes/radii")
     p.add_argument("--render-ablate", action="store_true",
                    help="render the video with pixels zeroed (blind policy; eye panel black)")
+    p.add_argument("--decoy", action="store_true",
+                   help="two-ball discrimination env: blue decoy active, wrong touch ends episode")
     p.add_argument("--xml", default=XML, help="env XML (swap for shape-generalization probes)")
     args = p.parse_args()
 
     model = PPO.load(args.model, device="cpu")
     print(f"\n=== eval {args.run_tag} ({type(model.policy).__name__}) ===\n  model={args.model}\n  xml={args.xml}")
 
-    env = make_env(args.cone_deg, args.radius, args.max_steps, args.seed, xml=args.xml)
+    env = make_env(args.cone_deg, args.radius, args.max_steps, args.seed, xml=args.xml,
+                   decoy=args.decoy)
     m = evaluate(model, env, args.eval_eps, args.max_steps, ablate=False)
     a = evaluate(model, env, args.eval_eps, args.max_steps, ablate=True)
     print("\n  --- CAPABILITY (blind floor 20%, teacher ceiling 77.5% on +/-22) ---")
     print(f"    contact         : {m['contact']*100:.1f}%   (pixels ablated: {a['contact']*100:.1f}%)")
+    if args.decoy:
+        print(f"    WRONG-BALL rate : {m['decoy']*100:.1f}%   (pixels ablated: {a['decoy']*100:.1f}%)")
     print(f"    mean_toward     : {m['toward']:+.3f} m   (ablated: {a['toward']:+.3f})")
     print(f"    VISION LOAD-BEARING gap (real - ablated contacts): {(m['contact']-a['contact'])*100:+.1f} pts")
     print("  --- SUBSTRATE (blind base: disp 0.219, tip 2.5%) ---")
@@ -145,7 +155,8 @@ def main():
             be.close()
 
     if args.render_eps > 0:
-        renv = make_env(args.cone_deg, args.radius, args.max_steps, args.seed + 7, xml=args.xml)
+        renv = make_env(args.cone_deg, args.radius, args.max_steps, args.seed + 7, xml=args.xml,
+                        decoy=args.decoy)
         vtag = args.run_tag + ("_ablated" if args.render_ablate else "")
         print(f"\n  video: {render(model, renv, vtag, args.render_eps, args.max_steps, ablate=args.render_ablate)}")
         renv.close()
