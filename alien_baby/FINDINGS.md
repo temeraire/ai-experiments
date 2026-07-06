@@ -2361,3 +2361,18 @@ still grow with steps. Video frame-verified: both balls enter the eye view durin
 with n, not contact rate; blind floor is structural 50%.
 Next: seed replication + longer training to push discrimination; then the prism displacement test
 on a strong discriminator (does AB follow the ghost?) — the original aftereffect experiment.
+
+### GAZE-CHOICE INVERSION (2026-07-06) — AB looks at the ball it does NOT take
+User observation (red almost never in the eye panels of the milestone video) → quantified over 40
+eps of decoy_v2_s0: in RED-ending episodes, blue is in view 61.5% of steps and red only 13.2%;
+in BLUE-ending episodes the mirror (red 40.8%, blue 9.9%). Time-resolved control: the inversion
+already holds in the EARLY half of episodes (RED-enders: blue 60% / red 20% early), so it is NOT
+the under-the-chin artifact (which only amplifies it late: the approached ball's visibility falls
+to 0-7% in the last 50 steps). Reading: the policy FIXATES one ball and approaches the other —
+vision acting as a repulsor/monitoring cue rather than red-phototropism. Two mechanisms remain
+indistinguishable here: (a) "steer away from the fixated ball" (repulsor control), vs (b) "home on
+the chosen ball from memory while keeping the rejected one monitored." Either way, the naive
+"approach the red blob you see" story is wrong; the 63% choice asymmetry rides on which ball gets
+fixated/rejected. Display upgrades shipped alongside: magenta heading arrow on the overhead panel
+(true head +Z from xmat; render-side only) and an occiput "haircut" marker (yellow T on the back of
+the skull — brown crown = forward, yellow = rear; obs verified bit-identical, marker massless).

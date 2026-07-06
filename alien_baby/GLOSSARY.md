@@ -372,3 +372,11 @@ With exchangeable placement the blind floor is exactly 50% (a pixel-blind policy
 prefer red), so any CI excluding 50% is pure vision. Contact rate stops being informative here: a
 policy can contact often by grabbing whichever ball is nearest. decoy_v2_s0's 63.2% +/- 10.1
 sighted vs 49.4% +/- 10.6 ablated is the project's first above-chance visual discrimination.
+
+**Gaze-choice inversion (repulsor gaze).** The decoy-task discovery that AB keeps the ball it will
+NOT touch in view and approaches the one it is barely looking at (blue visible 62% of steps in
+red-ending episodes; red only 13%). Holds in the early decision phase, so it is a strategy, not
+the trivial fact that an approached ball slides under the chin. Means vision's contribution to
+choice may be "identify and veto the fixated ball," not "steer toward red-ness" — the sign of the
+gaze-behavior link is opposite to the naive assumption. Diagnosed by logging per-step color-in-view
+fractions from the actual obs pixel block, split by episode outcome and by early/late phase.

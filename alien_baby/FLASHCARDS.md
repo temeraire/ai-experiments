@@ -1567,3 +1567,9 @@ A: red/(red+blue) among ball-touching episodes. Exchangeable placement pins the 
 exactly 50%, so above-chance choice is unambiguously vision. Contact rate stays high for a blind
 grab-the-nearest policy, so it no longer measures seeing. First result: 63.2% sighted vs 49.4%
 ablated (decoy_v2_s0, 100 eps each).
+
+**Q: What is the gaze-choice inversion in the decoy task?**
+A: AB fixates the ball it will NOT take (rejected ball in view ~60% of steps; chosen ball ~13-20%),
+already in the early phase of the episode. Vision may work as a veto/repulsor on the fixated ball
+rather than attraction to red. Found by quantifying color-in-view from the obs pixels after a human
+noticed red almost never appears in the eye panels.
