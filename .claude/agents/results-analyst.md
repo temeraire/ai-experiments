@@ -1,7 +1,7 @@
 ---
 name: results-analyst
 description: Reads training logs and checkpoints after a run finishes and writes a plain-English summary to FINDINGS.md. Use after the training-engineer finishes a run.
-tools: Read, Write, Bash, SendMessage
+tools: Read, Write, Edit, Bash, SendMessage
 model: sonnet
 color: green
 ---
