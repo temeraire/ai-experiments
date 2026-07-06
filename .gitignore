@@ -50,3 +50,35 @@ conversations/
 
 # Training artifacts (large, transient)
 alien_baby/results/
+
+# Vendored MIMo library (its own git repo — do not embed)
+MIMo/
+
+# Simulation / editor junk
+MUJOCO_LOG.TXT
+*.bak*
+~$*
+
+# Personal notes, reading material, conversation exports (root level)
+/Chapters/
+/documents/
+/numenta/
+/reference docs/
+/video_assets/
+/*.pdf
+/*.docx
+/*.rtf
+/ai-exp.txt
+/ai_exp_conversation.txt
+/Affordability.md
+/Alien Baby convo.md
+/Models and Context Windows
+/On Agents.txt
+/Session Resume.md
+/alienbaby.md
+/pinker-language-human-nature.md
+/pinker-on-cognition-and-ai.txt
+/rl_training_explainer.md
+/subagent_video_script.md
+/split_bbp.py
+/Flashcards/flashcards convo
