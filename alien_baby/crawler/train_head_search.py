@@ -132,6 +132,9 @@ def main():
     p.add_argument("--decoy", action="store_true",
                    help="two-ball discrimination: blue decoy spawns each episode; touching it "
                         "ends the episode with a penalty (removes the touch-search escape)")
+    p.add_argument("--init-model", default=None,
+                   help="continue training from this checkpoint .zip (extension run; "
+                        "use a fixed cone, not --curriculum)")
     args = p.parse_args()
 
     tag = args.run_tag
@@ -143,17 +146,25 @@ def main():
           f"curriculum={args.curriculum} ent={args.ent_coef} device={args.device}")
 
     train_env, eval_env = build_envs(args)
-    model = PPO(
-        "MlpPolicy", train_env,
-        learning_rate=args.lr, n_steps=args.n_steps, batch_size=args.batch_size,
-        n_epochs=args.n_epochs, gamma=0.99, gae_lambda=0.95, ent_coef=args.ent_coef,
-        clip_range=0.2, verbose=1, seed=args.seed, device=args.device,
-        policy_kwargs=dict(
-            features_extractor_class=StereoCrawlerCNN,
-            net_arch=[256, 256],
-        ),
-    )
-    if args.warmstart_cnn:
+    if args.init_model:
+        # Extension run: continue training an existing checkpoint. Use with a FIXED
+        # cone (no --curriculum): the curriculum callback keys off num_timesteps,
+        # which restarts at 0 here and would re-narrow the cone.
+        model = PPO.load(args.init_model, env=train_env, device=args.device)
+        model.ent_coef = args.ent_coef
+        print(f"[head_search] continuing from {args.init_model}")
+    else:
+        model = PPO(
+            "MlpPolicy", train_env,
+            learning_rate=args.lr, n_steps=args.n_steps, batch_size=args.batch_size,
+            n_epochs=args.n_epochs, gamma=0.99, gae_lambda=0.95, ent_coef=args.ent_coef,
+            clip_range=0.2, verbose=1, seed=args.seed, device=args.device,
+            policy_kwargs=dict(
+                features_extractor_class=StereoCrawlerCNN,
+                net_arch=[256, 256],
+            ),
+        )
+    if args.warmstart_cnn and not args.init_model:
         warmstart_encoder(model, args.warmstart_cnn)
 
     best_dir = str(RESULTS / f"{tag}_best")
