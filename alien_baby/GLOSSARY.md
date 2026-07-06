@@ -365,3 +365,10 @@ identical to the red target in size and physics, spawns in the cone every episod
 min 30 deg separation); touching it ends the episode with a penalty. Touch cannot tell the balls
 apart — only vision can — so reliably winning requires reading the RED ball's direction from
 pixels. The eval adds a WRONG-BALL rate; a blind policy should be at chance between the two balls.
+
+**Choice accuracy (decoy task).** The primary metric of the decoy-discrimination phase: of the
+episodes where AB touched SOME ball, the fraction where it was the red target — red/(red+blue).
+With exchangeable placement the blind floor is exactly 50% (a pixel-blind policy has no channel to
+prefer red), so any CI excluding 50% is pure vision. Contact rate stops being informative here: a
+policy can contact often by grabbing whichever ball is nearest. decoy_v2_s0's 63.2% +/- 10.1
+sighted vs 49.4% +/- 10.6 ablated is the project's first above-chance visual discrimination.

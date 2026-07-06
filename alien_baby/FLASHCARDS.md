@@ -1561,3 +1561,9 @@ negative under pressure). The escape needs a wrong-answer cost, not a time cost.
 A: A blue decoy ball, physically identical to the red target, spawns every episode; touching it
 ends the episode with a penalty. Touch can't distinguish the balls, so above-chance target choice
 requires reading the red ball's direction from pixels. Blind performance should drop to ~chance.
+
+**Q: What is choice accuracy and why did it replace contact rate on the decoy task?**
+A: red/(red+blue) among ball-touching episodes. Exchangeable placement pins the blind floor at
+exactly 50%, so above-chance choice is unambiguously vision. Contact rate stays high for a blind
+grab-the-nearest policy, so it no longer measures seeing. First result: 63.2% sighted vs 49.4%
+ablated (decoy_v2_s0, 100 eps each).

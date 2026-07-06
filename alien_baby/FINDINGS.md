@@ -2344,3 +2344,20 @@ Fix (decoy_v2): after computing the bearing pair, randomly assign red/blue to th
 blind choice is then 50% BY CONSTRUCTION and anything above it is vision. Verified: v1 policy ablated on the fixed env = 55.7% +/- 10.4 (100 eps) — chance restored.
 Lesson (again): always give the blind baseline a chance to cheat before crediting vision — the
 choice metric needed the same scrutiny as contact rate did in the single-ball task.
+
+### DECOY RUN 2 (2026-07-06) — FIRST ABOVE-CHANCE VISUAL DISCRIMINATION
+decoy_v2_s0: exchangeable placement (blind = 50% by construction), fresh 2M, curriculum, warm
+encoder. The decisive 100-ep choice diagnostic:
+- **sighted choice 63.2% +/- 10.1 (55R/32B) — CI excludes chance (p≈0.017)**
+- **ablated choice 49.4% +/- 10.6 (42R/43B) — exactly the designed coin flip**
+First time in the project that vision measurably changes WHICH object AB reaches — pixel color is
+steering target selection, with no geometric escape available to the blind baseline. Magnitude is
+modest (63% vs 50%; pooled with the 40-ep official eval: sighted 60.3% vs ablated 51.3%).
+Official eval (40 eps, noisier): contact 45.0% both conditions (raw gap 0.0 — contact rate is no
+longer the right metric here; the decoy makes CHOICE the signal), wrong-ball 40.0%/35.0%, tip 10%.
+Training-eval reward oscillated 120-202 in the back half — no clean plateau; discrimination may
+still grow with steps. Video frame-verified: both balls enter the eye view during approach; the
+32x32 blobs are unambiguous. Metric note going forward: report choice accuracy (red /(red+blue))
+with n, not contact rate; blind floor is structural 50%.
+Next: seed replication + longer training to push discrimination; then the prism displacement test
+on a strong discriminator (does AB follow the ghost?) — the original aftereffect experiment.
