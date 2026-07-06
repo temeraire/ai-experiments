@@ -21,7 +21,9 @@ from stable_baselines3 import PPO
 # import the custom policies so PPO.load can reconstruct them
 from alien_baby.crawler.residual_vision_policy import ResidualVisionPolicy  # noqa: F401
 from alien_baby.crawler.slotfill_vision_policy import SlotFillVisionPolicy  # noqa: F401
-from alien_baby.crawler.mimo_crawler_env import MimoCrawlerEnv, CRAWL_POSES, PROPRIO_DIM
+from alien_baby.crawler.mimo_crawler_env import (
+    MimoCrawlerEnv, CRAWL_POSES, PROPRIO_DIM, CAM_H, CAM_W, VISION_DIM_STEREO,
+)
 
 RESULTS = pathlib.Path(__file__).parent.parent / "results"
 XML = "alien_baby/crawler/mimo_crawler_pos_wide.xml"
@@ -64,7 +66,22 @@ def evaluate(model, env, n_eps, max_steps, ablate=False):
                 speed=float(np.mean(speeds)), toward=float(np.mean(tow)), n=n_eps)
 
 
-def render(model, env, tag, n_eps, max_steps):
+def eye_panel(obs, size=480):
+    """AB's-eye panel: slice the exact pixel block the policy received out of the obs
+    vector and upscale nearest-neighbor (honestly blocky — no fake smoothing).
+    Left|right eye side by side. All-black = pixels ablated / nothing visible."""
+    px = np.clip(obs[-VISION_DIM_STEREO:], 0.0, 1.0)
+    half = CAM_H * CAM_W * 3
+    s = size // CAM_H
+
+    def up(flat):
+        img = (flat.reshape(CAM_H, CAM_W, 3) * 255).astype(np.uint8)
+        return np.repeat(np.repeat(img, s, axis=0), s, axis=1)
+
+    return np.concatenate([up(px[:half]), up(px[half:])], axis=1)
+
+
+def render(model, env, tag, n_eps, max_steps, ablate=False):
     vdir = RESULTS / "videos"; vdir.mkdir(parents=True, exist_ok=True)
     out = vdir / f"eval_{tag}.mp4"
     r = mujoco.Renderer(env.model, 480, 480)
@@ -72,11 +89,12 @@ def render(model, env, tag, n_eps, max_steps):
     for _ in range(n_eps):
         obs, _ = env.reset()
         for _ in range(max_steps):
-            act, _ = model.predict(obs, deterministic=True)
-            obs, _, term, trunc, _ = env.step(act)
+            o = zero_pixels(obs) if ablate else obs
+            act, _ = model.predict(o, deterministic=True)
             r.update_scene(env.data, camera="overhead"); over = r.render().copy()
             r.update_scene(env.data, camera="ringside"); ring = r.render().copy()
-            w.append_data(np.concatenate([over, ring], axis=1))
+            w.append_data(np.concatenate([over, ring, eye_panel(o)], axis=1))
+            obs, _, term, trunc, _ = env.step(act)
             if term or trunc:
                 break
     w.close(); r.close(); return str(out)
@@ -93,6 +111,8 @@ def main():
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--run-tag", default="vision_eval")
     p.add_argument("--battery", action="store_true", help="also sweep shapes/radii")
+    p.add_argument("--render-ablate", action="store_true",
+                   help="render the video with pixels zeroed (blind policy; eye panel black)")
     p.add_argument("--xml", default=XML, help="env XML (swap for shape-generalization probes)")
     args = p.parse_args()
 
@@ -126,7 +146,8 @@ def main():
 
     if args.render_eps > 0:
         renv = make_env(args.cone_deg, args.radius, args.max_steps, args.seed + 7, xml=args.xml)
-        print(f"\n  video: {render(model, renv, args.run_tag, args.render_eps, args.max_steps)}")
+        vtag = args.run_tag + ("_ablated" if args.render_ablate else "")
+        print(f"\n  video: {render(model, renv, vtag, args.render_eps, args.max_steps, ablate=args.render_ablate)}")
         renv.close()
     env.close()
 
