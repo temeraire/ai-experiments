@@ -2376,3 +2376,16 @@ the chosen ball from memory while keeping the rejected one monitored." Either wa
 fixated/rejected. Display upgrades shipped alongside: magenta heading arrow on the overhead panel
 (true head +Z from xmat; render-side only) and an occiput "haircut" marker (yellow T on the back of
 the skull — brown crown = forward, yellow = rear; obs verified bit-identical, marker massless).
+
+### DECOY EXTENSION RESULT (2026-07-06) — discrimination climbs to 78%: still-forming, not ceiling
+decoy_v2_ext_s0: seed-0 continued +1.3M at fixed ±68 (3.3M total; --init-model, no curriculum).
+- **choice accuracy 78.2% +/- 8.7 (68R/19B, 100 eps) — up from 63.2% at 2M**; ablated 47.8% +/- 10.2
+  (chance, as designed). Official eval agrees exactly: contact 62.5% / wrong-ball 17.5% → 78.1%.
+- Confirms the THEORY_LOG longer-training prediction: the color-choice category was still forming;
+  +1.3M bought +15 pts. Not yet at the 32x32-signal ceiling.
+- Ablated wrong-ball rate 47.5% vs sighted 17.5% — blind grabs whichever ball it meets; sighted
+  actively avoids the decoy (consistent with the gaze-choice inversion veto reading).
+- Watch-items: tip rate 15% (10% at 2M — climbing as maneuvers sharpen); training eval-reward
+  looked mediocre (78-120) while choice soared — REWARD IS A POOR PROXY for discrimination; use
+  the choice diagnostic. Video (first with heading arrow + haircut) frame-verified.
+Seeds 1 and 2 training next in chain.
