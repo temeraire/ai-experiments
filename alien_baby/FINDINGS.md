@@ -2315,3 +2315,19 @@ phase must re-measure the ablation gap, not just success/tip rates. Do not use t
 vision runs; posture control needs a mechanism that doesn't tax search dynamics (or a much smaller
 cost, gap-checked). Video frame-verified (healthy prone search, face-on-ball contact).
 Chain complete: s1 2M / s2 1.3M / posture 1.3M all evaluated.
+
+### TIME-PRESSURE CALIBRATION (2026-07-05, overnight) — clock cannot close the touch-search escape
+Strategist-proposed no-training precheck before committing compute: recorded per-episode touch-step
+for s1 + v1 (best seed-1 and +22.5 seed-0 policies), sighted vs ablated, 40 eps each; contact(T)
+computed post-hoc for any budget T (valid because the cap only truncates deterministic episodes).
+Result: the blind sweep is FAST — ablated contact is 37.5-55% already at T=150-350 — so no clock
+setting separates directed reach from blind sweep. Gap(T) for s1 wobbles +5..+15 at every T
+(never opens); v1 goes NEGATIVE at tight T (-10 at 150-200: blind beats sighted under pressure).
+This is the pre-registered failure signature -> time-pressure-alone REJECTED, moved to the two-ball
+decoy-discrimination mechanism. Meta-lesson: the touch-search escape isn't slow groping, it's an
+efficient learned sweep; only a WRONG-ANSWER cost (not a time cost) can price it out.
+Launched overnight: decoy_v1_s0 (blue decoy, identical physics, wrong-touch -5 + terminate,
+min 30-deg separation; curriculum recipe, 1.3M, seed 0). Preflights passed: eye-view check (red vs
+blue clearly separable in the actual 32x32 stereo obs), forced-contact semantics test, 50K smoke
+(reward climbing, episodes ending by touch). Files: mimo_crawler_env.py (decoy_ball),
+train_head_search.py --decoy, eval_vision_policy.py --decoy + WRONG-BALL rate + eye-view panel.

@@ -1550,3 +1550,14 @@ A: An auxiliary reward term (e.g. tilt penalty) can erase vision dependence with
 success: the posture run kept ~the same contact rate as the +22.5-gap recipe but its gap flipped to
 −7.5, because the penalty made vision-triggered aggressive maneuvers unprofitable and training
 found a blind-sweep solution. Always re-measure the ablation gap after any reward change.
+
+**Q: What is the touch-search escape, and why couldn't time pressure close it?**
+A: With one solid object on the platform, blind sweeping eventually wins — vision stays optional.
+Calibration showed the blind sweep is FAST (37-55% contact inside 150-350 steps), so every episode
+clock that starves the sweep also starves the sighted reach (gap never opened; one model's gap went
+negative under pressure). The escape needs a wrong-answer cost, not a time cost.
+
+**Q: How does the decoy-discrimination task force vision to carry direction?**
+A: A blue decoy ball, physically identical to the red target, spawns every episode; touching it
+ends the episode with a penalty. Touch can't distinguish the balls, so above-chance target choice
+requires reading the red ball's direction from pixels. Blind performance should drop to ~chance.

@@ -352,3 +352,16 @@ ablation gap flipped to −7.5 — the policy re-solved the task as a conservati
 the penalty priced out the aggressive vision-triggered maneuvers. Lesson: after ANY reward change
 in a vision phase, re-measure the ablation gap; success and tip rates alone will not show that
 vision quietly stopped mattering.
+
+**Touch-search escape.** The loophole that has capped every vision result on the single-ball task:
+because the target is the only solid object on the platform, a policy can win by sweeping blindly
+until it bumps into something — no seeing required. The time-pressure calibration showed this sweep
+is fast (blind contacts 37-55% inside 150-350 steps), so it can't be priced out with a clock. It
+makes vision optional: at best an arousal cue ("something's out there, start sweeping"), never a
+direction signal. Closing it requires a wrong-answer cost, not a time cost.
+
+**Decoy-discrimination task.** The two-ball answer to the touch-search escape: a blue decoy ball,
+identical to the red target in size and physics, spawns in the cone every episode (mirrored bearing,
+min 30 deg separation); touching it ends the episode with a penalty. Touch cannot tell the balls
+apart — only vision can — so reliably winning requires reading the RED ball's direction from
+pixels. The eval adds a WRONG-BALL rate; a blind policy should be at chance between the two balls.
