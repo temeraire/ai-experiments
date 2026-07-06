@@ -380,3 +380,12 @@ the trivial fact that an approached ball slides under the chin. Means vision's c
 choice may be "identify and veto the fixated ball," not "steer toward red-ness" — the sign of the
 gaze-behavior link is opposite to the naive assumption. Diagnosed by logging per-step color-in-view
 fractions from the actual obs pixel block, split by episode outcome and by early/late phase.
+
+**Touch-as-information (proposed phase).** The distinction between touch as a *success signal*
+(current: contact = reward + episode over) and touch as an *information channel* (a hip-bump on a
+table teaches where the table is, without being success at anything). The proposed future phase
+wires MIMo's tactile sensors into the obs, makes wrong-touch non-terminal, and adds memory, so
+incidental bumps update AB's knowledge of object positions. Deliberately deferred until after the
+prism experiment: informative touch reopens the touch-search escape at the tactile level ("bump it;
+if the episode continues it was the decoy; go find the other"), which would wreck the clean
+choice-accuracy = vision metric. See TOUCH_AS_INFORMATION_PROPOSAL.md.

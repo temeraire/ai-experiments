@@ -1573,3 +1573,10 @@ A: AB fixates the ball it will NOT take (rejected ball in view ~60% of steps; ch
 already in the early phase of the episode. Vision may work as a veto/repulsor on the fixated ball
 rather than attraction to red. Found by quantifying color-in-view from the obs pixels after a human
 noticed red almost never appears in the eye panels.
+
+**Q: What is the touch-as-information proposal, and why is it deferred until after prism?**
+A: Make incidental contact informative (tactile obs + non-terminal wrong-touch + memory) instead of
+purely a terminal success/failure signal — bumps then teach object positions like a hip-bump on a
+table does. Deferred because a blind policy could then discriminate by touch alone (bump → episode
+continues → it was the decoy → seek the other), reopening the touch-search escape and destroying
+the above-chance-choice = vision metric the current phase depends on.
