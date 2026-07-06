@@ -1,0 +1,108 @@
+<mujoco model="tabletop_reach_v6">
+  <compiler angle="radian" inertiafromgeom="true"/>
+  <default>
+    <joint armature="1" damping="1" limited="true"/>
+    <geom contype="0" friction="1 0.1 0.1"/>
+  </default>
+  <option gravity="0 0 -9.81" integrator="RK4" timestep="0.01"/>
+
+  <worldbody>
+    <!-- Ground -->
+    <geom conaffinity="0" contype="0" name="ground" pos="0 0 0" rgba="0.9 0.9 0.9 1" size="1 1 10" type="plane"/>
+
+    <!-- Arena walls -->
+    <geom conaffinity="0" contype="0" fromto="-.3 -.3 .01 .3 -.3 .01" name="sideS" rgba="0.5 0.5 0.5 1" size=".02" type="capsule"/>
+    <geom conaffinity="0" contype="0" fromto=" .3 -.3 .01 .3  .3 .01" name="sideE" rgba="0.5 0.5 0.5 1" size=".02" type="capsule"/>
+    <geom conaffinity="0" contype="0" fromto="-.3  .3 .01 .3  .3 .01" name="sideN" rgba="0.5 0.5 0.5 1" size=".02" type="capsule"/>
+    <geom conaffinity="0" contype="0" fromto="-.3 -.3 .01 -.3 .3 .01" name="sideW" rgba="0.5 0.5 0.5 1" size=".02" type="capsule"/>
+
+    <!-- Arm pivot -->
+    <geom conaffinity="0" contype="0" fromto="0 0 0 0 0 0.02" name="root" rgba="0.4 0.4 0.7 1" size=".015" type="cylinder"/>
+
+    <!-- 3-joint arm (unchanged from v1-v5) -->
+    <body name="body0" pos="0 0 .01">
+      <joint axis="0 0 1" limited="false" name="joint0" pos="0 0 0" type="hinge"/>
+      <geom fromto="0 0 0 0.1 0 0" name="link0" rgba="0.0 0.4 0.6 1" size=".01" type="capsule"/>
+
+      <body name="body1" pos="0.1 0 0">
+        <joint axis="0 0 1" limited="true" name="joint1" pos="0 0 0" range="-3.0 3.0" type="hinge"/>
+        <geom fromto="0 0 0 0.08 0 0" name="link1" rgba="0.0 0.6 0.4 1" size=".01" type="capsule"/>
+
+        <body name="body2" pos="0.08 0 0">
+          <joint axis="0 0 1" limited="true" name="joint2" pos="0 0 0" range="-3.0 3.0" type="hinge"/>
+          <geom fromto="0 0 0 0.06 0 0" name="link2" rgba="0.0 0.4 0.4 1" size=".008" type="capsule"/>
+
+          <body name="fingertip_body" pos="0.06 0 0">
+            <geom contype="1" conaffinity="1" name="fingertip_geom" pos="0 0 0" rgba="0.8 0.2 0.2 1" size=".015" type="sphere"/>
+            <site name="fingertip" pos="0 0 0" size="0.016" rgba="1 0 0 0.3"/>
+          </body>
+        </body>
+      </body>
+    </body>
+
+    <!-- Head with pan/tilt. Mounted at the edge of the table, elevated,
+         looking across the arena. Two hinge joints: head_pan (yaw) and
+         head_tilt (pitch). -->
+    <body name="head_base" pos="0 -0.28 0.15">
+      <joint axis="0 0 1" limited="true" name="head_pan" pos="0 0 0" range="-1.2 1.2" type="hinge"/>
+      <geom name="head_base_geom" pos="0 0 0" rgba="0.6 0.6 0.4 1" size=".015" type="sphere"/>
+
+      <body name="head" pos="0 0 0.02">
+        <joint axis="1 0 0" limited="true" name="head_tilt" pos="0 0 0" range="-0.8 0.8" type="hinge"/>
+        <geom name="head_geom" pos="0 0 0" rgba="0.8 0.7 0.3 1" size=".025" type="sphere"/>
+
+        <!-- Head camera: looks along +y and 30deg downward when joints at 0.
+             xyaxes: x_cam = world +x (camera-right stays horizontal),
+             y_cam = (0, 0.5, 0.866) rotates the image-up direction 30deg forward,
+             which pitches the camera's view 30deg downward toward the tabletop. -->
+        <camera name="head_cam" pos="0 0.01 0" xyaxes="1 0 0 0 0.5 0.866" fovy="45"/>
+      </body>
+    </body>
+
+    <!-- Object 0: red sphere -->
+    <body name="object_0" pos="0.15 0.1 0.01">
+      <joint armature="0" axis="1 0 0" damping="0" limited="true" name="obj0_x" range="-.27 .27" ref="0.15" stiffness="0" type="slide"/>
+      <joint armature="0" axis="0 1 0" damping="0" limited="true" name="obj0_y" range="-.27 .27" ref="0.1" stiffness="0" type="slide"/>
+      <geom contype="1" conaffinity="1" name="obj0_geom" pos="0 0 0" rgba="1 0.2 0.2 1" size=".02" type="sphere"/>
+    </body>
+
+    <!-- Object 1: green box -->
+    <body name="object_1" pos="-0.1 0.15 0.01">
+      <joint armature="0" axis="1 0 0" damping="0" limited="true" name="obj1_x" range="-.27 .27" ref="-0.1" stiffness="0" type="slide"/>
+      <joint armature="0" axis="0 1 0" damping="0" limited="true" name="obj1_y" range="-.27 .27" ref="0.15" stiffness="0" type="slide"/>
+      <geom contype="1" conaffinity="1" name="obj1_geom" pos="0 0 0" rgba="0.2 1 0.2 1" size=".018 .018 .018" type="box"/>
+    </body>
+
+    <!-- Object 2: blue cylinder -->
+    <body name="object_2" pos="-0.15 -0.1 0.01">
+      <joint armature="0" axis="1 0 0" damping="0" limited="true" name="obj2_x" range="-.27 .27" ref="-0.15" stiffness="0" type="slide"/>
+      <joint armature="0" axis="0 1 0" damping="0" limited="true" name="obj2_y" range="-.27 .27" ref="-0.1" stiffness="0" type="slide"/>
+      <geom contype="1" conaffinity="1" name="obj2_geom" pos="0 0 0" rgba="0.2 0.2 1 1" size=".018 .01" type="cylinder"/>
+    </body>
+
+    <!-- Overhead camera (kept for rendering/visualization, not agent use) -->
+    <camera name="overhead" pos="0 0 0.8" xyaxes="1 0 0 0 1 0" fovy="45"/>
+  </worldbody>
+
+  <actuator>
+    <motor ctrllimited="true" ctrlrange="-1.0 1.0" gear="200.0" joint="joint0"/>
+    <motor ctrllimited="true" ctrlrange="-1.0 1.0" gear="200.0" joint="joint1"/>
+    <motor ctrllimited="true" ctrlrange="-1.0 1.0" gear="150.0" joint="joint2"/>
+    <!-- Position-controlled head gaze: ctrl is target angle in the joint's range.
+         kp is stiffness; the joint tracks the commanded position. -->
+    <position ctrllimited="true" ctrlrange="-1.2 1.2" joint="head_pan" kp="5"/>
+    <position ctrllimited="true" ctrlrange="-0.8 0.8" joint="head_tilt" kp="5"/>
+  </actuator>
+
+  <sensor>
+    <touch name="fingertip_touch" site="fingertip"/>
+    <jointpos name="joint0_pos" joint="joint0"/>
+    <jointpos name="joint1_pos" joint="joint1"/>
+    <jointpos name="joint2_pos" joint="joint2"/>
+    <jointvel name="joint0_vel" joint="joint0"/>
+    <jointvel name="joint1_vel" joint="joint1"/>
+    <jointvel name="joint2_vel" joint="joint2"/>
+    <jointpos name="head_pan_pos" joint="head_pan"/>
+    <jointpos name="head_tilt_pos" joint="head_tilt"/>
+  </sensor>
+</mujoco>

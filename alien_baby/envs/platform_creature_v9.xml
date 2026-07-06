@@ -1,0 +1,281 @@
+<mujoco model="platform_creature_v9">
+  <compiler angle="radian" inertiafromgeom="true"/>
+  <option gravity="0 0 -9.81" integrator="Euler" timestep="0.01" cone="elliptic"/>
+
+  <default>
+    <joint armature="0.1" damping="2" limited="true"/>
+    <geom contype="1" conaffinity="1" friction="0.8 0.3 0.1"/>
+  </default>
+
+  <asset>
+    <texture builtin="checker" height="100" name="texplane" rgb1="0.6 0.6 0.6" rgb2="0.8 0.8 0.8" type="2d" width="100"/>
+    <material name="MatPlatform" reflectance="0.3" shininess="0.5" specular="0.5" texrepeat="10 10" texture="texplane"/>
+    <texture builtin="flat" height="100" name="texground" rgb1="0.4 0.35 0.3" rgb2="0.4 0.35 0.3" type="2d" width="100"/>
+    <material name="MatGround" texture="texground"/>
+  </asset>
+
+  <worldbody>
+    <light cutoff="100" diffuse="1 1 1" dir="0 0 -1" directional="true" pos="0 0 5" specular="0.2 0.2 0.2"/>
+
+    <!-- Ground below the platform (where you land if you fall) -->
+    <geom name="ground" type="plane" size="10 10 0.1" pos="0 0 0" rgba="0.4 0.35 0.3 1"
+          material="MatGround" conaffinity="1" contype="1"/>
+
+    <!-- Platform: 2m x 2m, 2m above ground, 5cm thick. Low friction so the
+         ball rolls freely; AB's wheels are high-friction so they still grip
+         (MuJoCo takes max of the two contacting friction values).
+         Flat gray rgba (no checker texture) — simplified scene so vision
+         attends to the ball, not to a structured platform surface. -->
+    <geom name="platform" type="box" size="1.0 1.0 0.025" pos="0 0 2.0"
+          rgba="0.7 0.7 0.65 1" conaffinity="1" contype="1"
+          friction="0.1 0.001 0.001"/>
+
+    <!-- Platform edge markers (visual only, thin lines at edges) -->
+    <geom name="edge_N" type="capsule" fromto="-1.0 1.0 2.025 1.0 1.0 2.025" size="0.01"
+          rgba="0.9 0.2 0.2 0.8" contype="0" conaffinity="0"/>
+    <geom name="edge_S" type="capsule" fromto="-1.0 -1.0 2.025 1.0 -1.0 2.025" size="0.01"
+          rgba="0.9 0.2 0.2 0.8" contype="0" conaffinity="0"/>
+    <geom name="edge_E" type="capsule" fromto="1.0 -1.0 2.025 1.0 1.0 2.025" size="0.01"
+          rgba="0.9 0.2 0.2 0.8" contype="0" conaffinity="0"/>
+    <geom name="edge_W" type="capsule" fromto="-1.0 -1.0 2.025 -1.0 1.0 2.025" size="0.01"
+          rgba="0.9 0.2 0.2 0.8" contype="0" conaffinity="0"/>
+
+    <!-- Walls removed 2026-04-21: scratch run at 300K learned to attend to
+         walls instead of the ball (high sensitivity, 0/20 touches). Sparser
+         scene forces vision to key on the ball. -->
+
+    <!-- ============================================================ -->
+    <!-- THE CREATURE: torso sled + 2 arms + head                     -->
+    <!-- ============================================================ -->
+    <body name="torso" pos="0 0 2.11">
+      <joint name="root" type="free" armature="0" damping="2.0" limited="false"/>
+      <!-- Chassis: blocky (0.24 x 0.18 x 0.10), not a pancake, so "down" is an
+           unambiguous orientation. Density 800 concentrates mass low. Collides
+           with low friction so it slides rather than grips if it ever tips. -->
+      <geom name="torso_geom" type="box" size="0.12 0.09 0.05"
+            rgba="0.6 0.5 0.4 1" density="800"
+            contype="1" conaffinity="1"
+            friction="0.1 0.001 0.0001"/>
+      <!-- Wheels: wheelbase (0.40 x 0.28) WIDER than the chassis footprint
+           (0.24 x 0.18), so tipping onto any non-bottom face leaves the
+           wheels elevated — tipping is no longer stable. Each wheel is its
+           own body with a ball joint so it rotates independently of the
+           chassis — true rolling, not sliding. -->
+      <body name="wheel_fl_body" pos="-0.20 0.14 -0.06">
+        <joint name="wheel_fl_spin" type="ball" damping="0.01" armature="0.0001"/>
+        <geom name="wheel_fl" type="sphere" size="0.025"
+              rgba="0.3 0.3 0.3 1"
+              contype="1" conaffinity="1"
+              friction="2.0 0.005 0.0001"/>
+        <!-- Rotation marker (visual only, rotates with wheel) -->
+        <geom name="wheel_fl_mark" type="capsule" fromto="0 0 -0.025 0 0 0.025"
+              size="0.004" rgba="0.9 0.9 0.1 1" contype="0" conaffinity="0"/>
+      </body>
+      <body name="wheel_fr_body" pos="0.20 0.14 -0.06">
+        <joint name="wheel_fr_spin" type="ball" damping="0.01" armature="0.0001"/>
+        <geom name="wheel_fr" type="sphere" size="0.025"
+              rgba="0.3 0.3 0.3 1"
+              contype="1" conaffinity="1"
+              friction="2.0 0.005 0.0001"/>
+        <geom name="wheel_fr_mark" type="capsule" fromto="0 0 -0.025 0 0 0.025"
+              size="0.004" rgba="0.9 0.9 0.1 1" contype="0" conaffinity="0"/>
+      </body>
+      <body name="wheel_bl_body" pos="-0.20 -0.14 -0.06">
+        <joint name="wheel_bl_spin" type="ball" damping="0.01" armature="0.0001"/>
+        <geom name="wheel_bl" type="sphere" size="0.025"
+              rgba="0.3 0.3 0.3 1"
+              contype="1" conaffinity="1"
+              friction="2.0 0.005 0.0001"/>
+        <geom name="wheel_bl_mark" type="capsule" fromto="0 0 -0.025 0 0 0.025"
+              size="0.004" rgba="0.9 0.9 0.1 1" contype="0" conaffinity="0"/>
+      </body>
+      <body name="wheel_br_body" pos="0.20 -0.14 -0.06">
+        <joint name="wheel_br_spin" type="ball" damping="0.01" armature="0.0001"/>
+        <geom name="wheel_br" type="sphere" size="0.025"
+              rgba="0.3 0.3 0.3 1"
+              contype="1" conaffinity="1"
+              friction="2.0 0.005 0.0001"/>
+        <geom name="wheel_br_mark" type="capsule" fromto="0 0 -0.025 0 0 0.025"
+              size="0.004" rgba="0.9 0.9 0.1 1" contype="0" conaffinity="0"/>
+      </body>
+      <!-- Underside frame (visual only, non-colliding): spans the wheelbase so
+           the chassis reads as a single structure, not a box with floating balls. -->
+      <geom name="torso_skid" type="box" size="0.20 0.14 0.005"
+            pos="0 0 -0.06" rgba="0.5 0.45 0.35 1" density="50"
+            contype="0" conaffinity="0"/>
+      <!-- Torso underside touch site -->
+      <site name="torso_touch" pos="0 0 -0.05" size="0.08" rgba="0 0 0 0"/>
+
+      <!-- ====== LEFT ARM (points FORWARD +Y from shoulder; shoulder_roll
+           about X-axis is now the paddle joint — swings the arm from
+           forward-horizontal, down under the body, and back, like a rowboat
+           oar. Both arms paddling together propel body forward.) ====== -->
+      <body name="left_shoulder" pos="-0.10 0 -0.01">
+        <!-- Shoulder yaw (Y-axis rotation, rotates arm around its own axis —
+             mostly kinematically inert with arm along Y, policy will learn to
+             ignore; kept for possible wrist-twist variants later). -->
+        <joint name="left_shoulder_pitch" type="hinge" axis="0 1 0"
+               range="-1.5 1.5" pos="0 0 0"/>
+        <!-- Shoulder paddle (X-axis rotation): arm swings in Y-Z plane,
+             forward-to-down-to-back. This is the locomotion DOF. -->
+        <joint name="left_shoulder_roll" type="hinge" axis="1 0 0"
+               range="-2.0 0.8" pos="0 0 0"/>
+        <geom name="left_upper_arm" type="capsule" fromto="0 0 0 0 0.12 -0.02"
+              size="0.025" rgba="0.6 0.5 0.4 1"/>
+
+        <body name="left_forearm" pos="0 0.12 -0.02">
+          <!-- Elbow (Y-axis rotation — with forearm along Y this rotates the
+               forearm around its own axis, near-inert; kept for symmetry). -->
+          <joint name="left_elbow" type="hinge" axis="0 1 0"
+                 range="-2.0 0.1" pos="0 0 0"/>
+          <geom name="left_forearm_geom" type="capsule" fromto="0 0 0 0 0.10 -0.02"
+                size="0.02" rgba="0.6 0.5 0.4 1"/>
+
+          <!-- Hand -->
+          <body name="left_hand" pos="0 0.10 -0.02">
+            <geom name="left_hand_geom" type="sphere" size="0.03"
+                  rgba="0.7 0.55 0.45 1" contype="1" conaffinity="1"/>
+            <site name="left_hand_touch" pos="0 0 0" size="0.031" rgba="0 0 0 0"/>
+          </body>
+        </body>
+      </body>
+
+      <!-- ====== RIGHT ARM (identical forward-pointing paddle, mirror not
+           needed since both arms point the same way — forward). ====== -->
+      <body name="right_shoulder" pos="0.10 0 -0.01">
+        <joint name="right_shoulder_pitch" type="hinge" axis="0 1 0"
+               range="-1.5 1.5" pos="0 0 0"/>
+        <joint name="right_shoulder_roll" type="hinge" axis="1 0 0"
+               range="-2.0 0.8" pos="0 0 0"/>
+        <geom name="right_upper_arm" type="capsule" fromto="0 0 0 0 0.12 -0.02"
+              size="0.025" rgba="0.6 0.5 0.4 1"/>
+
+        <body name="right_forearm" pos="0 0.12 -0.02">
+          <joint name="right_elbow" type="hinge" axis="0 1 0"
+                 range="-2.0 0.1" pos="0 0 0"/>
+          <geom name="right_forearm_geom" type="capsule" fromto="0 0 0 0 0.10 -0.02"
+                size="0.02" rgba="0.6 0.5 0.4 1"/>
+
+          <body name="right_hand" pos="0 0.10 -0.02">
+            <geom name="right_hand_geom" type="sphere" size="0.03"
+                  rgba="0.7 0.55 0.45 1" contype="1" conaffinity="1"/>
+            <site name="right_hand_touch" pos="0 0 0" size="0.031" rgba="0 0 0 0"/>
+          </body>
+        </body>
+      </body>
+
+      <!-- ====== HEAD (directly on top of chassis center — no fore-aft
+           mass asymmetry; head_cam still points +Y for "forward" gaze.
+           z=0.09 clears the chassis top so the head sits visibly on top). ====== -->
+      <body name="head_base" pos="0 0 0.09">
+        <joint name="head_pan" type="hinge" axis="0 0 1"
+               range="-1.5 1.5" pos="0 0 0"/>
+        <geom name="head_base_geom" type="sphere" size="0.015"
+              rgba="0.6 0.5 0.4 1" contype="0" conaffinity="0"/>
+
+        <body name="head" pos="0 0 0.03">
+          <joint name="head_tilt" type="hinge" axis="1 0 0"
+                 range="-0.8 0.8" pos="0 0 0"/>
+          <geom name="head_geom" type="sphere" size="0.04"
+                rgba="0.7 0.6 0.5 1" contype="0" conaffinity="0"/>
+
+          <!-- Face paint (visual only): makes "which way AB is facing"
+               obvious in rendered videos. -->
+          <geom name="face_white" type="sphere" size="0.041"
+                pos="0 0.01 0" rgba="0.9 0.9 0.85 1"
+                contype="0" conaffinity="0"/>
+          <geom name="eye_L" type="sphere" size="0.008"
+                pos="0.015 0.045 0.02" rgba="0.1 0.1 0.1 1"
+                contype="0" conaffinity="0"/>
+          <geom name="eye_R" type="sphere" size="0.008"
+                pos="-0.015 0.045 0.02" rgba="0.1 0.1 0.1 1"
+                contype="0" conaffinity="0"/>
+          <geom name="hair_back" type="capsule"
+                fromto="0 -0.02 0 0 -0.06 0.02" size="0.04"
+                rgba="0.1 0.05 0.05 1"
+                contype="0" conaffinity="0"/>
+
+          <!-- pos y=0.05: in front of the 0.04-radius head sphere.
+               xyaxes gives ~20° downward gaze so platform+ball are in frame. -->
+          <camera name="head_cam" pos="0 0.05 0" xyaxes="1 0 0 0 0.342 0.940" fovy="25"/>
+        </body>
+      </body>
+    </body>
+
+    <!-- ============================================================ -->
+    <!-- TARGET OBJECT (ball on the platform)                         -->
+    <!-- ============================================================ -->
+    <!-- v9 target: free body. Ball rolls on platform under gravity + friction.
+         Can be pushed, can fall off the edge. Initial velocity set in env reset.
+         Friction: high sliding (1.0) so it grips and rolls; low rolling (0.01)
+         so kinetic energy decays slowly — roughly halves every ~5 sim-seconds. -->
+    <body name="target" pos="0 0 2.10">
+      <!-- Explicit overrides: <default> damping=2 would stop the ball in one
+           step; armature=0.1 is 100x the ball's real rotational inertia,
+           preventing rolling. Velocity decay is applied directly in env
+           step() — cleaner than joint-level damping which would also kill
+           rotation. -->
+      <joint name="target_free" type="free" armature="0" damping="0"/>
+      <geom name="target_geom" type="sphere" size="0.04"
+            rgba="1 0.2 0.2 1" contype="1" conaffinity="1" density="200"
+            friction="1.0 0.005 0.01"/>
+    </body>
+
+    <!-- Overhead camera (experimenter view) -->
+    <camera name="overhead" pos="0 0 5" xyaxes="1 0 0 0 1 0" fovy="60"/>
+    <!-- Side camera (to see falls) -->
+    <camera name="side" pos="4 0 2.5" xyaxes="0 1 0 0 0 1" fovy="60"/>
+    <!-- Ringside camera: low, just outside south edge, slight down-tilt.
+         Lets a viewer tell upright vs. tipping-over at a glance. -->
+    <camera name="ringside" pos="0 -1.8 2.15" xyaxes="1 0 0 0 0.028 0.9996" fovy="50"/>
+  </worldbody>
+
+  <actuator>
+    <!-- Arms: baby-weak. Half the gear of v8.0. Hand-push force at the
+         shortened arm's tip is now too small to lever the chassis off the
+         wheels even at full extension (see torso/wheelbase comments). -->
+    <motor name="left_shoulder_pitch_motor" joint="left_shoulder_pitch"
+           ctrllimited="true" ctrlrange="-1 1" gear="15"/>
+    <motor name="left_shoulder_roll_motor" joint="left_shoulder_roll"
+           ctrllimited="true" ctrlrange="-1 1" gear="15"/>
+    <motor name="left_elbow_motor" joint="left_elbow"
+           ctrllimited="true" ctrlrange="-1 1" gear="10"/>
+    <motor name="right_shoulder_pitch_motor" joint="right_shoulder_pitch"
+           ctrllimited="true" ctrlrange="-1 1" gear="15"/>
+    <motor name="right_shoulder_roll_motor" joint="right_shoulder_roll"
+           ctrllimited="true" ctrlrange="-1 1" gear="15"/>
+    <motor name="right_elbow_motor" joint="right_elbow"
+           ctrllimited="true" ctrlrange="-1 1" gear="10"/>
+    <!-- Head: position-controlled, slow and deliberate (kp=5 vs prior 30).
+         Lower gain means the head tracks commanded positions over several
+         timesteps rather than snapping instantly — eliminates the rapid
+         full-range thrashing seen under trained policies. -->
+    <position name="head_pan_motor" joint="head_pan"
+              ctrllimited="true" ctrlrange="-1.5 1.5" kp="5"/>
+    <position name="head_tilt_motor" joint="head_tilt"
+              ctrllimited="true" ctrlrange="-0.8 0.8" kp="5"/>
+  </actuator>
+
+  <sensor>
+    <!-- Arm joints -->
+    <jointpos name="left_shoulder_pitch_pos" joint="left_shoulder_pitch"/>
+    <jointpos name="left_shoulder_roll_pos" joint="left_shoulder_roll"/>
+    <jointpos name="left_elbow_pos" joint="left_elbow"/>
+    <jointpos name="right_shoulder_pitch_pos" joint="right_shoulder_pitch"/>
+    <jointpos name="right_shoulder_roll_pos" joint="right_shoulder_roll"/>
+    <jointpos name="right_elbow_pos" joint="right_elbow"/>
+    <jointvel name="left_shoulder_pitch_vel" joint="left_shoulder_pitch"/>
+    <jointvel name="left_shoulder_roll_vel" joint="left_shoulder_roll"/>
+    <jointvel name="left_elbow_vel" joint="left_elbow"/>
+    <jointvel name="right_shoulder_pitch_vel" joint="right_shoulder_pitch"/>
+    <jointvel name="right_shoulder_roll_vel" joint="right_shoulder_roll"/>
+    <jointvel name="right_elbow_vel" joint="right_elbow"/>
+    <!-- Head joints -->
+    <jointpos name="head_pan_pos" joint="head_pan"/>
+    <jointpos name="head_tilt_pos" joint="head_tilt"/>
+    <!-- Touch -->
+    <touch name="left_hand_touch" site="left_hand_touch"/>
+    <touch name="right_hand_touch" site="right_hand_touch"/>
+    <touch name="torso_touch" site="torso_touch"/>
+  </sensor>
+</mujoco>

@@ -1,0 +1,472 @@
+<mujoco model="mimo_crawler">
+  <compiler angle="degree" inertiafromgeom="true"/>
+  <!-- implicitfast: required for stiff PD position actuators (kp up to 100 Nm/rad).
+       Euler integrator creates force-amplification instability with position
+       actuators when initial joint error is large or during contact events.
+       implicitfast handles the PD stiffness implicitly, eliminating the runaway
+       without changing the simulation for the torque-motor head actuators. -->
+  <option gravity="0 0 -9.81" integrator="implicitfast" timestep="0.005" cone="elliptic"/>
+
+  <default>
+    <joint limited="true" damping=".1" stiffness=".1" armature="0.001"
+           solimplimit="0.98 0.99 0.001 .5 1" solreflimit="0.02 1"/>
+    <geom condim="3" friction="1 0.005 0.0002"
+          solimp="0.95 0.99 0.001 0.5 1" solref="0.005 1"/>
+    <motor ctrlrange="-1 1" ctrllimited="true" forcelimited="true"/>
+  </default>
+
+  <asset>
+    <material name="skin"       rgba="0.95 0.80 0.50 1"/>
+    <material name="head_mat"   rgba="0.95 0.80 0.50 1"/>
+    <material name="green_top"  rgba="0.10 0.50 0.00 1"/>
+    <material name="blue_pants" rgba="0.10 0.10 0.60 1"/>
+    <material name="eye_mat"    rgba="0.98 0.98 0.95 1"/>   <!-- whites of eyes -->
+    <material name="iris_mat"   rgba="0.15 0.15 0.85 1"/>   <!-- iris (blue) -->
+    <material name="pupil_mat"  rgba="0.05 0.05 0.05 1"/>   <!-- pupil (near black) -->
+    <material name="hair_mat"   rgba="0.30 0.18 0.10 1"/>   <!-- dark brown hair -->
+    <material name="lip_mat"    rgba="0.85 0.40 0.35 1"/>   <!-- mouth/lip color -->
+    <material name="neck_mat"   rgba="0.92 0.78 0.48 1"/>   <!-- skin, slightly darker than face -->
+
+    <material name="MatPlatform" rgba="0.72 0.72 0.68 1"/>
+    <material name="MatGround"   rgba="0.35 0.30 0.25 1"/>
+    <material name="MatWall"     rgba="0.55 0.50 0.48 1"/>
+  </asset>
+
+  <contact>
+    <pair geom1="lb" geom2="ub1" condim="1"/>
+  </contact>
+
+  <tendon>
+    <fixed name="hip_bend" limited="true" range="-.01 .01">
+      <joint joint="robot:hip_bend1" coef="1"/>
+      <joint joint="robot:hip_bend2" coef="-1"/>
+    </fixed>
+    <fixed name="hip_rotation" limited="true" range="-.01 .01">
+      <joint joint="robot:hip_rot1" coef="1"/>
+      <joint joint="robot:hip_rot2" coef="-1"/>
+    </fixed>
+    <fixed name="hip_lean" limited="true" range="-.01 .01">
+      <joint joint="robot:hip_lean1" coef="1"/>
+      <joint joint="robot:hip_lean2" coef="-.5"/>
+    </fixed>
+  </tendon>
+
+  <worldbody>
+    <light cutoff="100" diffuse="1 1 1" dir="0 0 -1" directional="true"
+           pos="0 0 5" specular="0.2 0.2 0.2"/>
+
+    <geom name="ground" type="plane" size="10 10 0.1" pos="0 0 0"
+          material="MatGround" conaffinity="1" contype="1"/>
+
+    <!-- Platform: top surface at z=2.025 -->
+    <geom name="platform" type="box" size="1.0 1.0 0.025" pos="0 0 2.0"
+          material="MatPlatform" conaffinity="3" contype="3" friction="0.9 0.3 0.1"/>
+
+    <!-- Guardrails: 20cm tall walls, baby-scale -->
+    <geom name="rail_N" type="box" size="1.02 0.025 0.10" pos="0  1.025 2.125"
+          material="MatWall" conaffinity="3" contype="3"/>
+    <geom name="rail_S" type="box" size="1.02 0.025 0.10" pos="0 -1.025 2.125"
+          material="MatWall" conaffinity="3" contype="3"/>
+    <geom name="rail_E" type="box" size="0.025 1.02 0.10" pos=" 1.025 0 2.125"
+          material="MatWall" conaffinity="3" contype="3"/>
+    <geom name="rail_W" type="box" size="0.025 1.02 0.10" pos="-1.025 0 2.125"
+          material="MatWall" conaffinity="3" contype="3"/>
+
+    <!-- MIMo body: hip is root.
+         Standing upright: leg length ~0.329m so hip at z=2.354.
+         MIMo faces +X by default; env reset will orient to face +Y. -->
+    <body name="hip" pos="0 -0.2 2.354">
+      <joint name="root" type="free" damping="0" stiffness="0"
+             armature="0" limited="false" frictionloss="0"/>
+      <geom name="lb" type="capsule" size=".048 .043" mass="1.1584"
+            material="blue_pants" pos="-.002 0 0.005" euler="90 0 0"/>
+
+      <body name="lower_body" pos="0.002 0 0.076">
+        <joint name="robot:hip_lean1" type="hinge" pos="0 0 -.05" axis="1 0 0"
+               range="-14 14" stiffness="3.38" damping="0.77" frictionloss=".049" armature="0.01"/>
+        <joint name="robot:hip_rot1"  type="hinge" pos="0 0 -.05" axis="0 0 1"
+               range="-18 18" stiffness="1.45" damping="0.29" frictionloss=".018" armature="0.01"/>
+        <joint name="robot:hip_bend1" type="hinge" pos="0 0 -0.05" axis="0 1 0"
+               range="-17 30.5" stiffness="2.20" damping="0.84" frictionloss="0.040" armature="0.01"/>
+        <geom name="cb" type="capsule" size=".053 .035" mass="1.3245"
+              material="blue_pants" pos="0.005 0 -.008" euler="90 0 0" contype="0"/>
+
+        <body name="upper_body" pos="-.002 0 0.091">
+          <joint name="robot:hip_lean2" type="hinge" pos="0 0 -.05" axis="1 0 0"
+                 range="-27 27" stiffness="1.69" damping="0.38" frictionloss=".024" armature="0.01"/>
+          <joint name="robot:hip_rot2"  type="hinge" pos="0 0 -.05" axis="0 0 1"
+                 range="-18 18" stiffness="1.45" damping="0.29" frictionloss=".018" armature="0.01"/>
+          <joint name="robot:hip_bend2" type="hinge" pos="0 0 -.05" axis="0 1 0"
+                 range="-17 30.5" stiffness="2.20" damping="0.84" frictionloss="0.040" armature="0.01"/>
+          <geom name="ub1" type="capsule" size=".052 .035" mass="1.0882"
+                material="green_top" pos="0.007 0 -.032" euler="90 0 0"/>
+          <geom name="ub2" type="capsule" size=".048 .039" mass="0.9499"
+                material="green_top" pos="0.004 0 0.03" euler="90 0 0"/>
+
+          <body name="chest" pos="0 0 0.09">
+            <joint name="robot:chest_lean" type="hinge" pos="0 0 0" axis="1 0 0"
+                   range="-9 9" stiffness="1.69" damping="0.38" frictionloss=".024" armature="0.01"/>
+            <joint name="robot:chest_rot"  type="hinge" pos="0 0 0" axis="0 0 1"
+                   range="-18 18" stiffness="1.45" damping="0.29" frictionloss=".018" armature="0.01"/>
+            <geom name="ub3" type="capsule" size=".041 .047" mass="0.7217"
+                  material="green_top" pos="0 0 0" euler="90 0 0"/>
+
+            <!-- RIGHT ARM -->
+            <body name="right_upper_arm" pos="-.005 -0.105 .003" euler="170 0 0">
+              <joint name="robot:right_shoulder_horizontal" type="hinge" pos="0 -.024 0"
+                     axis="0 1 -4" range="-28 118" stiffness=".09" damping=".05"
+                     frictionloss=".0009" armature="0.004"/>
+              <joint name="robot:right_shoulder_ad_ab" type="hinge" pos="0 0 0"
+                     axis="-1 0 0" range="-84 183" stiffness=".11" damping=".10"
+                     frictionloss=".0014" armature="0.004"/>
+              <joint name="robot:right_shoulder_rotation" type="hinge" pos="0 0 0"
+                     axis="0 0 -1" range="-99 67" stiffness=".12" damping=".07"
+                     frictionloss=".0008" armature="0.004"/>
+              <geom name="right_uarm1" type="capsule" material="green_top"
+                    size="0.024 0.040" mass=".200" pos="0 0 .040"/>
+              <body name="right_lower_arm" pos="0 0 .080">
+                <joint name="robot:right_elbow" type="hinge" pos="0 0 0" axis="0 -1 0"
+                       springref="-20" range="-146 5" stiffness=".13" damping=".11"
+                       frictionloss=".030" armature="0.002"/>
+                <geom name="right_larm" type="capsule" size=".023 0.028" mass=".140" pos="0 0 .028" material="skin"/>
+                <!-- Wrist + hand: passive (no actuator) -->
+                <body name="right_hand" pos="0 -.007 .060">
+                  <joint name="robot:right_hand1" type="hinge" pos="0 .007 0" axis="0 0 -1"
+                         springref="-20" range="-90 90" stiffness=".22" damping=".03" frictionloss=".007" armature="0.001"/>
+                  <joint name="robot:right_hand2" type="hinge" pos="0 0 0" axis="-1 0 0"
+                         range="-92 86" stiffness=".33" damping=".11" frictionloss=".007" armature="0.001"/>
+                  <joint name="robot:right_hand3" type="hinge" pos="0 0 0" axis="0 1 0"
+                         range="-53 48" stiffness=".38" damping=".11" frictionloss=".007" armature="0.001"/>
+                  <geom name="geom:right_hand1" type="box" size=".0281 .01 .0208"
+                        mass=".04315" pos=".005 0 .0208" material="skin"/>
+                  <geom name="geom:right_hand2" type="cylinder" size=".0102 .0278"
+                        mass=".01602" pos=".005 0 .0416" euler="0 90 0" material="skin"/>
+                  <site name="right_hand_touch" pos=".005 0 .03" size="0.035" rgba="0 0 0 0"/>
+                  <body name="right_fingers" pos="0 0 .0416">
+                    <joint name="robot:right_fingers" type="hinge" pos="0 0 0" axis="-1 0 0"
+                           springref="-40" range="-160 8" stiffness=".017" damping=".018"
+                           frictionloss=".0023" armature="0.0001"/>
+                    <geom name="geom:right_fingers1" type="box" size=".0228 .01 .0207"
+                          mass=".03494" pos="0 0 .0207" material="skin" friction="5 0.02 0.01"/>
+                    <geom name="geom:right_fingers2" type="cylinder" size=".0102 .023"
+                          mass=".01323" pos="0 0 .0414" euler="0 90 0" material="skin" friction="5 0.02 0.01"/>
+                    <site name="right_fingers_touch" pos="0 0 .03" size="0.025" rgba="0 0 0 0"/>
+                  </body>
+                </body>
+              </body>
+            </body>
+
+            <!-- LEFT ARM -->
+            <body name="left_upper_arm" pos="-.005 0.105 .003" euler="-170 0 0">
+              <joint name="robot:left_shoulder_horizontal" type="hinge" pos="0 .024 0"
+                     axis="0 1 4" range="-28 118" stiffness=".09" damping=".05"
+                     frictionloss=".0009" armature="0.004"/>
+              <joint name="robot:left_shoulder_ad_ab" type="hinge" pos="0 0 0"
+                     axis="1 0 0" range="-84 183" stiffness=".11" damping=".10"
+                     frictionloss=".0014" armature="0.004"/>
+              <joint name="robot:left_shoulder_rotation" type="hinge" pos="0 0 0"
+                     axis="0 0 1" range="-99 67" stiffness=".12" damping=".07"
+                     frictionloss=".0008" armature="0.004"/>
+              <geom name="left_uarm1" type="capsule" material="green_top"
+                    size="0.024 0.040" mass=".200" pos="0 0 .040"/>
+              <body name="left_lower_arm" pos="0 0 .080">
+                <joint name="robot:left_elbow" type="hinge" pos="0 0 0" axis="0 -1 0"
+                       springref="-20" range="-146 5" stiffness=".13" damping=".11"
+                       frictionloss=".030" armature="0.002"/>
+                <geom name="left_larm" type="capsule" size=".023 0.028" mass=".140" pos="0 0 .028" material="skin"/>
+                <body name="left_hand" pos="0 .007 .060">
+                  <joint name="robot:left_hand1" type="hinge" pos="0 .007 0" axis="0 0 1"
+                         springref="-20" range="-90 90" stiffness=".22" damping=".03" frictionloss=".007" armature="0.001"/>
+                  <joint name="robot:left_hand2" type="hinge" pos="0 0 0" axis="1 0 0"
+                         range="-92 86" stiffness=".33" damping=".11" frictionloss=".007" armature="0.001"/>
+                  <joint name="robot:left_hand3" type="hinge" pos="0 0 0" axis="0 1 0"
+                         range="-53 48" stiffness=".38" damping=".11" frictionloss=".007" armature="0.001"/>
+                  <geom name="geom:left_hand1" type="box" size=".0281 .01 .0208"
+                        mass=".04315" pos=".005 0 .0208" material="skin"/>
+                  <geom name="geom:left_hand2" type="cylinder" size=".0102 .0278"
+                        mass=".01602" pos=".005 0 .0416" euler="0 90 0" material="skin"/>
+                  <site name="left_hand_touch" pos=".005 0 .03" size="0.035" rgba="0 0 0 0"/>
+                  <body name="left_fingers" pos="0 0 .0416">
+                    <joint name="robot:left_fingers" type="hinge" pos="0 0 0" axis="1 0 0"
+                           springref="-40" range="-160 8" stiffness=".017" damping=".018"
+                           frictionloss=".0023" armature="0.0001"/>
+                    <geom name="geom:left_fingers1" type="box" size=".0228 .01 .0207"
+                          mass=".03494" pos="0 0 .0207" material="skin" friction="5 0.02 0.01"/>
+                    <geom name="geom:left_fingers2" type="cylinder" size=".0102 .023"
+                          mass=".01323" pos="0 0 .0414" euler="0 90 0" material="skin" friction="5 0.02 0.01"/>
+                    <site name="left_fingers_touch" pos="0 0 .03" size="0.025" rgba="0 0 0 0"/>
+                  </body>
+                </body>
+              </body>
+            </body>
+
+            <!-- HEAD: eye joints removed, fixed stereo cameras instead -->
+            <body name="head" pos="0 0 .135">
+              <joint name="robot:head_swivel"    type="hinge" pos="0 0 0"      axis="0 0 1"
+                     range="-111 111" stiffness=".23" damping=".29" frictionloss=".018" armature="0.005"/>
+              <joint name="robot:head_tilt"      type="hinge" pos="0 0 0.0123" axis="0 1 0"
+                     range="-70 81"  stiffness=".45" damping=".53" frictionloss=".018" armature="0.005"/>
+              <joint name="robot:head_tilt_side" type="hinge" pos="0 0 0.0245" axis="1 0 0"
+                     range="-70 70"  stiffness=".37" damping=".29" frictionloss=".018" armature="0.005"/>
+              <geom name="head_geom" type="sphere" size=".0735" mass="1.7748"
+                    material="head_mat" pos="0.01 0 0.0735"/>
+              <site name="vestibular" type="sphere" size="0.01" pos="0.01 0 0.0735"/>
+
+              <!-- Visible neck: cylinder descending from base of head body toward chest.
+                   Visual only (no contact). Helps see head articulation in renders. -->
+              <geom name="neck" type="cylinder" material="neck_mat"
+                    size=".025 .024" pos="0 0 -.013" mass="0.001"
+                    contype="0" conaffinity="0"/>
+
+              <!-- Eye whites (sclera) — visible spheres in render -->
+              <geom name="geom:left_eye"  type="sphere" material="eye_mat" size=".015"
+                    mass=".001" pos=".066 .025 .067" contype="0" conaffinity="0"/>
+              <geom name="geom:right_eye" type="sphere" material="eye_mat" size=".015"
+                    mass=".001" pos=".066 -.025 .067" contype="0" conaffinity="0"/>
+              <!-- Iris (blue) — slightly forward and smaller, embedded in sclera -->
+              <geom name="iris_left"  type="sphere" material="iris_mat" size=".009"
+                    mass=".0001" pos=".076 .025 .067" contype="0" conaffinity="0"/>
+              <geom name="iris_right" type="sphere" material="iris_mat" size=".009"
+                    mass=".0001" pos=".076 -.025 .067" contype="0" conaffinity="0"/>
+              <!-- Pupils (near-black) — even more forward, smaller than iris -->
+              <geom name="pupil_left"  type="sphere" material="pupil_mat" size=".0045"
+                    mass=".0001" pos=".081 .025 .067" contype="0" conaffinity="0"/>
+              <geom name="pupil_right" type="sphere" material="pupil_mat" size=".0045"
+                    mass=".0001" pos=".081 -.025 .067" contype="0" conaffinity="0"/>
+
+              <!-- Nose: small skin-toned protrusion between and slightly below the eyes.
+                   Unambiguously marks the front of the face in any render angle. -->
+              <geom name="nose" type="sphere" material="head_mat" size=".010"
+                    mass=".001" pos=".082 .0 .055" contype="0" conaffinity="0"/>
+
+              <!-- Mouth: small reddish horizontal bar below the nose. -->
+              <geom name="mouth" type="box" material="lip_mat" size=".012 .002 .003"
+                    mass=".0005" pos=".076 .0 .035" contype="0" conaffinity="0"/>
+
+              <!-- Hair: positioned on the back-top of the head so it does not
+                   occlude the forward-facing eye cameras. -->
+              <geom name="hair_top"  type="sphere" material="hair_mat" size=".045"
+                    mass=".005" pos="-.005 0 .135" contype="0" conaffinity="0"/>
+              <geom name="hair_back" type="sphere" material="hair_mat" size=".045"
+                    mass=".005" pos="-.045 0 .080" contype="0" conaffinity="0"/>
+              <!-- Stereo cameras: look forward-and-down when body is PRONE.
+                   When prone: head+Z = world+Y (forward), head+X = world-Z (down).
+                   Cameras are tilted 15° downward from horizontal so the ball
+                   (sitting on the platform floor) appears in frame rather than
+                   being occluded by the creature's own outstretched arms.
+                   xyaxes "0 -1 0  -0.966 0 0.259":
+                     camera-right = head-Y = world+X (lateral, natural L/R)
+                     camera-up    = mostly head-X (= world+Z) with 15° forward tilt
+                     look direction = 15° below head+Z (= 15° below horizontal in world) -->
+              <camera name="left_eye"  pos=".07  .0245 .067375" xyaxes="0 -1 0  -0.966 0 0.259" fovy="90"/>
+              <camera name="right_eye" pos=".07 -.0245 .067375" xyaxes="0 -1 0  -0.966 0 0.259" fovy="90"/>
+            </body>
+          </body>
+        </body>
+      </body>
+
+      <!-- RIGHT LEG -->
+      <body name="right_upper_leg" pos="0.005 -.051 -.007">
+        <joint name="robot:right_hip1" type="hinge" pos="0 0 0" axis="0 1 0"
+               springref="-10" range="-133 20" stiffness="1.72" damping="1.27" frictionloss=".08" armature=".005"/>
+        <joint name="robot:right_hip2" type="hinge" pos="0 0 0" axis="1 0 0"
+               range="-51 17" stiffness="3.51" damping="1.99" frictionloss=".062" armature=".005"/>
+        <joint name="robot:right_hip3" type="hinge" pos="0 0 0" axis="0 0 -1"
+               range="-32 41" stiffness="2.16" damping="0.75" frictionloss=".027" armature=".005"/>
+        <geom name="geom:right_upper_leg1" type="capsule" material="blue_pants"
+              size=".037 .053" mass=".680" pos="0 0 -.054"/>
+        <body name="right_lower_leg" pos="0 0 -.115">
+          <joint name="robot:right_knee" type="hinge" pos="0 0 0" axis="0 -1 0"
+                 springref="-30" range="-145 4" stiffness="1.63" damping="0.53" frictionloss=".065" armature=".003"/>
+          <geom name="geom:right_lower_leg1" type="capsule" size=".029 .037" mass=".284" pos="0 0 -.037" material="skin"/>
+          <geom name="geom:right_lower_leg2" type="capsule" size=".021 .024" mass=".098" pos="0 0 -.114" material="skin"/>
+          <body name="right_foot" pos="0 0 -.150">
+            <joint name="robot:right_foot1" type="hinge" pos="0 0 .015" axis="0 -1 0"
+                   springref="-10" range="-63 32" stiffness="1.29" damping="0.6" frictionloss=".019" armature=".003"/>
+            <joint name="robot:right_foot2" type="hinge" pos="0 0 .015" axis="1 0 0"
+                   range="-33 31" stiffness="0.96" damping="0.37" frictionloss=".011" armature=".0025"/>
+            <joint name="robot:right_foot3" type="hinge" pos="0 0 .015" axis="0 0 1"
+                   range="-20 30" stiffness="1.15" damping="0.38" frictionloss=".012" armature=".002"/>
+            <geom name="geom:right_foot1" type="cylinder" size=".0249 .0099" mass=".03219" pos="-0.016 0 0" material="skin"/>
+            <geom name="geom:right_foot2" type="box" size=".035 .025 .01" mass=".05850" pos="0.019 0 0" material="skin" friction="2 0.02 0.01"/>
+            <geom name="geom:right_foot3" type="cylinder" size=".0099 .0248" mass=".01268" pos=".054 0 0" euler="90 0 0" material="skin" friction="2 0.02 0.01"/>
+            <site name="right_foot_touch" pos="0.02 0 -0.01" size="0.04" rgba="0 0 0 0"/>
+            <body name="right_toes" pos=".054 0 0">
+              <joint name="robot:right_toes" type="hinge" pos="0 0 0" axis="0 -1 0"
+                     range="-60 80" frictionloss=".005" armature=".0005" stiffness=".106" damping=".04"/>
+              <geom name="geom:right_toes1" type="box" size=".007 .0249 .0099" mass=".01084" pos=".007 0 0" material="skin" friction="2 0.02 0.01"/>
+              <geom name="geom:right_toes2" type="cylinder" size=".01 .025" mass=".01226" pos=".014 0 0" euler="90 0 0" material="skin" friction="2 0.02 0.01"/>
+            </body>
+          </body>
+        </body>
+      </body>
+
+      <!-- LEFT LEG -->
+      <body name="left_upper_leg" pos="0.005 .051 -.007">
+        <joint name="robot:left_hip1" type="hinge" pos="0 0 0" axis="0 1 0"
+               springref="-10" range="-133 20" stiffness="1.72" damping="1.27" frictionloss=".08" armature=".005"/>
+        <joint name="robot:left_hip2" type="hinge" pos="0 0 0" axis="-1 0 0"
+               range="-51 17" stiffness="3.51" damping="1.99" frictionloss=".062" armature=".005"/>
+        <joint name="robot:left_hip3" type="hinge" pos="0 0 0" axis="0 0 1"
+               range="-32 41" stiffness="2.16" damping="0.75" frictionloss=".027" armature=".005"/>
+        <geom name="geom:left_upper_leg1" type="capsule" material="blue_pants"
+              size=".037 .053" mass=".680" pos="0 0 -.054"/>
+        <body name="left_lower_leg" pos="0 0 -.115">
+          <joint name="robot:left_knee" type="hinge" pos="0 0 0" axis="0 -1 0"
+                 springref="-30" range="-145 4" stiffness="1.63" damping="0.53" frictionloss=".065" armature=".003"/>
+          <geom name="geom:left_lower_leg1" type="capsule" size=".029 .037" mass=".284" pos="0 0 -.037" material="skin"/>
+          <geom name="geom:left_lower_leg2" type="capsule" size=".021 .024" mass=".098" pos="0 0 -.114" material="skin"/>
+          <body name="left_foot" pos="0 0 -.150">
+            <joint name="robot:left_foot1" type="hinge" pos="0 0 .015" axis="0 -1 0"
+                   springref="-10" range="-63 32" stiffness="1.29" damping="0.6" frictionloss=".019" armature=".003"/>
+            <joint name="robot:left_foot2" type="hinge" pos="0 0 .015" axis="-1 0 0"
+                   range="-33 31" stiffness="0.96" damping="0.37" frictionloss=".011" armature=".0025"/>
+            <joint name="robot:left_foot3" type="hinge" pos="0 0 .015" axis="0 0 -1"
+                   range="-20 30" stiffness="1.15" damping="0.38" frictionloss=".012" armature=".002"/>
+            <geom name="geom:left_foot1" type="cylinder" size=".0249 .0099" mass=".03219" pos="-0.016 0 0" material="skin"/>
+            <geom name="geom:left_foot2" type="box" size=".035 .025 .01" mass=".05850" pos="0.019 0 0" material="skin" friction="2 0.02 0.01"/>
+            <geom name="geom:left_foot3" type="cylinder" size=".0099 .0248" mass=".01268" pos=".054 0 0" euler="90 0 0" material="skin" friction="2 0.02 0.01"/>
+            <site name="left_foot_touch" pos="0.02 0 -0.01" size="0.04" rgba="0 0 0 0"/>
+            <body name="left_toes" pos=".054 0 0">
+              <joint name="robot:left_toes" type="hinge" pos="0 0 0" axis="0 -1 0"
+                     range="-60 80" frictionloss=".005" armature=".0005" stiffness=".106" damping=".04"/>
+              <geom name="geom:left_toes1" type="box" size=".007 .0249 .0099" mass=".01084" pos=".007 0 0" material="skin" friction="2 0.02 0.01"/>
+              <geom name="geom:left_toes2" type="cylinder" size=".01 .025" mass=".01226" pos=".014 0 0" euler="90 0 0" material="skin" friction="2 0.02 0.01"/>
+            </body>
+          </body>
+        </body>
+      </body>
+
+    </body> <!-- end MIMo/hip -->
+
+    <!-- TARGET BALL 1 (red) -->
+    <body name="target" pos="0.4 0 2.078">
+      <joint name="target_free" type="free" armature="0" damping="0" limited="false" stiffness="0" frictionloss="0"/>
+      <geom name="target_geom" type="sphere" size="0.053"
+            rgba="1 0.12 0.12 1" contype="1" conaffinity="1" density="150" friction="0.8 0.3 0.1"/>
+    </body>
+
+    <!-- TARGET BALL 2 (blue) — used by Phase C two-ball env -->
+    <body name="target2" pos="0 0.4 2.078">
+      <joint name="target2_free" type="free" armature="0" damping="0" limited="false" stiffness="0" frictionloss="0"/>
+      <geom name="target2_geom" type="sphere" size="0.053"
+            rgba="0.12 0.3 1 1" contype="1" conaffinity="1" density="150" friction="0.8 0.3 0.1"/>
+    </body>
+
+    <camera name="overhead" pos="0 0 5.5" xyaxes="1 0 0 0 1 0" fovy="55"/>
+    <camera name="ringside" pos="0 -2.5 2.4" xyaxes="1 0 0 0 0.12 0.993" fovy="45"/>
+  </worldbody>
+
+  <actuator>
+    <!-- Phase XVI R49: position-offset actuators for limbs.
+         kp = 10 * (old torque gear); kv=10 on all.
+         ctrlrange = [neutral - o, neutral + o] clipped to joint limit.
+         Offsets: trunk o=0.2 rad, shoulders/elbows/hips/knees o=0.4 rad.
+         Neutrals from springref: elbows -20deg, hip_flex -10deg,
+           knees -30deg, ankles -10deg, all others 0deg.
+         Head actuators stay as torque motors (unchanged from mimo_crawler.xml). -->
+
+    <!-- Trunk: 5 DOF — position-offset, o=0.2 rad -->
+    <position name="act:hip_bend"    joint="robot:hip_bend1"  kp="105.8" kv="10" ctrlrange="-0.2000 0.2000" forcelimited="false"/>
+    <position name="act:hip_twist"   joint="robot:hip_rot1"   kp="36.3"  kv="10" ctrlrange="-0.2000 0.2000" forcelimited="false"/>
+    <position name="act:hip_lean"    joint="robot:hip_lean1"  kp="72.5"  kv="10" ctrlrange="-0.2000 0.2000" forcelimited="false"/>
+    <position name="act:chest_twist" joint="robot:chest_rot"  kp="3.6"   kv="10" ctrlrange="-0.2000 0.2000" forcelimited="false"/>
+    <position name="act:chest_lean"  joint="robot:chest_lean" kp="7.2"   kv="10" ctrlrange="-0.1571 0.1571" forcelimited="false"/>
+
+    <!-- Head: 2 DOF — torque motors, unchanged from mimo_crawler.xml -->
+    <motor name="act:head_swivel" joint="robot:head_swivel" gear="1.8"  forcerange="-1 1"/>
+    <motor name="act:head_tilt"   joint="robot:head_tilt"   gear="3.3"  forcerange="-1 .55"/>
+
+    <!-- Right arm: 4 DOF — position-offset, o=0.4 rad -->
+    <position name="act:r_sh_horiz"  joint="robot:right_shoulder_horizontal" kp="18.0"  kv="10" ctrlrange="-0.4000 0.4000" forcelimited="false"/>
+    <position name="act:r_sh_adab"   joint="robot:right_shoulder_ad_ab"      kp="40.0"  kv="10" ctrlrange="-0.4000 0.4000" forcelimited="false"/>
+    <position name="act:r_sh_rot"    joint="robot:right_shoulder_rotation"   kp="25.0"  kv="10" ctrlrange="-0.4000 0.4000" forcelimited="false"/>
+    <!-- elbow neutral=-20deg=-0.3491rad; ctrlrange=[neutral-0.4, min(0.0873,neutral+0.4)] -->
+    <position name="act:r_elbow"     joint="robot:right_elbow"               kp="36.0"  kv="10" ctrlrange="-0.7491 0.0509" forcelimited="false"/>
+
+    <!-- Left arm: 4 DOF — position-offset, o=0.4 rad -->
+    <position name="act:l_sh_horiz"  joint="robot:left_shoulder_horizontal"  kp="18.0"  kv="10" ctrlrange="-0.4000 0.4000" forcelimited="false"/>
+    <position name="act:l_sh_adab"   joint="robot:left_shoulder_ad_ab"       kp="40.0"  kv="10" ctrlrange="-0.4000 0.4000" forcelimited="false"/>
+    <position name="act:l_sh_rot"    joint="robot:left_shoulder_rotation"    kp="25.0"  kv="10" ctrlrange="-0.4000 0.4000" forcelimited="false"/>
+    <position name="act:l_elbow"     joint="robot:left_elbow"                kp="36.0"  kv="10" ctrlrange="-0.7491 0.0509" forcelimited="false"/>
+
+    <!-- Right leg: 5 DOF — position-offset, o=0.4 rad -->
+    <!-- hip_flex neutral=-10deg=-0.1745rad -->
+    <position name="act:r_hip_flex"  joint="robot:right_hip1"  kp="80.0"  kv="10" ctrlrange="-0.5745 0.2255" forcelimited="false"/>
+    <position name="act:r_hip_ab"    joint="robot:right_hip2"  kp="62.4"  kv="10" ctrlrange="-0.4000 0.2967" forcelimited="false"/>
+    <position name="act:r_hip_rot"   joint="robot:right_hip3"  kp="35.4"  kv="10" ctrlrange="-0.4000 0.4000" forcelimited="false"/>
+    <!-- knee neutral=-30deg=-0.5236rad -->
+    <position name="act:r_knee"      joint="robot:right_knee"  kp="100.0" kv="10" ctrlrange="-0.9236 -0.1236" forcelimited="false"/>
+    <!-- ankle neutral=-10deg=-0.1745rad -->
+    <position name="act:r_ankle"     joint="robot:right_foot1" kp="37.8"  kv="10" ctrlrange="-0.5745 0.2255" forcelimited="false"/>
+
+    <!-- Left leg: 5 DOF — position-offset, o=0.4 rad -->
+    <position name="act:l_hip_flex"  joint="robot:left_hip1"   kp="80.0"  kv="10" ctrlrange="-0.5745 0.2255" forcelimited="false"/>
+    <position name="act:l_hip_ab"    joint="robot:left_hip2"   kp="62.4"  kv="10" ctrlrange="-0.4000 0.2967" forcelimited="false"/>
+    <position name="act:l_hip_rot"   joint="robot:left_hip3"   kp="35.4"  kv="10" ctrlrange="-0.4000 0.4000" forcelimited="false"/>
+    <position name="act:l_knee"      joint="robot:left_knee"   kp="100.0" kv="10" ctrlrange="-0.9236 -0.1236" forcelimited="false"/>
+    <position name="act:l_ankle"     joint="robot:left_foot1"  kp="37.8"  kv="10" ctrlrange="-0.5745 0.2255" forcelimited="false"/>
+  </actuator>
+
+  <sensor>
+    <accelerometer name="vestibular_acc"  site="vestibular"/>
+    <gyro          name="vestibular_gyro" site="vestibular"/>
+    <jointpos name="pos:hip_bend"    joint="robot:hip_bend1"/>
+    <jointpos name="pos:hip_twist"   joint="robot:hip_rot1"/>
+    <jointpos name="pos:hip_lean"    joint="robot:hip_lean1"/>
+    <jointpos name="pos:chest_twist" joint="robot:chest_rot"/>
+    <jointpos name="pos:chest_lean"  joint="robot:chest_lean"/>
+    <jointpos name="pos:head_swivel" joint="robot:head_swivel"/>
+    <jointpos name="pos:head_tilt"   joint="robot:head_tilt"/>
+    <jointpos name="pos:r_sh_horiz"  joint="robot:right_shoulder_horizontal"/>
+    <jointpos name="pos:r_sh_adab"   joint="robot:right_shoulder_ad_ab"/>
+    <jointpos name="pos:r_sh_rot"    joint="robot:right_shoulder_rotation"/>
+    <jointpos name="pos:r_elbow"     joint="robot:right_elbow"/>
+    <jointpos name="pos:l_sh_horiz"  joint="robot:left_shoulder_horizontal"/>
+    <jointpos name="pos:l_sh_adab"   joint="robot:left_shoulder_ad_ab"/>
+    <jointpos name="pos:l_sh_rot"    joint="robot:left_shoulder_rotation"/>
+    <jointpos name="pos:l_elbow"     joint="robot:left_elbow"/>
+    <jointpos name="pos:r_hip_flex"  joint="robot:right_hip1"/>
+    <jointpos name="pos:r_hip_ab"    joint="robot:right_hip2"/>
+    <jointpos name="pos:r_hip_rot"   joint="robot:right_hip3"/>
+    <jointpos name="pos:r_knee"      joint="robot:right_knee"/>
+    <jointpos name="pos:r_ankle"     joint="robot:right_foot1"/>
+    <jointpos name="pos:l_hip_flex"  joint="robot:left_hip1"/>
+    <jointpos name="pos:l_hip_ab"    joint="robot:left_hip2"/>
+    <jointpos name="pos:l_hip_rot"   joint="robot:left_hip3"/>
+    <jointpos name="pos:l_knee"      joint="robot:left_knee"/>
+    <jointpos name="pos:l_ankle"     joint="robot:left_foot1"/>
+    <jointvel name="vel:hip_bend"    joint="robot:hip_bend1"/>
+    <jointvel name="vel:hip_twist"   joint="robot:hip_rot1"/>
+    <jointvel name="vel:hip_lean"    joint="robot:hip_lean1"/>
+    <jointvel name="vel:chest_twist" joint="robot:chest_rot"/>
+    <jointvel name="vel:chest_lean"  joint="robot:chest_lean"/>
+    <jointvel name="vel:head_swivel" joint="robot:head_swivel"/>
+    <jointvel name="vel:head_tilt"   joint="robot:head_tilt"/>
+    <jointvel name="vel:r_sh_horiz"  joint="robot:right_shoulder_horizontal"/>
+    <jointvel name="vel:r_sh_adab"   joint="robot:right_shoulder_ad_ab"/>
+    <jointvel name="vel:r_sh_rot"    joint="robot:right_shoulder_rotation"/>
+    <jointvel name="vel:r_elbow"     joint="robot:right_elbow"/>
+    <jointvel name="vel:l_sh_horiz"  joint="robot:left_shoulder_horizontal"/>
+    <jointvel name="vel:l_sh_adab"   joint="robot:left_shoulder_ad_ab"/>
+    <jointvel name="vel:l_sh_rot"    joint="robot:left_shoulder_rotation"/>
+    <jointvel name="vel:l_elbow"     joint="robot:left_elbow"/>
+    <jointvel name="vel:r_hip_flex"  joint="robot:right_hip1"/>
+    <jointvel name="vel:r_hip_ab"    joint="robot:right_hip2"/>
+    <jointvel name="vel:r_hip_rot"   joint="robot:right_hip3"/>
+    <jointvel name="vel:r_knee"      joint="robot:right_knee"/>
+    <jointvel name="vel:r_ankle"     joint="robot:right_foot1"/>
+    <jointvel name="vel:l_hip_flex"  joint="robot:left_hip1"/>
+    <jointvel name="vel:l_hip_ab"    joint="robot:left_hip2"/>
+    <jointvel name="vel:l_hip_rot"   joint="robot:left_hip3"/>
+    <jointvel name="vel:l_knee"      joint="robot:left_knee"/>
+    <jointvel name="vel:l_ankle"     joint="robot:left_foot1"/>
+    <touch name="touch:right_hand"    site="right_hand_touch"/>
+    <touch name="touch:left_hand"     site="left_hand_touch"/>
+    <touch name="touch:right_fingers" site="right_fingers_touch"/>
+    <touch name="touch:left_fingers"  site="left_fingers_touch"/>
+    <touch name="touch:right_foot"    site="right_foot_touch"/>
+    <touch name="touch:left_foot"     site="left_foot_touch"/>
+  </sensor>
+
+</mujoco>
