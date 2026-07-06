@@ -2331,3 +2331,16 @@ min 30-deg separation; curriculum recipe, 1.3M, seed 0). Preflights passed: eye-
 blue clearly separable in the actual 32x32 stereo obs), forced-contact semantics test, 50K smoke
 (reward climbing, episodes ending by touch). Files: mimo_crawler_env.py (decoy_ball),
 train_head_search.py --decoy, eval_vision_policy.py --decoy + WRONG-BALL rate + eye-view panel.
+
+### DECOY RUN 1 (2026-07-06 morning) — task works, but a placement confound gave blind a 63% floor
+decoy_v1_s0 (1.3M, curriculum, warm encoder) trained clean (2h13m, ~163 fps). Official eval:
+red-contact 57.5% / wrong-ball 32.5% (sighted), 47.5% / 35.0% ablated; raw gap +10; tip 5%.
+BUT the per-episode choice diagnostic caught a confound: choice accuracy is IDENTICAL sighted vs
+ablated (63.9% vs 62.9%) — and blind picking red at 63% is impossible if the task were symmetric.
+Cause: the min-separation rule pushes the DECOY away from center whenever the target spawns
+centrally, so red is on average more central and the blind forward-sweep exploits the geometry.
+Run 1's "discrimination" was mostly spawn geometry; vision learned ~no discrimination in 1.3M.
+Fix (decoy_v2): after computing the bearing pair, randomly assign red/blue to the two bearings —
+blind choice is then 50% BY CONSTRUCTION and anything above it is vision. Verified: v1 policy ablated on the fixed env = 55.7% +/- 10.4 (100 eps) — chance restored.
+Lesson (again): always give the blind baseline a chance to cheat before crediting vision — the
+choice metric needed the same scrutiny as contact rate did in the single-ball task.

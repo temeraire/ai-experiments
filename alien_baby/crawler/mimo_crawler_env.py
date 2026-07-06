@@ -356,6 +356,14 @@ class MimoCrawlerEnv(gym.Env):
                 theta_d = -theta
                 if abs(theta_d - theta) < min_sep:
                     theta_d = theta - np.sign(theta if theta != 0.0 else 1.0) * min_sep
+                # Randomly swap which bearing gets red vs blue. Without this the
+                # min-sep rule leaves red systematically more central and a BLIND
+                # sweep picks red above chance (measured 63% — the decoy_v1 confound).
+                # With the swap, blind choice is 50% by construction.
+                if self.np_random.uniform() < 0.5:
+                    theta, theta_d = theta_d, theta
+                    self.data.qpos[tgt1_qadr:tgt1_qadr + 3] = [
+                        r * np.sin(theta), r * np.cos(theta), PLATFORM_TOP_Z + 0.053]
                 self.data.qpos[tgt2_qadr:tgt2_qadr + 3] = [
                     r * np.sin(theta_d), r * np.cos(theta_d), PLATFORM_TOP_Z + 0.053]
                 self.data.qpos[tgt2_qadr + 3:tgt2_qadr + 7] = [1, 0, 0, 0]
