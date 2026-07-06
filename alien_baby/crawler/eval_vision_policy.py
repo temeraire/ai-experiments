@@ -86,6 +86,43 @@ def eye_panel(obs, size=480):
     return np.concatenate([up(px[:half]), up(px[half:])], axis=1)
 
 
+def _draw_line(img, p0, p1, color, thick=2):
+    n = int(max(abs(p1[0] - p0[0]), abs(p1[1] - p0[1]), 1))
+    for t in np.linspace(0.0, 1.0, n + 1):
+        u = int(round(p0[0] + (p1[0] - p0[0]) * t))
+        v = int(round(p0[1] + (p1[1] - p0[1]) * t))
+        img[max(0, v - thick):v + thick, max(0, u - thick):u + thick] = color
+
+
+def draw_heading_arrow(img, env, size=480, cam_z=5.5, fovy_deg=55.0):
+    """Overlay a magenta arrow on the OVERHEAD panel showing which way the head
+    points (display-only; AB's own pixels are untouched). Arrow base = head
+    position; direction = head-frame +Z (prone 'forward'/gaze) projected to XY."""
+    try:
+        hid = mujoco.mj_name2id(env.model, mujoco.mjtObj.mjOBJ_BODY, "head")
+        pos = env.data.xpos[hid]
+        fwd = env.data.xmat[hid].reshape(3, 3) @ np.array([0.0, 0.0, 1.0])
+        fx, fy = fwd[0], fwd[1]
+        norm = float(np.hypot(fx, fy))
+        if norm < 0.2:      # head pointing near-vertically: heading undefined
+            return
+        fx, fy = fx / norm, fy / norm
+        # overhead cam: straight down from (0,0,cam_z), +X right, +Y up in image
+        ppm = (size / 2) / (np.tan(np.deg2rad(fovy_deg) / 2) * (cam_z - pos[2]))
+        u0, v0 = size / 2 + pos[0] * ppm, size / 2 - pos[1] * ppm
+        L = 42
+        u1, v1 = u0 + fx * L, v0 - fy * L
+        col = np.array([255, 0, 255], dtype=np.uint8)      # magenta
+        _draw_line(img, (u0, v0), (u1, v1), col)
+        # arrowhead: two barbs at ±150 deg from the shaft direction
+        for a in (2.62, -2.62):
+            bx = fx * np.cos(a) - fy * np.sin(a)
+            by = fx * np.sin(a) + fy * np.cos(a)
+            _draw_line(img, (u1, v1), (u1 + bx * 14, v1 - by * 14), col)
+    except Exception:
+        pass            # overlay must never kill a render
+
+
 def render(model, env, tag, n_eps, max_steps, ablate=False):
     vdir = RESULTS / "videos"; vdir.mkdir(parents=True, exist_ok=True)
     out = vdir / f"eval_{tag}.mp4"
@@ -97,6 +134,7 @@ def render(model, env, tag, n_eps, max_steps, ablate=False):
             o = zero_pixels(obs) if ablate else obs
             act, _ = model.predict(o, deterministic=True)
             r.update_scene(env.data, camera="overhead"); over = r.render().copy()
+            draw_heading_arrow(over, env)
             r.update_scene(env.data, camera="ringside"); ring = r.render().copy()
             w.append_data(np.concatenate([over, ring, eye_panel(o)], axis=1))
             obs, _, term, trunc, _ = env.step(act)
