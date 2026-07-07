@@ -2428,3 +2428,29 @@ Implication: decoy training produced genuinely DIRECTION-CARRYING vision — the
 only" account is dead for these policies. The prism ADAPTATION + AFTEREFFECT experiment (the
 project flagship) is now unblocked and meaningful; strategist's draft awaits human approval.
 Files: eval_prism_decoy.py, ghost2 in mimo_crawler_pos_wide_prism.xml, env two-ghost placement.
+
+### PRISM ADAPTATION + AFTEREFFECT (2026-07-08 overnight) — NEGATIVE AFTEREFFECT CONFIRMED.
+### AB genuinely recalibrated vision-to-action. The experiment the project is named for.
+Phase B: ext_s0 continued 1M steps under fixed +30° whole-field prism (decoy task, weights
+unfrozen, no reward changes). Phase C: prism removed, 100-ep evals on the adapted model.
+- **Adaptation curve (+30°, choice-vs-true):** 62.0 (pre) → 67.0 (100K) → 58.1 (250K) → 56.2
+  (500K) → 48.8 (750K) → 54.8 (1M). NO clean aggregate recovery — adaptation was partial and
+  unstable (train reward oscillated 35–140). RL is a blunt, slow adapter compared to the classical
+  paradigm's minutes.
+- **BUT the aftereffect is unambiguous.** Prism-off aggregate fell to 54.7% (baseline 76.4) — and
+  the degradation is not uniform, it is LAWFUL: **P(take blue | blue on the MINUS-30° side of red)
+  = 92.1% vs 8.3% on the plus side.** The reach now aims ~30° OPPOSITE the trained displacement.
+- **Controls:** (1) pre-adaptation the same conditional is symmetric (26.2% vs 21.3%) — the
+  asymmetry is created by adaptation; (2) the capture is RED-ANCHORED, not a color-blind lateral
+  habit: P(take blue) is 77–100% within 45° of the aftereffect bearing (red−30°) and ~33% beyond —
+  a color-blind CCW rule predicts flat. (3) Same-direction bias persists under −30 eval (87.5/13.6).
+**Scoring the pre-registered outcomes (THEORY_LOG 2026-07-08):** relearning REFUTED (it predicts
+no aftereffect; we have a strong one). Arousal REFUTED (everything changed). RECALIBRATION
+CONFIRMED in its decisive signature — the direction-specific, red-anchored, training-created
+negative aftereffect — with the honest caveat that Phase-B aggregate recovery was weak/partial
+(recalibration-in-progress, not completed; the aftereffect demonstrates the re-mapping exists).
+The chain now reads: decoy task made vision direction-carrying (2026-07-06/07) → displacement
+showed vision drives selection (2026-07-08) → adaptation re-mapped the vision-action link and
+misfires lawfully when the world snaps back — the classical prism-adaptation phenomenon,
+reproduced end-to-end in a learned sensorimotor system built from pixels, proprioception and touch.
+Files: prism_adapt_s0 run + curve/aftereffect JSONs (prism_battery_aftereffect_*.json).
