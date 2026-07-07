@@ -2389,3 +2389,20 @@ decoy_v2_ext_s0: seed-0 continued +1.3M at fixed ±68 (3.3M total; --init-model,
   looked mediocre (78-120) while choice soared — REWARD IS A POOR PROXY for discrimination; use
   the choice diagnostic. Video (first with heading arrow + haircut) frame-verified.
 Seeds 1 and 2 training next in chain.
+
+### DECOY SEED REPLICATION COMPLETE (2026-07-07) — visual discrimination is seed-ROBUST
+All three seeds + extension, 100-ep choice diagnostics (blind floor = structural 50%):
+- s0 @2M:   sighted **63.2 ± 10.1**, ablated 47.8 ± 10.2
+- s0 @3.3M: sighted **78.2 ± 8.7**,  ablated 47.8 ± 10.2  (extension)
+- s1 @2M:   sighted **72.0 ± 9.7**,  ablated 56.7 ± 10.2
+- s2 @2M:   sighted **76.7 ± 8.9**,  ablated 45.5 ± 10.4
+Sighted CI excludes chance in ALL runs (3/3 seeds; mean @2M ≈ 71%); ablated consistent with 50%
+in all (s1 leans high at 56.7 but within CI — no confound tripwire fired). THEORY_LOG predictions
+confirmed: sign holds every seed, magnitude varies (63→77), blind floor stays pinned.
+Notably UNLIKE the single-ball phase, the discrimination result replicates strongly — closing the
+structural escape didn't just create the effect, it stabilized it across seeds.
+s2 details: official gap +25.0 (62.5 vs 37.5), blind wrong-ball 55.0% vs sighted 22.5%, tip 0.0%
+(best substrate + best gap in the same run; the tip-rate worry from ext_s0 did not replicate).
+Videos frame-verified (arrow + haircut instrumentation). NEXT: the flagship prism-displacement
+test on a strong discriminator (ext_s0 78% or s2 77%) — THEORY_LOG 2026-07-06 Q4 has the
+pre-registered predictions (follow-the-ghost vs arousal-gate vs partial binding).
