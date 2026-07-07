@@ -2454,3 +2454,31 @@ showed vision drives selection (2026-07-08) → adaptation re-mapped the vision-
 misfires lawfully when the world snaps back — the classical prism-adaptation phenomenon,
 reproduced end-to-end in a learned sensorimotor system built from pixels, proprioception and touch.
 Files: prism_adapt_s0 run + curve/aftereffect JSONs (prism_battery_aftereffect_*.json).
+
+> **Theory Monitor Note — 2026-07-08**
+>
+> Behavioral Prediction Framework (recalibration vs. relearning vs. arousal): **CONFIRMED, via the
+> Phase-C fork specifically** — the negative aftereffect (54.7% vs 76.4% baseline, lawful
+> 92.1%/8.3% conditional capture, controlled against a symmetric pre-adaptation baseline) is a
+> pattern only a genuine recalibration can produce; both relearning and arousal predicted an
+> immediate snap-back to baseline the instant the prism came off, and neither happened. The
+> Phase-B recovery curve itself (62→67→58→56→49→55, ending below where it started) did NOT meet
+> its own pre-registered bar (≥65-70% recovery) — read that as the metric being too noisy to trust
+> on its own, not as evidence against recalibration, since Phase C is the part of the pre-registration
+> built to settle exactly this and it settles it cleanly.
+>
+> Pattern Learning Framework (is the visual code a map or a reflex): **still UNRESOLVED, but
+> narrowed** — the aftereffect proves *some* persistent, carried-over state sits between the camera
+> and the reach (there is no displaced picture left to react to in Phase C, yet the miss pattern is
+> still bearing-specific), which rules out a pure "react only to what's on screen right now" account.
+> It does not yet prove a true spatial map — a single learned "subtract 30 degrees everywhere" bias
+> explains the same numbers.
+>
+> **The most important thing we don't know yet:** whether the after-prism bias is one global
+> correction applied the same way at every angle, or a structured remapping that differs by bearing
+> — answerable from data already collected (see recommended diagnostic).
+>
+> **Recommended diagnostic** (not a training run — just a measurement): re-bin the aftereffect
+> episodes already on disk by how far the ball is from the trained -30 degree offset direction, and
+> check whether the "captures the wrong ball" rate changes smoothly with that distance (a structured
+> remap) or is a flat step on/off either side of a fixed line (a single global bias). No new compute.
