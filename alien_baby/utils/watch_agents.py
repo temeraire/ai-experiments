@@ -28,11 +28,23 @@ TASKS_GLOB = os.path.expanduser(
     "/private/tmp/claude-*/-Users-*-ai-experiments*/*/tasks/*.output"
 )
 
-C_HDR = "\033[1;36m"   # bold cyan
-C_TOOL = "\033[33m"    # yellow
-C_TXT = "\033[0m"      # default
-C_DIM = "\033[2m"
 RESET = "\033[0m"
+C_DIM = "\033[2m"
+
+# Per-role identity: (accent color, emoji badge) — echoes the old team-session look.
+ROLE_STYLE = {
+    "experiment-strategist": ("\033[1;95m", "♟"),   # magenta
+    "training-engineer":     ("\033[1;92m", "🔧"),  # green
+    "results-analyst":       ("\033[1;93m", "📊"),  # yellow
+    "theory-monitor":        ("\033[1;94m", "🔭"),  # blue
+    "literature-scout":      ("\033[1;96m", "📚"),  # cyan
+    None:                    ("\033[1;97m", "✳"),   # ALL pane: white
+}
+
+
+def set_pane_title(title):
+    """Name the iTerm2 pane/tab so the grid is labeled even when idle."""
+    print(f"\033]0;{title}\007", end="", flush=True)
 
 
 def first_line_matches(path, role):
@@ -54,8 +66,20 @@ def first_line_matches(path, role):
         return False
 
 
-def render_record(line):
-    """One JSONL record -> zero or more printable lines."""
+def _tool_summary(name, inp):
+    """One human line for a tool call: the thing it acts on, not raw JSON."""
+    for key in ("file_path", "path", "command", "pattern", "url", "prompt"):
+        if key in inp:
+            v = str(inp[key]).replace("\n", " ")
+            if len(v) > 90:
+                v = v[:90] + "…"
+            return f"{name}: {v}"
+    v = json.dumps(inp)
+    return f"{name} {v[:90] + '…' if len(v) > 90 else v}"
+
+
+def render_record(line, color):
+    """One JSONL record -> zero or more printable lines, in the role's color."""
     try:
         rec = json.loads(line)
     except Exception:
@@ -71,10 +95,7 @@ def render_record(line):
             for para in block["text"].split("\n"):
                 out.extend(textwrap.wrap(para, 100) or [""])
         elif btype == "tool_use":
-            inp = json.dumps(block.get("input", {}))
-            if len(inp) > 120:
-                inp = inp[:120] + "…"
-            out.append(f"{C_TOOL}⚙ {block.get('name')}{RESET} {C_DIM}{inp}{RESET}")
+            out.append(f"{color}⚙ {_tool_summary(block.get('name'), block.get('input', {}))}{RESET}")
     return out
 
 
@@ -86,9 +107,11 @@ def main():
     ap.add_argument("--poll", type=float, default=2.0)
     args = ap.parse_args()
     role = None if args.all else args.role
+    color, badge = ROLE_STYLE.get(role, ROLE_STYLE[None])
+    set_pane_title(f"{badge} {role or 'ALL AGENTS'}")
 
-    print(f"{C_HDR}=== watching for agent: {role or 'ALL'} ==={RESET}")
-    print(f"{C_DIM}(waiting for a matching agent to be spawned…){RESET}")
+    print(f"{color}{'━' * 12} {badge}  {(role or 'ALL AGENTS').upper()}  {badge} {'━' * 12}{RESET}")
+    print(f"{C_DIM}idle — waiting for a {role or 'tagged'} agent to be spawned…{RESET}")
 
     offsets = {}   # path -> bytes already printed
     known = set()  # paths already classified
@@ -105,8 +128,10 @@ def main():
                     fresh = (time.time() - mtime) < 600
                     offsets[path] = 0 if fresh else os.path.getsize(path)
                     stamp = time.strftime("%H:%M:%S", time.localtime(mtime))
-                    label = "live" if fresh else "idle — following"
-                    print(f"\n{C_HDR}━━━ agent {os.path.basename(path)} ({stamp}, {label}) ━━━{RESET}")
+                    label = "LIVE" if fresh else "idle — following"
+                    set_pane_title(f"{badge} {role or 'ALL'} · {label}")
+                    print(f"\n{color}▶ {badge} {(role or 'agent').upper()} session"
+                          f" {os.path.basename(path)[:10]} ({stamp}, {label}){RESET}")
         for path in list(matched):
             try:
                 size = os.path.getsize(path)
@@ -116,7 +141,7 @@ def main():
                         chunk = f.read()
                         offsets[path] = f.tell()
                     for line in chunk.splitlines():
-                        for rendered in render_record(line):
+                        for rendered in render_record(line, color):
                             print(rendered, flush=True)
             except FileNotFoundError:
                 matched.discard(path)
