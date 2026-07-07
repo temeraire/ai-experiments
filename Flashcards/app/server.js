@@ -23,6 +23,7 @@ const fs = require("fs");
 const path = require("path");
 
 const PORT = parseInt(process.env.PORT || "8642", 10);
+const HOST = process.env.HOST || "127.0.0.1";   // 0.0.0.0 for LAN testing
 const DATA = process.env.FLASHCARDS_DATA ||
   path.join(__dirname, "data", "reviews.jsonl");
 const PUBLIC = path.join(__dirname, "public");
@@ -134,6 +135,6 @@ const server = http.createServer((req, res) => {
   res.writeHead(405); res.end();
 });
 
-server.listen(PORT, () => {
-  console.log(`[flashcards] listening on :${PORT}, data -> ${DATA}`);
+server.listen(PORT, HOST, () => {
+  console.log(`[flashcards] listening on ${HOST}:${PORT}, data -> ${DATA}`);
 });
