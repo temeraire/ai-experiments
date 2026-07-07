@@ -118,7 +118,7 @@
       <button id="btn-home" title="End session">⌂ Home</button>
       <span id="prog"></span>
       <span id="secname"></span>
-      <span class="flips" id="flips"><span></span><span></span><span></span></span>
+      <span class="flips" id="flips"><span></span><span></span><span></span><span></span><span></span></span>
     </div>
     <div class="scene">
       <div class="cardbox" id="cardbox">
@@ -170,7 +170,7 @@
 <script>
 "use strict";
 const $ = (id) => document.getElementById(id);
-const MAX_FLIPS = 3;
+const MAX_FLIPS = 5;
 
 let DECK = [], STATS = null;
 let session = null;   // {cards, i, right:[], wrong:[], flips, shownAt, answered}
