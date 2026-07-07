@@ -1,0 +1,352 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>AB Flashcards</title>
+<style>
+  :root {
+    --bg: #f4f2ec; --card: #ffffff; --ink: #1e1c17; --muted: #77715f;
+    --edge: #dcd7c9; --accent: #7a5af5; --right: #2c8a4b; --wrong: #c0392b;
+    --chip: #eae6da;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#171512; --card:#241f2e; --ink:#efeadd; --muted:#a49a85;
+      --edge:#3a3547; --accent:#a78bfa; --right:#4caf70; --wrong:#e06552;
+      --chip:#2e2a26; }
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+    font: 17px/1.45 -apple-system, "Segoe UI", Roboto, sans-serif;
+    min-height: 100dvh; }
+  .wrap { max-width: 560px; margin: 0 auto; padding: 14px 14px calc(20px + env(safe-area-inset-bottom)); }
+  h1 { font-size: 20px; margin: 6px 0 2px; }
+  .sub { color: var(--muted); font-size: 13px; margin-bottom: 14px; }
+  .tabs { display:flex; gap:8px; margin-bottom:14px; }
+  .tabs button { flex:1; padding:10px 0; border:1px solid var(--edge); background:var(--card);
+    color:var(--ink); border-radius:10px; font-size:15px; }
+  .tabs button.on { background:var(--accent); color:#fff; border-color:var(--accent); }
+  .panel { display:none; } .panel.on { display:block; }
+
+  /* ---- setup ---- */
+  .secs { display:flex; flex-wrap:wrap; gap:7px; margin:10px 0 16px; }
+  .secs button { border:1px solid var(--edge); background:var(--chip); color:var(--ink);
+    padding:7px 11px; border-radius:16px; font-size:13px; }
+  .secs button.on { background:var(--accent); border-color:var(--accent); color:#fff; }
+  .opt { display:flex; align-items:center; gap:10px; margin:8px 0; font-size:15px; }
+  .opt input { width:20px; height:20px; }
+  .go { width:100%; margin-top:14px; padding:16px 0; font-size:18px; font-weight:600;
+    background:var(--accent); color:#fff; border:none; border-radius:14px; }
+  .go:disabled { opacity:.45; }
+
+  /* ---- study ---- */
+  .meta { display:flex; justify-content:space-between; align-items:center;
+    color:var(--muted); font-size:13px; margin-bottom:8px; }
+  .flips { display:flex; gap:6px; }
+  .flips span { width:10px; height:10px; border-radius:50%; background:var(--edge); }
+  .flips span.used { background:var(--accent); }
+  .scene { perspective: 1200px; }
+  .cardbox { position:relative; width:100%; min-height: 300px;
+    transform-style: preserve-3d; transition: transform .45s; cursor:pointer; }
+  .cardbox.flipped { transform: rotateY(180deg); }
+  .face { position:absolute; inset:0; backface-visibility:hidden;
+    -webkit-backface-visibility:hidden;
+    background:var(--card); border:1px solid var(--edge); border-radius:18px;
+    padding:22px 18px 34px; display:flex; flex-direction:column;
+    box-shadow: 0 3px 14px rgba(0,0,0,.07); overflow-y:auto; }
+  .face.back { transform: rotateY(180deg); }
+  .facelabel { font-size:11px; letter-spacing:.12em; color:var(--muted);
+    text-transform:uppercase; margin-bottom:10px; }
+  .facetext { font-size:19px; }
+  .face.back .facetext { font-size:17px; }
+  .hint { position:absolute; bottom:10px; left:0; right:0; text-align:center;
+    color:var(--muted); font-size:12px; }
+  .answerrow { display:flex; gap:10px; margin-top:14px; }
+  .answerrow button { flex:1; padding:16px 0; font-size:17px; font-weight:600;
+    border:none; border-radius:14px; color:#fff; }
+  .answerrow .right { background:var(--right); }
+  .answerrow .wrong { background:var(--wrong); }
+  .answerrow button:disabled { opacity:.35; }
+  .locknote { text-align:center; color:var(--muted); font-size:13px; margin-top:8px;
+    min-height:18px; }
+
+  /* ---- summary / stats ---- */
+  .big { font-size:40px; font-weight:700; margin:6px 0; }
+  .statrow { display:flex; gap:10px; margin:12px 0; }
+  .stat { flex:1; background:var(--card); border:1px solid var(--edge);
+    border-radius:12px; padding:12px; text-align:center; }
+  .stat .v { font-size:24px; font-weight:700; }
+  .stat .k { font-size:12px; color:var(--muted); }
+  table { width:100%; border-collapse:collapse; font-size:13px; margin-top:10px; }
+  th, td { text-align:left; padding:7px 6px; border-bottom:1px solid var(--edge);
+    vertical-align:top; }
+  th { color:var(--muted); font-weight:600; font-size:12px; }
+  .r { color: var(--right); font-weight:700; } .w { color: var(--wrong); font-weight:700; }
+  .missq { font-size:14px; margin:8px 0; padding:10px 12px; background:var(--card);
+    border:1px solid var(--edge); border-radius:10px; }
+  .again { width:100%; margin-top:16px; padding:14px 0; font-size:16px;
+    background:var(--accent); color:#fff; border:none; border-radius:14px; }
+  .quiet { color:var(--muted); font-size:14px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Alien Baby Flashcards</h1>
+  <div class="sub" id="deckinfo">loading deck…</div>
+
+  <div class="tabs">
+    <button id="tab-study" class="on">Study</button>
+    <button id="tab-stats">Stats</button>
+  </div>
+
+  <!-- SETUP -->
+  <div class="panel on" id="panel-setup">
+    <div class="quiet">Pick sections (none = all):</div>
+    <div class="secs" id="secs"></div>
+    <label class="opt"><input type="checkbox" id="opt-shuffle" checked> Shuffle</label>
+    <label class="opt"><input type="checkbox" id="opt-missed"> Only cards I've missed before</label>
+    <label class="opt"><input type="checkbox" id="opt-unseen"> Only cards I've never answered</label>
+    <button class="go" id="go">Start</button>
+  </div>
+
+  <!-- STUDY -->
+  <div class="panel" id="panel-study">
+    <div class="meta">
+      <span id="prog"></span>
+      <span id="secname"></span>
+      <span class="flips" id="flips"><span></span><span></span><span></span></span>
+    </div>
+    <div class="scene">
+      <div class="cardbox" id="cardbox">
+        <div class="face front">
+          <div class="facelabel">Question</div>
+          <div class="facetext" id="qtext"></div>
+          <div class="hint" id="fronthint">tap to reveal answer</div>
+        </div>
+        <div class="face back">
+          <div class="facelabel">Answer</div>
+          <div class="facetext" id="atext"></div>
+          <div class="hint" id="backhint"></div>
+        </div>
+      </div>
+    </div>
+    <div class="answerrow">
+      <button class="wrong" id="btn-wrong" disabled>✗ Got it wrong</button>
+      <button class="right" id="btn-right" disabled>✓ Got it right</button>
+    </div>
+    <div class="locknote" id="locknote"></div>
+  </div>
+
+  <!-- SUMMARY -->
+  <div class="panel" id="panel-summary">
+    <div class="quiet">Session complete</div>
+    <div class="big" id="sum-line"></div>
+    <div class="statrow">
+      <div class="stat"><div class="v r" id="sum-right"></div><div class="k">right</div></div>
+      <div class="stat"><div class="v w" id="sum-wrong"></div><div class="k">wrong</div></div>
+      <div class="stat"><div class="v" id="sum-acc"></div><div class="k">accuracy</div></div>
+    </div>
+    <div id="sum-missed"></div>
+    <button class="again" id="btn-again">New session</button>
+  </div>
+
+  <!-- STATS -->
+  <div class="panel" id="panel-stats">
+    <div class="statrow">
+      <div class="stat"><div class="v" id="st-total"></div><div class="k">answers recorded</div></div>
+      <div class="stat"><div class="v" id="st-acc"></div><div class="k">lifetime accuracy</div></div>
+      <div class="stat"><div class="v" id="st-cov"></div><div class="k">deck coverage</div></div>
+    </div>
+    <div class="quiet" id="st-note"></div>
+    <div id="st-worst"></div>
+    <div id="st-recent"></div>
+  </div>
+</div>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const MAX_FLIPS = 3;
+
+let DECK = [], STATS = null;
+let session = null;   // {cards, i, right:[], wrong:[], flips, shownAt, answered}
+
+/* ---------- data ---------- */
+async function load() {
+  const d = await (await fetch("cards.json")).json();
+  DECK = d.cards;
+  try { STATS = await (await fetch("api/stats")).json(); }
+  catch (e) { STATS = { total: 0, cards: {} }; }
+  $("deckinfo").textContent =
+    DECK.length + " cards · " + new Set(DECK.map(c => c.s)).size + " sections";
+  buildSections();
+  renderStats();
+}
+
+/* ---------- setup ---------- */
+const picked = new Set();
+function buildSections() {
+  const secs = [...new Set(DECK.map(c => c.s))];
+  $("secs").innerHTML = "";
+  for (const s of secs) {
+    const b = document.createElement("button");
+    b.textContent = s.length > 34 ? s.slice(0, 33) + "…" : s;
+    b.title = s;
+    b.onclick = () => { b.classList.toggle("on");
+      picked.has(s) ? picked.delete(s) : picked.add(s); };
+    $("secs").appendChild(b);
+  }
+}
+
+function buildSession() {
+  let cards = DECK.filter(c => picked.size === 0 || picked.has(c.s));
+  const known = (STATS && STATS.cards) || {};
+  if ($("opt-missed").checked)
+    cards = cards.filter(c => known[c.id] && known[c.id].wrong > 0);
+  if ($("opt-unseen").checked)
+    cards = cards.filter(c => !known[c.id]);
+  if ($("opt-shuffle").checked)
+    for (let i = cards.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [cards[i], cards[j]] = [cards[j], cards[i]];
+    }
+  return cards;
+}
+
+$("go").onclick = () => {
+  const cards = buildSession();
+  if (!cards.length) { $("go").textContent = "No cards match — adjust filters";
+    setTimeout(() => $("go").textContent = "Start", 1600); return; }
+  session = { cards, i: 0, right: [], wrong: [] };
+  showPanel("study");
+  showCard();
+};
+
+/* ---------- study ---------- */
+function showCard() {
+  const c = session.cards[session.i];
+  session.flips = 0; session.answered = false; session.shownAt = Date.now();
+  $("cardbox").classList.remove("flipped");
+  // let the un-flip settle before swapping text so the answer doesn't flash
+  setTimeout(() => { $("qtext").textContent = c.q; $("atext").textContent = c.a; }, 60);
+  $("prog").textContent = (session.i + 1) + " / " + session.cards.length;
+  $("secname").textContent = c.s.length > 22 ? c.s.slice(0, 21) + "…" : c.s;
+  updateFlipUI();
+  $("btn-right").disabled = $("btn-wrong").disabled = true;
+  $("locknote").textContent = "";
+}
+
+function updateFlipUI() {
+  const dots = $("flips").children;
+  for (let k = 0; k < MAX_FLIPS; k++)
+    dots[k].classList.toggle("used", k < session.flips);
+  const left = MAX_FLIPS - session.flips;
+  $("fronthint").textContent = session.flips === 0 ? "tap to reveal answer"
+    : left > 0 ? "tap to see the answer again (" + left + " flip" + (left>1?"s":"") + " left)"
+    : "no flips left — commit below";
+  $("backhint").textContent = left > 0
+    ? "tap to go back to the question (" + left + " flip" + (left>1?"s":"") + " left)"
+    : "no flips left — commit below";
+}
+
+$("cardbox").onclick = () => {
+  if (!session || session.answered) return;
+  if (session.flips >= MAX_FLIPS) {
+    $("locknote").textContent = "Out of flips for this card — right or wrong?";
+    return;
+  }
+  session.flips += 1;
+  $("cardbox").classList.toggle("flipped");
+  updateFlipUI();
+  // Any flip means the answer has been seen — allow committing.
+  $("btn-right").disabled = $("btn-wrong").disabled = false;
+};
+
+async function answer(result) {
+  if (!session || session.answered) return;
+  session.answered = true;
+  const c = session.cards[session.i];
+  (result === "right" ? session.right : session.wrong).push(c);
+  fetch("api/review", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ cardId: c.id, section: c.s, question: c.q,
+      result, flips: session.flips, ms: Date.now() - session.shownAt,
+      device: navigator.platform || "" })
+  }).catch(() => {});   // offline: session summary still works
+  session.i += 1;
+  if (session.i >= session.cards.length) return endSession();
+  showCard();
+}
+$("btn-right").onclick = () => answer("right");
+$("btn-wrong").onclick = () => answer("wrong");
+
+function endSession() {
+  const n = session.right.length + session.wrong.length;
+  $("sum-line").textContent = session.right.length + " / " + n;
+  $("sum-right").textContent = session.right.length;
+  $("sum-wrong").textContent = session.wrong.length;
+  $("sum-acc").textContent = n ? Math.round(100 * session.right.length / n) + "%" : "—";
+  $("sum-missed").innerHTML = session.wrong.length
+    ? "<div class='quiet' style='margin-top:14px'>Missed this session:</div>" +
+      session.wrong.map(c => "<div class='missq'><b>" + esc(c.q) + "</b><br>" +
+        esc(c.a) + "</div>").join("")
+    : "<div class='quiet' style='margin-top:14px'>Nothing missed. Clean sweep.</div>";
+  showPanel("summary");
+  fetch("api/stats").then(r => r.json()).then(s => { STATS = s; renderStats(); })
+    .catch(() => {});
+}
+$("btn-again").onclick = () => showPanel("setup");
+
+/* ---------- stats ---------- */
+function renderStats() {
+  const s = STATS || { total: 0, cards: {} };
+  $("st-total").textContent = s.total || 0;
+  $("st-acc").textContent = s.accuracy == null ? "—" : Math.round(100 * s.accuracy) + "%";
+  const seen = Object.keys(s.cards || {}).length;
+  $("st-cov").textContent = DECK.length ? Math.round(100 * seen / DECK.length) + "%" : "—";
+  $("st-note").textContent = s.total ? "" : "No answers recorded yet — run a session.";
+  const entries = Object.entries(s.cards || {});
+  const worst = entries.filter(([, v]) => v.wrong > 0)
+    .sort((a, b) => (b[1].wrong / b[1].seen) - (a[1].wrong / a[1].seen) || b[1].wrong - a[1].wrong)
+    .slice(0, 15);
+  $("st-worst").innerHTML = worst.length
+    ? "<table><tr><th>Trouble cards</th><th>✗</th><th>✓</th><th>last</th></tr>" +
+      worst.map(([, v]) =>
+        "<tr><td>" + esc((v.question || "").slice(0, 90)) + "</td><td class='w'>" + v.wrong +
+        "</td><td class='r'>" + v.right + "</td><td>" +
+        (v.lastResult === "right" ? "<span class='r'>✓</span>" : "<span class='w'>✗</span>") +
+        "</td></tr>").join("") + "</table>"
+    : "";
+  fetch("api/history?limit=15").then(r => r.json()).then(h => {
+    if (!h.reviews.length) return;
+    $("st-recent").innerHTML =
+      "<table><tr><th>Recent</th><th></th><th>flips</th><th>when</th></tr>" +
+      h.reviews.map(r => "<tr><td>" + esc((r.question || r.cardId).slice(0, 70)) +
+        "</td><td>" + (r.result === "right" ? "<span class='r'>✓</span>" : "<span class='w'>✗</span>") +
+        "</td><td>" + (r.flips || 0) + "</td><td>" + ago(r.ts) + "</td></tr>").join("") +
+      "</table>";
+  }).catch(() => {});
+}
+function ago(ts) {
+  const s = (Date.now() - new Date(ts).getTime()) / 1000;
+  if (s < 90) return "now"; if (s < 5400) return Math.round(s / 60) + "m";
+  if (s < 129600) return Math.round(s / 3600) + "h";
+  return Math.round(s / 86400) + "d";
+}
+function esc(t) { const d = document.createElement("div"); d.textContent = t; return d.innerHTML; }
+
+/* ---------- panels ---------- */
+function showPanel(name) {
+  for (const p of ["setup", "study", "summary", "stats"])
+    $("panel-" + p).classList.toggle("on", p === name);
+  $("tab-study").classList.toggle("on", name !== "stats");
+  $("tab-stats").classList.toggle("on", name === "stats");
+}
+$("tab-study").onclick = () => showPanel(session && !session.answered && session.i < (session.cards||[]).length ? "study" : "setup");
+$("tab-stats").onclick = () => { renderStats(); showPanel("stats"); };
+
+load();
+</script>
+</body>
+</html>

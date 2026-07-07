@@ -1,0 +1,1906 @@
+{
+ "cards": [
+  {
+   "s": "Basics",
+   "q": "What does 'R' stand for in the experiment log (e.g. R3, R20)?",
+   "a": "The experiment number. R3 = the third experiment run, R20 = the twentieth.",
+   "id": "f69c3066cb39"
+  },
+  {
+   "s": "Basics",
+   "q": "What does 't' represent in the log (e.g. t=14999)?",
+   "a": "Time / steps — the number of individual actions the agent has performed in that experiment.",
+   "id": "674d895c4ebe"
+  },
+  {
+   "s": "Basics",
+   "q": "What does a 'Hits' score of 20/20 mean?",
+   "a": "The agent successfully touched both target balls in every single trial — a perfect result.",
+   "id": "9b78fd5f3a21"
+  },
+  {
+   "s": "Basics",
+   "q": "What does the ± symbol mean in a result like '252 ± 10'?",
+   "a": "Margin of error. The score was consistently between 242 and 262 across multiple runs, proving the result isn't a fluke.",
+   "id": "95cf1bbd91ec"
+  },
+  {
+   "s": "Basics",
+   "q": "What is a 'Seed' in the context of these experiments?",
+   "a": "A starting number used to generate randomness. The same seed always produces identical randomness, so different seeds confirm the result isn't due to a lucky pattern.",
+   "id": "8cde40c925f1"
+  },
+  {
+   "s": "Basics",
+   "q": "What are the three types of reward signals in the scoring system?",
+   "a": "(1) Contact reward — touching the ball. (2) Approach reward — getting closer to the ball. (3) Velocity/efficiency penalty — penalises erratic movement.",
+   "id": "078769865cd4"
+  },
+  {
+   "s": "Basics",
+   "q": "Is there a fixed 'perfect score' in this RL environment?",
+   "a": "No theoretical maximum exists, but 'perfect' in practice means 100% hit rate, efficient pathing, and stable contact.",
+   "id": "b35b03daac78"
+  },
+  {
+   "s": "Basics",
+   "q": "What is a Reward Function?",
+   "a": "The mathematical formula defining what behaviour earns points. It communicates the goal to the agent without giving explicit instructions.",
+   "id": "42287bcf20f5"
+  },
+  {
+   "s": "Basics",
+   "q": "What is the difference between a sparse and a dense reward?",
+   "a": "Sparse: given only on a specific event (e.g. touching the ball) — rare but high-value. Dense: given continuously for incremental progress (e.g. getting closer).",
+   "id": "91c731df8640"
+  },
+  {
+   "s": "Basics",
+   "q": "What is the Policy (π)?",
+   "a": "The agent's strategy — the learned mapping from states to actions. It is the 'rulebook' encoded in the network weights.",
+   "id": "4f978b899478"
+  },
+  {
+   "s": "Basics",
+   "q": "What is the State (s)?",
+   "a": "The current configuration of the agent and environment — all sensory information the agent uses to decide its next action.",
+   "id": "e5b0c1b015e4"
+  },
+  {
+   "s": "Basics",
+   "q": "What is Reinforcement Learning (RL)?",
+   "a": "A framework where an agent learns to make decisions by interacting with an environment and receiving reward signals — no explicit programmed rules, only trial and error.",
+   "id": "e14c49739edd"
+  },
+  {
+   "s": "Reinforcement learning — algorithm side",
+   "q": "What is SAC?",
+   "a": "Soft Actor-Critic. The RL algorithm used here. Modern off-policy method for continuous-action problems (joint torques). \"Soft\" because it rewards keeping randomness in the policy, which discourages premature lock-in to one strategy.",
+   "id": "ec09e8fa07eb"
+  },
+  {
+   "s": "Reinforcement learning — algorithm side",
+   "q": "What is the \"actor\" in SAC?",
+   "a": "The neural network that chooses actions. Input is the observation (proprio + pixels); output is a distribution over actions. In this project a small MLP: obs → 256 → 256 → action.",
+   "id": "e675c953165f"
+  },
+  {
+   "s": "Reinforcement learning — algorithm side",
+   "q": "What is the \"critic\" in SAC?",
+   "a": "A second network that estimates \"how good was that action in that state?\" — a scalar value. SAC uses two critics and takes the minimum to prevent over-trusting its own value estimates. The actor learns to pick actions the critic rates highly.",
+   "id": "5db55790300b"
+  },
+  {
+   "s": "Reinforcement learning — algorithm side",
+   "q": "Why does SAC use two critics?",
+   "a": "Taking the minimum of two value estimates prevents the actor from over-trusting an over-optimistic critic (a known instability in Q-learning). It's a standard trick called Clipped Double Q-learning.",
+   "id": "8279fd5fb21f"
+  },
+  {
+   "s": "Reinforcement learning — algorithm side",
+   "q": "What is a \"policy\"?",
+   "a": "The rule that maps observations to actions — the creature's moment-to-moment behavior strategy. In code the policy is the actor network. \"Running the policy\" = executing that mapping step by step.",
+   "id": "41d3d1e6af76"
+  },
+  {
+   "s": "Reinforcement learning — algorithm side",
+   "q": "What is an episode?",
+   "a": "One trial: reset the environment, let the agent act for up to N timesteps or until termination (e.g., touching the target or falling). One full reset-to-termination run.",
+   "id": "89f9ff235220"
+  },
+  {
+   "s": "Reinforcement learning — algorithm side",
+   "q": "What is a timestep / step?",
+   "a": "One full decision cycle: agent sees obs → picks action → env advances physics → returns new obs, reward, done. In this env one step = 5 internal physics substeps of 0.01 s = 50 ms of simulated time.",
+   "id": "a395e49bd25a"
+  },
+  {
+   "s": "Reinforcement learning — algorithm side",
+   "q": "How is \"step\" different from \"sim-timestep\"?",
+   "a": "A sim-timestep is 0.01 s of physics. A step bundles 5 of those = 50 ms. The agent decides every 50 ms; physics is computed every 10 ms.",
+   "id": "d5a54ddb1551"
+  },
+  {
+   "s": "Reinforcement learning — algorithm side",
+   "q": "How does \"step\" differ from \"episode\"?",
+   "a": "An episode is a full reset-to-termination run (up to 400 or 2000 steps depending on env). A step is one decision cycle inside an episode.",
+   "id": "b956a85c9c0e"
+  },
+  {
+   "s": "Reinforcement learning — algorithm side",
+   "q": "What is a \"rollout\"?",
+   "a": "A sequence of timesteps, usually a full episode or batch of episodes. \"Roll out the policy\" = run it in the env and record what happens.",
+   "id": "6fc0fdb43b53"
+  },
+  {
+   "s": "Reinforcement learning — algorithm side",
+   "q": "What is a replay buffer?",
+   "a": "A rolling cache of the last ~50,000 transitions (state, action, reward, next_state) the agent has experienced. SAC learns off-policy: it samples random old transitions to update on, not only the latest episode. This is why the agent keeps improving long after behavior has changed.",
+   "id": "33d93bb88fb3"
+  },
+  {
+   "s": "Reinforcement learning — algorithm side",
+   "q": "What is on-policy vs off-policy learning?",
+   "a": "On-policy = learn only from data generated by the current policy (e.g., PPO). Off-policy = learn from any past data, including old policies' rollouts (e.g., SAC). Off-policy is more sample-efficient but can be less stable.",
+   "id": "055a6487ee3a"
+  },
+  {
+   "s": "Reinforcement learning — algorithm side",
+   "q": "What is a SAC update batch / gradient step?",
+   "a": "Once per env timestep, SAC pulls 256 random transitions from the replay buffer and does one gradient update on actor and critic. \"Batch\" here is the 256 samples, not a batch of episodes.",
+   "id": "c1f6d06e9a61"
+  },
+  {
+   "s": "Reinforcement learning — algorithm side",
+   "q": "What is a checkpoint?",
+   "a": "A saved copy of the trained model (weights + optimizer state). Can be loaded later to resume training or evaluate. In this project they live under `alien_baby/results/`.",
+   "id": "d78aae7e1d1a"
+  },
+  {
+   "s": "Reinforcement learning — algorithm side",
+   "q": "What is deterministic vs stochastic evaluation?",
+   "a": "During training the actor samples actions from a distribution (stochastic) to explore. During eval we use `deterministic=True`, which takes the distribution's mean — stable, repeatable behavior.",
+   "id": "919ebab86496"
+  },
+  {
+   "s": "Reinforcement learning — algorithm side",
+   "q": "What is the entropy coefficient (ent_coef / α / \"temperature\")?",
+   "a": "SAC's knob for how much randomness it encourages in the actor. Higher = more exploration; lower = more committed actions. SAC can tune it automatically. Logged as `ent_coef`.",
+   "id": "e081bca85330"
+  },
+  {
+   "s": "Reinforcement learning — algorithm side",
+   "q": "What is entropy annealing?",
+   "a": "Starting training with a high entropy coefficient (lots of exploration) and gradually lowering it as training progresses (commit to learned behavior). In Phase XII: 0.5 → 0.2 over steps 15K–30K.",
+   "id": "7ebd648ff08e"
+  },
+  {
+   "s": "Reinforcement learning — algorithm side",
+   "q": "What is the Polyak update / target network?",
+   "a": "A stability trick. The critic has a \"shadow\" target whose weights slowly drift toward the main critic's (τ=0.005 per update). The main critic trains against the slowly-updating target, preventing runaway feedback loops.",
+   "id": "5f197dde0d47"
+  },
+  {
+   "s": "Reinforcement learning — algorithm side",
+   "q": "What is \"warm-start\" in training?",
+   "a": "Initializing a new run from a previous checkpoint's weights rather than from scratch. In this project R40's warm-start is noted as broken because `SAC.load` strips the MICOA training step.",
+   "id": "3bbcfaa9c92d"
+  },
+  {
+   "s": "Reinforcement learning — algorithm side",
+   "q": "What is a curriculum?",
+   "a": "Gradually increasing task difficulty during training. In Phase XII: ball offset ramps from 0 up to 0.15 m over steps 2000–15000, then locks.",
+   "id": "c0983f05aff3"
+  },
+  {
+   "s": "Reinforcement learning — algorithm side",
+   "q": "What is curriculum lock?",
+   "a": "The point in training where the curriculum stops ramping and the task is at full difficulty. In Phase XII that's around step 15K. Often where collapse happens because the policy was relying on easier early targets.",
+   "id": "437793a7559d"
+  },
+  {
+   "s": "Neural-network plumbing",
+   "q": "What is an MLP?",
+   "a": "Multi-Layer Perceptron. A plain feed-forward neural network: stack of linear layers with non-linearities between them. No attention, no recurrence — just matrix multiplies and ReLUs.",
+   "id": "9390ad7a9572"
+  },
+  {
+   "s": "Neural-network plumbing",
+   "q": "What is a Linear layer?",
+   "a": "A matrix multiply plus a bias vector: `y = W·x + b`. The \"weights\" W are what training updates.",
+   "id": "7aa47a15cb34"
+  },
+  {
+   "s": "Neural-network plumbing",
+   "q": "What is ReLU?",
+   "a": "`max(0, x)` applied element-wise. The most common non-linearity. Without a non-linearity, stacking linear layers would collapse to a single linear map.",
+   "id": "811a3d81bae0"
+  },
+  {
+   "s": "Neural-network plumbing",
+   "q": "What is a hidden activation?",
+   "a": "The intermediate vector produced by a layer. `hidden1` = the output of the first Linear+ReLU. It's the network's internal \"picture\" of the state at that depth.",
+   "id": "eedd2ab0ff59"
+  },
+  {
+   "s": "Neural-network plumbing",
+   "q": "What is a feature extractor?",
+   "a": "The part of the network that turns raw observations into a feature vector for the policy to consume. For pure proprio it's just identity (flatten). For vision it's typically a CNN.",
+   "id": "79bbe5f56494"
+  },
+  {
+   "s": "Neural-network plumbing",
+   "q": "What is latent space?",
+   "a": "An abstract vector space the network uses internally to represent state, often lower-dimensional than the raw input. Points in latent space have no direct sensory meaning; they're whatever the encoder learned is useful. MICOA's shared latent Z is 64-dim and represents \"world state both modalities are seeing.\"",
+   "id": "f7f3192a7afc"
+  },
+  {
+   "s": "Neural-network plumbing",
+   "q": "Why is latent space called \"latent\"?",
+   "a": "\"Latent\" = hidden, not directly observed. The space exists only inside the network; you can't measure it externally. Compare to \"observation space\" (the raw inputs) and \"action space\" (the outputs).",
+   "id": "09bdceb95bc3"
+  },
+  {
+   "s": "Neural-network plumbing",
+   "q": "What does \"freezing weights\" mean?",
+   "a": "Setting `requires_grad = False` so the optimizer won't update them. Used to mathematically preserve already-learned behavior while letting other parts train.",
+   "id": "5da4bdb33862"
+  },
+  {
+   "s": "Neural-network plumbing",
+   "q": "What is a gradient hook / gradient mask?",
+   "a": "A PyTorch feature that intercepts gradients flowing back through a tensor. Used here to zero out gradients on proprio columns of the first-layer weight — so even though the tensor is marked trainable, the proprio slice effectively isn't.",
+   "id": "f302c90e8ac7"
+  },
+  {
+   "s": "Neural-network plumbing",
+   "q": "What is backpropagation?",
+   "a": "The training loop: run network forward → compute loss → compute gradient of loss w.r.t. each weight → nudge each weight to reduce loss. Repeat.",
+   "id": "24c41c5aaaa3"
+  },
+  {
+   "s": "Neural-network plumbing",
+   "q": "What is the learning rate?",
+   "a": "The size of each weight-update nudge during backprop. This project uses 1e-4 (0.0001) for v2–v5.",
+   "id": "505c72ef902d"
+  },
+  {
+   "s": "Neural-network plumbing",
+   "q": "What is a loss function?",
+   "a": "A single scalar measuring how badly the model is doing on a batch. The optimizer minimizes it. SAC's actor loss has task and entropy parts; v5 adds consistency; MICOA adds KL agreement and/or predictive terms.",
+   "id": "0c6c554181e7"
+  },
+  {
+   "s": "Neural-network plumbing",
+   "q": "What is MSE (mean squared error)?",
+   "a": "Average of squared differences between prediction and target. The simplest loss. Used in the v5 consistency loss as `MSE(h_full, h_blind)`.",
+   "id": "3a063b38b522"
+  },
+  {
+   "s": "Neural-network plumbing",
+   "q": "What does \"MSE-style\" loss penalize?",
+   "a": "Outliers — squaring the difference makes large errors dominate. Compare to MAE (mean absolute error), which treats all errors linearly.",
+   "id": "786cbb838a37"
+  },
+  {
+   "s": "Neural-network plumbing",
+   "q": "What is KL divergence?",
+   "a": "Kullback-Leibler divergence. A number measuring how different two probability distributions P and Q are, written `KL(P || Q)`. Zero when P = Q; grows as P diverges from Q.",
+   "id": "efb6826507a1"
+  },
+  {
+   "s": "Neural-network plumbing",
+   "q": "Is KL divergence symmetric?",
+   "a": "No — `KL(P || Q) ≠ KL(Q || P)` in general. The direction expresses which distribution is the reference. `KL(P || Q)` heavily penalizes P putting mass where Q assigns near zero.",
+   "id": "a56711477869"
+  },
+  {
+   "s": "Neural-network plumbing",
+   "q": "What is symmetric KL?",
+   "a": "The average of both directions: `0.5 * (KL(P||Q) + KL(Q||P))`. Used when neither distribution is ground truth, so both sides are equally penalized for disagreement. Phase IX MICOA uses this.",
+   "id": "02b6694cbeba"
+  },
+  {
+   "s": "Neural-network plumbing",
+   "q": "What is asymmetric (one-sided) KL?",
+   "a": "`KL(P || Q)` where one side (Q) is treated as ground truth and detached from gradients. Only P is updated. Used in Phase X/XII: vision is pulled toward proprio's future, not vice versa.",
+   "id": "6bda7ff392ea"
+  },
+  {
+   "s": "Neural-network plumbing",
+   "q": "What does `.detach()` do in PyTorch?",
+   "a": "Removes a tensor from the computation graph so no gradients flow back through it. Used to say \"treat this as a constant for the purposes of this loss.\"",
+   "id": "55eff98c2a4f"
+  },
+  {
+   "s": "Neural-network plumbing",
+   "q": "What is the Adam optimizer?",
+   "a": "A widely used gradient-descent variant that adapts the learning rate per-parameter using running averages of the gradient and its square. Default optimizer in SB3.",
+   "id": "dce04aba6b6c"
+  },
+  {
+   "s": "Neural-network plumbing",
+   "q": "What is over-parametrization (in this RL context)?",
+   "a": "When a network has far more weights than the task requires. The MICOA actor has ~3.2M weights for a 16-dim action space; most are unused. Helps optimization but makes interpretability harder.",
+   "id": "d1ce3d1eada1"
+  },
+  {
+   "s": "Sigma, clamps, and encoder collapse",
+   "q": "What is σ (sigma) in the encoder context?",
+   "a": "The standard deviation of the encoder's output Gaussian. Each modality (proprio, vision) outputs a distribution `N(μ, σ)` over a shared latent space Z, where σ tells the system how confident that modality is about its own prediction.",
+   "id": "0152caaddfb8"
+  },
+  {
+   "s": "Sigma, clamps, and encoder collapse",
+   "q": "What does \"clamp\" mean in optimization?",
+   "a": "A hard bound enforced on a value. `clamp(x, lo, hi) = min(max(x, lo), hi)` — x cannot escape the interval [lo, hi]. Used to prevent variables from drifting into pathological ranges.",
+   "id": "fe327372a025"
+  },
+  {
+   "s": "Sigma, clamps, and encoder collapse",
+   "q": "What is a σ-clamp (sigma clamp)?",
+   "a": "A floor enforced on σ so the encoder cannot claim infinite precision. Without a clamp σ can shrink toward zero and the modality dominates Bayesian fusion with potentially noisy content. R40 used σ_p_min = 0.135.",
+   "id": "3b9198f9620d"
+  },
+  {
+   "s": "Sigma, clamps, and encoder collapse",
+   "q": "What is the \"σ-clamp floor\"?",
+   "a": "The minimum value σ is allowed to take. In R40 this floor was 0.135 (raised from R38's 0.018). Floor here = lower bound, the same meaning as \"interest rate floor\" or \"price floor.\"",
+   "id": "f059f5359ddc"
+  },
+  {
+   "s": "Sigma, clamps, and encoder collapse",
+   "q": "Why does σ shrinking matter in a Product-of-Experts fusion?",
+   "a": "PoE weights each modality by its precision (1/σ²). Very small σ means very high precision, which dominates the fused posterior. If the small σ comes with degenerate content, the actor gets dominated by misinformation.",
+   "id": "6d66e589c7a8"
+  },
+  {
+   "s": "Sigma, clamps, and encoder collapse",
+   "q": "What is encoder collapse?",
+   "a": "When the encoder's σ drops near zero while it claims it can perfectly predict — but actually cannot. Diagnostic signature: σ near 0 AND `kl_pred` huge (the encoder is overconfident in wrong predictions). The Bayesian precision-weighting then gives it dominant influence.",
+   "id": "a4543da15953"
+  },
+  {
+   "s": "Sigma, clamps, and encoder collapse",
+   "q": "What causes encoder collapse?",
+   "a": "Predictive-KL training pressure can drive the encoder to claim ever-higher precision (smaller σ) faster than it can actually learn to predict. If the σ-clamp floor is too low or training pressure too strong, σ collapses while content stays degenerate. Phase XII under moving balls is the example.",
+   "id": "7ad3be30315b"
+  },
+  {
+   "s": "Sigma, clamps, and encoder collapse",
+   "q": "How do you diagnose encoder collapse from training logs?",
+   "a": "Look for `sigma_combined` dropping below the clamp floor (means the clamp lost the fight) and `kl_pred` exploding (R41: 638 vs. healthy 0.6–1.1). High ablation L2 in the presence of these is pathological, not productive integration.",
+   "id": "370a94c40840"
+  },
+  {
+   "s": "Sigma, clamps, and encoder collapse",
+   "q": "What is the Goldilocks σ band?",
+   "a": "The range of σ-clamp values where the encoder is constrained enough to stay healthy but not so constrained that vision becomes inert. R40 found [0.135, 7.4] works on static balls. Phase XII showed this band is task-dependent, not universal.",
+   "id": "51c3698fa66a"
+  },
+  {
+   "s": "Sigma, clamps, and encoder collapse",
+   "q": "How did Phase XII refute the \"Goldilocks σ band is universal\" hypothesis?",
+   "a": "R41 used the same clamp R40 used (σ_p_min=0.135) but trained on moving balls. σ_combined collapsed to 0.0999 (below the clamp floor) and kl_pred exploded to 638. The clamp that held on static balls did not hold on moving balls.",
+   "id": "2ea9fd036919"
+  },
+  {
+   "s": "Sigma, clamps, and encoder collapse",
+   "q": "What is \"kl_pred\" / \"kl_pred_k1\"?",
+   "a": "The Phase X/XI/XII predictive KL loss value: `KL(vision(t) || proprio(t+1).detach())`. Healthy range is 0.5–2. R38 pathology was ~116. R41 catastrophe was 638.",
+   "id": "965c0072581a"
+  },
+  {
+   "s": "MICOA architecture",
+   "q": "What does MICOA stand for?",
+   "a": "Multiple Inputs Confirming One Another. The architecture introduced in Phase IX to address the chronic failure of vision being non-load-bearing across 7 prior substrates.",
+   "id": "294d3246c3f6"
+  },
+  {
+   "s": "MICOA architecture",
+   "q": "Why was MICOA needed?",
+   "a": "Concatenating proprio and pixels into one flat vector for SAC is \"welding two tubes end-to-end\" — SAC just follows whichever gradient is easier (proprio) and the pixel encoder gets no useful signal. MICOA adds a component whose job is to detect when two independent streams are constraining the same world-state.",
+   "id": "800a0d343378"
+  },
+  {
+   "s": "MICOA architecture",
+   "q": "What is Product of Experts (PoE)?",
+   "a": "A Bayesian-fusion math at the core of MICOA. Each modality outputs a Gaussian over a shared latent; PoE fuses them via precision-weighted averaging. The fused σ shrinks when both agree (confirmation) and stays large when they disagree (uncertainty). Parameter-free.",
+   "id": "72936c2a9339"
+  },
+  {
+   "s": "MICOA architecture",
+   "q": "What is the PoE fusion formula for μ_combined?",
+   "a": "`μ_combined = (μ_p/σ_p² + μ_v/σ_v²) / (1/σ_p² + 1/σ_v²)` — a precision-weighted average of the two modalities' means.",
+   "id": "9d13825dadcb"
+  },
+  {
+   "s": "MICOA architecture",
+   "q": "What is the PoE fusion formula for σ_combined²?",
+   "a": "`σ_combined² = 1 / (1/σ_p² + 1/σ_v²)` — the inverse of the summed precisions.",
+   "id": "ad654fd2fd5a"
+  },
+  {
+   "s": "MICOA architecture",
+   "q": "What is the MICOAExtractor?",
+   "a": "The SB3-compatible feature extractor that implements PoE. Each modality has its own encoder (3-layer MLP for proprio, 4-conv DrQ-v2-style CNN for stereo pixels); each outputs (μ, σ); PoE fuses them. Downstream policy sees `[z_combined | μ_p | μ_v]` = 192 dims.",
+   "id": "d365b242f300"
+  },
+  {
+   "s": "MICOA architecture",
+   "q": "What is MICOASAC?",
+   "a": "A SAC subclass that adds the MICOA agreement loss on top of SAC's normal actor/critic gradients. After SAC's normal backward pass, it does an extra forward+backward over the encoder using a separate Adam optimizer.",
+   "id": "74b4db001af8"
+  },
+  {
+   "s": "MICOA architecture",
+   "q": "What is the symmetric KL agreement loss (Phase IX)?",
+   "a": "`loss_sym = β_sym * 0.5 * (KL(p||v) + KL(v||p))` — both encoders are equally penalized for outputting different distributions about the same observation. Weighted by `--micoa-beta`.",
+   "id": "ea149c149927"
+  },
+  {
+   "s": "MICOA architecture",
+   "q": "What is the temporal predictive KL loss (Phase X onward)?",
+   "a": "`loss_pred = β_pred * KL(N(μ_v(t), σ_v(t)) || N(μ_p(t+1), σ_p(t+1)).detach())` — vision at t is pulled toward proprio's future at t+1. Asymmetric, one-sided. Weighted by `--micoa-pred-beta`.",
+   "id": "7de71b602757"
+  },
+  {
+   "s": "MICOA architecture",
+   "q": "Why does the predictive KL use `.detach()` on proprio's future?",
+   "a": "To make the loss one-sided. Only vision is updated by it; proprio is treated as the ground truth for what vision should predict. Mirroring proprio(t) won't satisfy this loss because in general proprio(t) ≠ proprio(t+1).",
+   "id": "b6f52a03189b"
+  },
+  {
+   "s": "MICOA architecture",
+   "q": "What is the \"corner vs tube\" framing?",
+   "a": "A flat MLP over `[proprio | pixels]` makes a longer tube. Two encoders + PoE makes a corner: σ_combined shrinks when both agree, which makes the corner rigid. The \"corner\" = constrained shared latent; the \"tube\" = an unconstrained concatenation.",
+   "id": "0ee3976dcc56"
+  },
+  {
+   "s": "MICOA architecture",
+   "q": "What are σ_combined and kl_agreement?",
+   "a": "MICOA's two main diagnostic scalars, logged every 500 steps. σ_combined falling = corner is forming. kl_agreement near zero = encoder distributions overlap.",
+   "id": "2366df4aeb67"
+  },
+  {
+   "s": "MICOA architecture",
+   "q": "How do you read σ_combined and kl_agreement together?",
+   "a": "σ_combined falling while kl_agreement stays moderate-and-falling = healthy corner formation. σ_combined falling while kl_agreement crashes to zero in the first 4K steps = forced collapse (β too high; what R36 did).",
+   "id": "d65cdeb51395"
+  },
+  {
+   "s": "MICOA architecture",
+   "q": "What is \"confirmation without anticipation\"?",
+   "a": "Phase IX's failure mode: under symmetric KL, vision learned to mirror proprio (the cheapest way to satisfy \"agree about now\"), so vision encoded redundant info and stayed behaviorally inert.",
+   "id": "85b9cf271daf"
+  },
+  {
+   "s": "MICOA architecture",
+   "q": "What is \"anticipation\" in MICOA?",
+   "a": "Phase X's intervention: vision must predict what proprio will encode one step in the future. Mirroring proprio(t) won't satisfy this — vision has to actually anticipate change, which forces it to encode information proprio doesn't yet have.",
+   "id": "f12ec5f10b4c"
+  },
+  {
+   "s": "MICOA architecture",
+   "q": "What is the ablation delta?",
+   "a": "The L2 norm of `action(full_obs) - action(blind_obs)` — how much the policy's action changes when pixels are zeroed. The single primary metric for \"vision is load-bearing.\" Threshold: > 0.05 = passes the dead zone.",
+   "id": "46fac1f440ea"
+  },
+  {
+   "s": "MICOA architecture",
+   "q": "What is the \"vision dead zone\"?",
+   "a": "The ablation delta range 0.009–0.023 that 9 vision experiments hit across Phase VII/VIII/IX. Vision is structurally present but the policy has learned to route around it.",
+   "id": "d2d29cc8ed76"
+  },
+  {
+   "s": "MICOA architecture",
+   "q": "What is the \"active vs productive\" distinction in vision integration?",
+   "a": "A policy can be \"active\" on vision (action changes when pixels zeroed → high ablation) but \"not productive\" (outcomes don't improve). Phase X R38 and Phase XII R41 are both active-but-unproductive.",
+   "id": "0b4040ece373"
+  },
+  {
+   "s": "MICOA architecture",
+   "q": "What did Phase IX R36 reveal about MICOA's symmetric agreement loss?",
+   "a": "With β too high, kl_agreement crashed to ~0 in the first 4K steps — vision collapsed to a copy of proprio. Vision was satisfied (the easy way), so it learned nothing distinctive and stayed inert.",
+   "id": "5149838c8c4c"
+  },
+  {
+   "s": "Body design — what worked and what didn't",
+   "q": "Why does the body have wheels instead of legs?",
+   "a": "Bipedal walking is an entire research problem unto itself. Wheels give locomotion without the distraction of balance, leaving experiments focused on perception.",
+   "id": "4372cf8ecbd6"
+  },
+  {
+   "s": "Body design — what worked and what didn't",
+   "q": "Why is the wheelbase wider than the chassis?",
+   "a": "So tipping onto any non-bottom face elevates the wheels and tipping is no longer mechanically stable. The \"pancake torso\" v1 body had a flatter-than-wheelbase chassis and got stuck \"on its back.\"",
+   "id": "8c24b840333e"
+  },
+  {
+   "s": "Body design — what worked and what didn't",
+   "q": "Why are the arms \"baby arms\" (short and weak)?",
+   "a": "To match a toddler's arm/body ratio. Long arms with strong gear (the prior v2 sideways arms) levered the chassis off its wheels under random action. Short + weak arms can't lever a 3.6 kg chassis.",
+   "id": "34ed81be803f"
+  },
+  {
+   "s": "Body design — what worked and what didn't",
+   "q": "Why is the head centered (y=0)?",
+   "a": "A forward-biased head (y=0.08) created a fore-aft mass asymmetry. Every trained policy then moved strictly backward (~0.34 m every seed) because pushing arms forward was mechanically easier. Centering removed this bias.",
+   "id": "8b007205c61d"
+  },
+  {
+   "s": "Body design — what worked and what didn't",
+   "q": "Why are the arms forward-pointing (+Y)?",
+   "a": "To make shoulder_roll (axis X) swing the arm in the Y-Z plane — forward, down under the body, back. This produces a paddle/rowboat stroke. Sideways arms had a useless shoulder_roll (rotation around its own axis).",
+   "id": "eed3ef552660"
+  },
+  {
+   "s": "Body design — what worked and what didn't",
+   "q": "What is the \"any-body-to-target contact counts\" rule?",
+   "a": "A torso, hand, or wheel touching the target all count as a successful contact, not just the hands. Matches Taylor's frame (contact is contact) and fixed a bug where pinning the ball with the torso got no credit.",
+   "id": "4077c633d73e"
+  },
+  {
+   "s": "Body design — what worked and what didn't",
+   "q": "Why does the camera have only 25° FOV and single eye?",
+   "a": "One camera is the minimum \"eye\" needed to test \"learning to look.\" Binocular vision, peripheral vision, eye-saccades — all are claims about what the creature needs. Start minimal; let the environment force the rest.",
+   "id": "5dd0dbe52c2d"
+  },
+  {
+   "s": "Body design — what worked and what didn't",
+   "q": "What was the rolling-wheels fix (v8-final)?",
+   "a": "Sliding-sphere wheels with friction 0.05 produced 0.19 m in 20 s — chassis was skidding. Each wheel became a child body with a ball joint and friction was raised to 2.0. Result: 9/20 touches, mean speed 7.46 cm/s, max 21 cm/s (matches a baby crawl).",
+   "id": "977b3f62f0a3"
+  },
+  {
+   "s": "Body design — what worked and what didn't",
+   "q": "What is the \"philosophical point\" about the body's joints?",
+   "a": "Every joint included is a claim about what the creature needs. The goal is to make as few claims as possible and let the environment force the rest.",
+   "id": "9d712ff3ea89"
+  },
+  {
+   "s": "The simulation stack",
+   "q": "What is MuJoCo?",
+   "a": "A fast, accurate, open-source rigid-body physics simulator (owned by DeepMind). Handles arm dynamics, contacts, gravity. Standard in robot-arm RL literature.",
+   "id": "12e9efd26bbc"
+  },
+  {
+   "s": "The simulation stack",
+   "q": "What is Gymnasium?",
+   "a": "The standard Python interface for RL environments (`env.reset()`, `env.step(action)`, etc.). Fork of OpenAI's old `gym`. Project's envs inherit from `gym.Env`.",
+   "id": "b49dbb27423d"
+  },
+  {
+   "s": "The simulation stack",
+   "q": "What is Stable-Baselines3 (SB3)?",
+   "a": "A Python library of clean, tested RL algorithm implementations (including SAC). Used here instead of writing SAC from scratch.",
+   "id": "6f5c1f573718"
+  },
+  {
+   "s": "The simulation stack",
+   "q": "What is FPS in training logs?",
+   "a": "Environment steps per second — how many \"advance physics one timestep\" cycles complete per real second. Stage 1 (proprio): ~5000 FPS. Stage 2 (vision): ~200 FPS. Vision is slow because rendering pixels costs CPU/GPU.",
+   "id": "b8e51a4fea1c"
+  },
+  {
+   "s": "The simulation stack",
+   "q": "What is proprioception (\"proprio\")?",
+   "a": "The sense of your own body's position — joint angles, joint velocities, touch bits, hip pose. Distinct from vision (camera image) and exteroception broadly. In this env: a 7- to 71-dim vector depending on configuration.",
+   "id": "887c82d39357"
+  },
+  {
+   "s": "The simulation stack",
+   "q": "What is `hide_target_offset`?",
+   "a": "An env flag. When True, proprio drops the 3-dim fingertip-to-target vector so the agent can't cheat by reading target location from proprio. It must see it or feel it on contact.",
+   "id": "77b830a9ddf1"
+  },
+  {
+   "s": "The simulation stack",
+   "q": "What does \"blind proprio\" mean here?",
+   "a": "The agent has proprio but the camera is off (or there's no camera in the env). Used as a baseline to ask whether vision actually contributes anything in a follow-on stage.",
+   "id": "2489050ee58a"
+  },
+  {
+   "s": "The simulation stack",
+   "q": "What is the FlattenVisionWrapper?",
+   "a": "A tiny wrapper turning a dict observation `{proprio:[7], vision:[64,64,3]}` into a flat vector of length 7 + 12288 = 12295. Lets you use SB3's standard MlpPolicy.",
+   "id": "310e8e6ab755"
+  },
+  {
+   "s": "The simulation stack",
+   "q": "What is a \"follow-on\" architecture (v2/v3/v5)?",
+   "a": "Stage 1 is trained first on proprio only, then frozen. Stage 2 (\"the follow-on\") adds vision on top — only the new pixel-input columns train. Proprio behavior is mathematically preserved (drift = 0).",
+   "id": "37ef7eb07b91"
+  },
+  {
+   "s": "The simulation stack",
+   "q": "What is the consistency loss (v5)?",
+   "a": "`λ · MSE(hidden1(full_obs), hidden1(pixels_zeroed_obs))` — forces whatever vision contributes to hidden1 to stay close to what proprio alone would have produced. \"Vision must confirm, not reshape.\"",
+   "id": "4a34aca4b999"
+  },
+  {
+   "s": "Representation-analysis tools",
+   "q": "What is R² (\"R-squared\")?",
+   "a": "Coefficient of determination, range [−∞, 1]. R²=1 means the regressor predicts targets perfectly. R²=0 = no better than guessing the mean. Negative = worse than guessing the mean.",
+   "id": "e4d2d0410f80"
+  },
+  {
+   "s": "Representation-analysis tools",
+   "q": "What is a linear probe?",
+   "a": "A simple test: freeze the model, train a linear readout to predict X from the model's hidden activations, measure R². If R² is high, the info is there and easily extractable. Low R² could mean info is absent OR tangled non-linearly.",
+   "id": "8aa9ae5c907a"
+  },
+  {
+   "s": "Representation-analysis tools",
+   "q": "What is ridge regression?",
+   "a": "Linear regression with a small penalty on large weights to prevent overfitting. The specific linear-probe regressor used in this project (`sklearn.linear_model.Ridge`).",
+   "id": "ad36053cf66b"
+  },
+  {
+   "s": "Representation-analysis tools",
+   "q": "What is the difference between \"representation failure\" and \"policy failure\"?",
+   "a": "Two ways a channel can be active-but-useless. Representation failure = the latent never encoded the task variable (a probe can't decode it above chance) → fix the encoder. Policy failure = the latent DOES encode it (probe R² meaningful) but the policy never learned to act on it → fix the RL update. The ball-x probe found representation failure: R43's vision latent decodes ball direction at R²≈0.08 (below the proprio control), so its high ablation is binding to non-directional features, not a usable spatial code.",
+   "id": "a485cf5d6a68"
+  },
+  {
+   "s": "Representation-analysis tools",
+   "q": "What is CKA (Centered Kernel Alignment)?",
+   "a": "A similarity measure between two sets of activations from different networks on the same inputs. CKA=1 = essentially the same representation (up to linear reshuffling). CKA=0 = totally unrelated.",
+   "id": "99cb2e5bc2bd"
+  },
+  {
+   "s": "Representation-analysis tools",
+   "q": "Why does CKA matter for interpenetration?",
+   "a": "If v5's hidden1 has high CKA with stage1_v3's hidden1, vision is living on proprio's manifold — additive interpenetration. Low CKA = vision has carved out its own manifold and ignored proprio's.",
+   "id": "7d012607f56b"
+  },
+  {
+   "s": "Representation-analysis tools",
+   "q": "What is k-NN (k-nearest neighbors)?",
+   "a": "For each point, find its k closest neighbors (this project: k=5, Euclidean distance in hidden1 space). Used as a probe: if two observations are neighbors in hidden1, are their actions also similar?",
+   "id": "0183e70f9286"
+  },
+  {
+   "s": "Representation-analysis tools",
+   "q": "What is neighbor-consistency ratio?",
+   "a": "`mean(action-distance among hidden1 neighbors) / mean(action-distance among random pairs)`. Lower = tighter equivalence classes. Stage1_v3 = 0.07 (14× tighter than random); v1 agents = ~0.45.",
+   "id": "6d77c4e2a2d6"
+  },
+  {
+   "s": "Representation-analysis tools",
+   "q": "What is k-means?",
+   "a": "An unsupervised clustering algorithm. Given N points and a k, finds k centers such that each observation is assigned to its nearest center. Used to carve hidden1 activations into discrete Π-classes for inspection.",
+   "id": "3889dcbc6d69"
+  },
+  {
+   "s": "Representation-analysis tools",
+   "q": "What is silhouette score?",
+   "a": "Cleanliness of a clustering, range [-1, 1]. High = points much closer to own cluster's center than to other centers; low = clusters bleed into each other.",
+   "id": "e07a60f2476a"
+  },
+  {
+   "s": "Representation-analysis tools",
+   "q": "What is Spearman correlation?",
+   "a": "Correlation between the ranks of two variables, not raw values. Robust to outliers and to non-linear-but-monotonic relationships.",
+   "id": "c70a9199e78b"
+  },
+  {
+   "s": "Source theory (Taylor / interpenetration)",
+   "q": "What is set-theoretic perception theory?",
+   "a": "Taylor's framework: perception is a *response* shaped by what the world conditions, not a model the experimenter writes in. The project's grounding theory.",
+   "id": "844cb6cca919"
+  },
+  {
+   "s": "Source theory (Taylor / interpenetration)",
+   "q": "What is \"pressure not bribery\"?",
+   "a": "A methodological rule: when you want the creature to learn behavior X, change the environment so X becomes instrumental, rather than paying reward for X directly. Pressure forces emergence; bribery just trains a habit.",
+   "id": "ebc5ead1ab03"
+  },
+  {
+   "s": "Source theory (Taylor / interpenetration)",
+   "q": "What is an equivalence class (in this theory)?",
+   "a": "Taylor's central construct. Many different sensory states map to the same conditioned response. \"The class IS the perception.\" Neighbor-consistency ratio is a proxy for it.",
+   "id": "a0b005d9a033"
+  },
+  {
+   "s": "Source theory (Taylor / interpenetration)",
+   "q": "What is Π (Pi) in Taylor's notation?",
+   "a": "A readiness state: the set of conditioned responses an organism is currently prepared to execute. Perception in Taylor's theory is just the simultaneous pattern of Π.",
+   "id": "2fd1470d8b7d"
+  },
+  {
+   "s": "Source theory (Taylor / interpenetration)",
+   "q": "What is interpenetration (Ch. 5 in Taylor)?",
+   "a": "\"Properties of the perceptual field determined by one set are incorporated in the perceptual field determined by the other set.\" Operationally: vision's representation should inherit and extend proprio's, not overwrite it.",
+   "id": "b174257f0739"
+  },
+  {
+   "s": "Source theory (Taylor / interpenetration)",
+   "q": "What is an unconditioned response?",
+   "a": "Reflexive, built-in (e.g., contact → grasp). The starting set of behaviors before learning.",
+   "id": "d25df48c261c"
+  },
+  {
+   "s": "Source theory (Taylor / interpenetration)",
+   "q": "What is a conditioned response?",
+   "a": "Learned to fire from a previously-neutral cue (e.g., the *sight* of an object → grasp, after learning that seeing precedes touching).",
+   "id": "36f242653cc0"
+  },
+  {
+   "s": "Source theory (Taylor / interpenetration)",
+   "q": "What is critical state D in Taylor's framework?",
+   "a": "The drive state — what creates the pressure to act (e.g., contact drive in this project's task).",
+   "id": "d9eaf25e7928"
+  },
+  {
+   "s": "Source theory (Taylor / interpenetration)",
+   "q": "What is sensory surface Q?",
+   "a": "The set of receptor signals available to the organism. Vision, proprio, touch — all components of Q.",
+   "id": "dba94af2fd1c"
+  },
+  {
+   "s": "Source theory (Taylor / interpenetration)",
+   "q": "What is M in Taylor's framework?",
+   "a": "A motor behavior (e.g., forward-paddle). The Phase VIII hypothesis was that pure-paddle M had to fail unless modified by visual evidence.",
+   "id": "4ceb2dd4b29e"
+  },
+  {
+   "s": "The phase history (chronological)",
+   "q": "What was Phase 0 (Stage 0)?",
+   "a": "Flat floor, no fall penalty, wide targets, scaffolded. Result with blind proprio: 6/20 touches, 0 falls. Establishes baseline locomotion.",
+   "id": "2ad68cb5d0db"
+  },
+  {
+   "s": "The phase history (chronological)",
+   "q": "What was Stage 1?",
+   "a": "2x2 m platform, fall penalty, gaze-pressure cone exclusion. Warm-started from Stage 0; peaked at 7/20 touches, 0 falls. First sign of late-training regression.",
+   "id": "9e97fa04b89d"
+  },
+  {
+   "s": "The phase history (chronological)",
+   "q": "What is \"late-training regression\"?",
+   "a": "Best-checkpoint and final-checkpoint differ by ~5x in touch rate. SAC over-exploits and loses the plateau. Fixes considered: entropy floor, early stopping, lower learning rate.",
+   "id": "1a853eaa7966"
+  },
+  {
+   "s": "The phase history (chronological)",
+   "q": "What was the \"one-direction motion\" problem?",
+   "a": "Blind proprio has no input telling it where the ball is, so it learns one canned paddle motion and hopes the ball is in that direction. About 1/3 of placements happen to be within that cone.",
+   "id": "0dcae05f2c1d"
+  },
+  {
+   "s": "The phase history (chronological)",
+   "q": "What was Phase I (mimo_substrate_A)?",
+   "a": "No-bribery substrate using existing CNN. Result: no motion at all. Auto-entropy collapsed the policy to zero-action.",
+   "id": "ab0552ba1ea5"
+  },
+  {
+   "s": "The phase history (chronological)",
+   "q": "What was Phase II (mimo_dialogue_v1)?",
+   "a": "Dialogue architecture on the no-bribery substrate. Same failure family.",
+   "id": "896f90c69fc3"
+  },
+  {
+   "s": "The phase history (chronological)",
+   "q": "What were Phases III / III.2?",
+   "a": "Fixed-ball-position substrates. Still hit the \"no motion at all\" failure mode.",
+   "id": "c33b9f4085c9"
+  },
+  {
+   "s": "The phase history (chronological)",
+   "q": "What was Phase IV (HER)?",
+   "a": "Hindsight Experience Replay + fixed balls + memory + small velocity bonus. First HER attempt; affected by a wrapper bug that zeroed the velocity bonus.",
+   "id": "862182358633"
+  },
+  {
+   "s": "The phase history (chronological)",
+   "q": "What was the her_wrapper.py bug?",
+   "a": "HER relabels 4/5 of sampled transitions and runs `compute_reward` on them — those transitions saw only the sparse term, so the velocity bonus only flowed through 1/5 of gradients. Effective velocity bonus = 0 for Phases IV and V.",
+   "id": "ddae33cb394d"
+  },
+  {
+   "s": "The phase history (chronological)",
+   "q": "What was Phase V / V.2?",
+   "a": "Caregiver scaffold + velocity bonus runs. V.2 was first time HER left the −2000 floor (mean reward −1899). First non-zero eval std in months.",
+   "id": "752bc6f62286"
+  },
+  {
+   "s": "The phase history (chronological)",
+   "q": "What was Phase VI / VI.2?",
+   "a": "Diagnostic: near-ball outside the goal threshold. VI.2 corrected the max-steps default (was 600, should be 2000). Showed eval std 99.5 — high per-episode variance, mixed result.",
+   "id": "25bc4ffb8ae8"
+  },
+  {
+   "s": "The phase history (chronological)",
+   "q": "What was Phase VII?",
+   "a": "Cart substrate with rolling-wheel body. Pure proprio + ent=0.5 + vel_bonus=0.10 hit +380 reward, 20/20 hits. Established the cart substrate but exposed that vision was still inert (ablation in dead zone).",
+   "id": "fa33d50815a4"
+  },
+  {
+   "s": "The phase history (chronological)",
+   "q": "What was the Phase VII vision-ablation finding?",
+   "a": "Across multiple substrates (R10, R14/15, R17/18, R26/27, R28/29), vision-ablation delta hit 0.009–0.023 — the \"dead zone.\" Vision was structurally there but the policy ignored it.",
+   "id": "953d7a255fa5"
+  },
+  {
+   "s": "The phase history (chronological)",
+   "q": "What was Phase VIII?",
+   "a": "Moving balls (0.05 and 0.08 m/s) on the cart substrate. The strongest substrate-level hypothesis: balls in motion force visual learning. Result: REFUTED. Both proprio and vision broke equally; both 0–1/20.",
+   "id": "f60d91eea03d"
+  },
+  {
+   "s": "The phase history (chronological)",
+   "q": "What did Phase VIII establish definitively?",
+   "a": "That substrate-level interventions cannot make vision load-bearing in this body+algorithm. Seven independent substrates returned ablation < 0.05. The next intervention had to be architectural.",
+   "id": "05ea55f3c1bc"
+  },
+  {
+   "s": "The phase history (chronological)",
+   "q": "What was Phase IX (R36/R37)?",
+   "a": "First MICOA architecture: PoE Gaussian fusion + symmetric KL agreement loss. Worked mechanically (encoders did fuse) but vision still inert (ablation 0.002). \"Vision learned to mirror proprio.\"",
+   "id": "73c1c3fecf00"
+  },
+  {
+   "s": "The phase history (chronological)",
+   "q": "What was Phase X (R38)?",
+   "a": "Replaced symmetric KL with one-sided predictive KL (β_pred=0.1, β_sym=0). Broke the ablation barrier for the first time (delta=0.66, 350× R36). But vision was active not productive (6/20 either way) and task regressed (mean reward −757).",
+   "id": "ccee1bf637a9"
+  },
+  {
+   "s": "The phase history (chronological)",
+   "q": "What was Phase XI R39?",
+   "a": "Multi-horizon predictive loss (t+1, t+5, t+25, t+50) + tightened σ clamp. Regressed on load-bearing. Three knobs changed at once — confounded result.",
+   "id": "7e84d2cfc5a1"
+  },
+  {
+   "s": "The phase history (chronological)",
+   "q": "What was Phase XI R40?",
+   "a": "Single-horizon t+1 + tightened σ clamp (isolating the clamp variable from R39). First run where vision was load-bearing AND task worked: ablation 0.481, 15/20 both-touched, mean reward −234.",
+   "id": "cb5ef1436544"
+  },
+  {
+   "s": "The phase history (chronological)",
+   "q": "What did R40 establish?",
+   "a": "(1) The σ clamp is not what killed R39 — R40 has the same clamp and works. R39 failed because of the multi-horizon objective itself. (2) Goldilocks σ_p band: [0.135, 7.4] prevents extreme precision while still letting vision broadcast useful signal. (3) Vision can be load-bearing AND task-capable.",
+   "id": "0f9340821327"
+  },
+  {
+   "s": "The phase history (chronological)",
+   "q": "What was Phase XII (R41/R42)?",
+   "a": "Test of R40 on the harder moving-ball task. Falsifiable claim: vision should rescue what proprio cannot. Result: REFUTED. R41 (vision) 1/20 moving, 9/20 static; R42 (proprio) 2/20 moving, 18/20 static.",
+   "id": "e40a1650c403"
+  },
+  {
+   "s": "The phase history (chronological)",
+   "q": "What was Phase XII's mechanistic surprise?",
+   "a": "R41's huge 0.85 ablation isn't healthy integration — it's encoder pathology. kl_pred ended at 638 (vs healthy 0.7); σ_combined collapsed to 0.0999 (below R40's clamp floor of 0.135). The σ-clamp band that held on static balls broke on moving balls.",
+   "id": "a2c86e4515f0"
+  },
+  {
+   "s": "Phase XII in detail",
+   "q": "What was R41's setup?",
+   "a": "MICOA + vision, 250K steps, moving balls at 0.08 m/s, n_envs=8, --micoa-beta 0.0 --micoa-pred-beta 0.1, σ_p_min=0.135, seed 42, --checkpoint-interval 10000.",
+   "id": "9c9ddb91eff1"
+  },
+  {
+   "s": "Phase XII in detail",
+   "q": "What was R42's setup?",
+   "a": "Matched proprio control: 250K steps, moving balls at 0.08 m/s, no MICOA, no vision, n_envs=16, otherwise identical to R41.",
+   "id": "bea42f2cc1d9"
+  },
+  {
+   "s": "Phase XII in detail",
+   "q": "Why did Phase XII tighten the eval cadence from Phase VIII's 50K to 10K?",
+   "a": "Phase VIII's 50K cadence fired exactly one eval (at 50K), which landed in the collapse trough and missed the policy's actual peak. 10K cadence fires 25 evals, capturing the real best checkpoint.",
+   "id": "dd0246ed7329"
+  },
+  {
+   "s": "Phase XII in detail",
+   "q": "What is the eval-cadence bug?",
+   "a": "When `--checkpoint-interval` is set too long, fewer evals fire and the saved `best_model.zip` may not reflect the policy's true peak (because no later eval beat the trough-landing one). Phase VIII suffered from this; Phase XII fixed it.",
+   "id": "51ddefa94013"
+  },
+  {
+   "s": "Phase XII in detail",
+   "q": "What did R41 vs R42 reveal about MICOA + moving balls?",
+   "a": "R41 underperformed R42 by 1 episode on moving balls (1 vs 2) and by 9 episodes on static-ball generalization (9 vs 18). Adding MICOA + vision actively HURT capability compared to matched proprio under the same training condition.",
+   "id": "38e4e68131cb"
+  },
+  {
+   "s": "Phase XII in detail",
+   "q": "Why is the R41 vs R42 static-ball gap notable?",
+   "a": "It is the strongest counter-evidence yet to \"more vision = more behavioral capability.\" Adding MICOA under moving-ball training cost 9 episodes on static generalization. Vision is not a free addition.",
+   "id": "f2b7ff47b88b"
+  },
+  {
+   "s": "Phase XII in detail",
+   "q": "What does Phase XII's REFUTED grade specifically mean?",
+   "a": "The Section 6 criteria required ≥4/20 both-touched moving for \"Promising\" and ≥+25% relative improvement over proprio. R41 scored 1/20 (vs R42's 2/20) — a relative loss, far from the +25% bar.",
+   "id": "e694d3d79f78"
+  },
+  {
+   "s": "Phase XII in detail",
+   "q": "What's the difference between R40 and R41 in terms of encoder health?",
+   "a": "R40: kl_pred ~0.7, σ ~0.6, healthy integration. R41: kl_pred 638, σ 0.0999, degenerate integration. Same architecture, same clamp — just different training task.",
+   "id": "a201926e63d3"
+  },
+  {
+   "s": "Phase XII in detail",
+   "q": "What single metric was R41 the project record on?",
+   "a": "Vision ablation L2 delta: 0.851 (median 0.799). Highest in project history. But the metric is now understood as necessary-but-not-sufficient.",
+   "id": "3de72265fe0d"
+  },
+  {
+   "s": "Phase XII in detail",
+   "q": "What new composite criterion replaces \"ablation > 0.05\"?",
+   "a": "ablation ≥ 0.20 AND kl_pred < ~5 AND σ_combined > clamp floor AND R_vision ≥ R_proprio-control on the same condition. R40 satisfies all four; R41 satisfies only the first.",
+   "id": "dc8ef01bc049"
+  },
+  {
+   "s": "Methodological rules",
+   "q": "Why render a video before training >50K steps?",
+   "a": "To confirm cameras, physics, spawn position, and reward plumbing are sane. A 6-hour run that finds out at hour 2 the cameras were wrong is a bad trade. Required by alien_baby/CLAUDE.md.",
+   "id": "b6665f68e3a2"
+  },
+  {
+   "s": "Methodological rules",
+   "q": "Why prefer short runs + checkpoint inspection over one long run?",
+   "a": "Default follow-on length is 250K, not 1M. After 250K render from best_model.zip and decide whether to extend. CheckpointCallback saves every 50K, making mid-run renders cheap.",
+   "id": "3b9c14ab51d4"
+  },
+  {
+   "s": "Methodological rules",
+   "q": "Why is SAC's first ~50–150K steps untrustworthy as a behavioral signal?",
+   "a": "Replay buffer is still filling, entropy is still high — even a healthy run looks like random flailing. Don't judge before ~150K steps.",
+   "id": "a4cb957ce916"
+  },
+  {
+   "s": "Methodological rules",
+   "q": "What's the rule about modifying head_cam observations for display?",
+   "a": "Don't. head_cam is the *agent's* observation — smoothing/blurring it changes what the agent sees. Display post-processing belongs in the render script, not in the env.",
+   "id": "6f70560b361a"
+  },
+  {
+   "s": "Methodological rules",
+   "q": "Why isn't task success the same as \"using vision\"?",
+   "a": "The creature can solve the task by proprio-grope alone (forward paddle + hope). Eval success doesn't prove vision contributes. Use vision-ablation sensitivity (how much the action changes when pixels are zeroed) — that directly measures whether vision is load-bearing.",
+   "id": "78f3664bf560"
+  },
+  {
+   "s": "Methodological rules",
+   "q": "Why does train_v8.py play a Glass.aiff chime on completion?",
+   "a": "macOS-only audio signal so the experimenter knows to come back to the session without staring at the terminal. Don't remove. Replicate the pattern in any new training script.",
+   "id": "bb7c41e220a1"
+  },
+  {
+   "s": "Methodological rules",
+   "q": "Why use MPS + 16 envs on Apple Silicon?",
+   "a": "~25× warmup FPS and ~5–10× training FPS vs CPU + 8 envs. Don't revert to CPU defaults without specific reason — waiting hours for what could finish in 30 min is a bad trade.",
+   "id": "467178772b63"
+  },
+  {
+   "s": "Methodological rules",
+   "q": "What's the workflow agent pipeline?",
+   "a": "experiment-strategist proposes → human approves → training-engineer launches → results-analyst writes FINDINGS → theory-monitor updates THEORY_LOG.",
+   "id": "902b0009fe77"
+  },
+  {
+   "s": "Methodological rules",
+   "q": "Why does the project NOT use OBS screen-recording for conversations?",
+   "a": "It captures a static frame, not the scroll, so recordings are useless (9 MB screenshot that never changes). What works: copy-paste into a separate document.",
+   "id": "4448a8996f77"
+  },
+  {
+   "s": "Methodological rules",
+   "q": "When should a SESSION SUMMARY block be offered?",
+   "a": "At natural pause points (end of training run, end of topic, end of session). Proactively, without being asked. Format: dense, copy-paste friendly, no fancy markdown.",
+   "id": "f9eb31278e11"
+  },
+  {
+   "s": "Concepts the user asked to clarify",
+   "q": "What is \"gating\" in a neural network context?",
+   "a": "A learned soft switch that decides how much each input pathway contributes (or whether it contributes at all). LSTMs have forget/input/output gates. \"Gated\" generally means \"controlled by another signal.\"",
+   "id": "9122835c0afb"
+  },
+  {
+   "s": "Concepts the user asked to clarify",
+   "q": "Does \"gated\" mean \"restricted\"?",
+   "a": "Approximately yes — gating restricts or filters flow. In a neural net it's typically multiplicative: output = (gate_value) × (signal), where gate_value is between 0 and 1. Gate=0 blocks; gate=1 passes; in between attenuates.",
+   "id": "c98dfd5f5925"
+  },
+  {
+   "s": "Concepts the user asked to clarify",
+   "q": "What is gaze-gated reward?",
+   "a": "A reward structure where reward credit is only awarded when the agent has *visually attended* to the target before contact. The \"gate\" is the gaze: no gaze, no reward. Forces vision to become behaviorally necessary.",
+   "id": "531bc6988960"
+  },
+  {
+   "s": "Concepts the user asked to clarify",
+   "q": "Why is gaze-gated reward listed as a Phase XIII candidate?",
+   "a": "Because all the architectural interventions (PoE, predictive KL, MICOA) still let the actor route around vision. Gaze-gating ties the reward signal itself to visual attention — vision must be used or there is no credit. It directly addresses the \"vision active but not productive\" failure.",
+   "id": "d75bcf515a15"
+  },
+  {
+   "s": "Concepts the user asked to clarify",
+   "q": "Is gaze-gated reward \"bribery\" or \"pressure\"?",
+   "a": "This is open. The project's \"pressure not bribery\" rule says don't pay reward for desired behavior. A gaze gate doesn't pay for gaze — it restricts credit on other behavior unless gaze occurred. Closer to pressure (changing what's instrumental) than bribery (paying for the act).",
+   "id": "2c1539225469"
+  },
+  {
+   "s": "Concepts the user asked to clarify",
+   "q": "What is DrQ-v2?",
+   "a": "Data-regularized Q-learning v2 — an image-aware RL algorithm that augments visual inputs (random shifts) during Q-learning, and is known to make vision-based SAC more sample-efficient. Listed as a Phase XIII candidate.",
+   "id": "53dff0e5f0f7"
+  },
+  {
+   "s": "Concepts the user asked to clarify",
+   "q": "What does \"image-aware RL\" mean?",
+   "a": "RL algorithms designed with vision in mind — e.g., data augmentation on pixels, contrastive visual losses, image-specific architectures. Plain SAC + CNN is NOT image-aware; it treats pixels like any other input.",
+   "id": "a882956727ee"
+  },
+  {
+   "s": "Concepts the user asked to clarify",
+   "q": "What is the \"one-armed body\" candidate?",
+   "a": "A Phase XIII body modification where geometric reach cannot cover the entire arena from a fixed posture. Removes proprio's self-sufficient \"paddle-and-hope\" strategy and forces directional steering — which requires sensing where the ball is, i.e., vision.",
+   "id": "89a53ecdc207"
+  },
+  {
+   "s": "Vision load-bearing — the central question",
+   "q": "What does \"vision load-bearing\" mean operationally?",
+   "a": "When the policy's action changes meaningfully on the same state if pixel input is zeroed. Measured by the L2 norm of `action(full_obs) − action(blind_obs)`. The strict criterion is delta > 0.05.",
+   "id": "b6085407c10e"
+  },
+  {
+   "s": "Vision load-bearing — the central question",
+   "q": "What's the difference between \"vision present\" and \"vision load-bearing\"?",
+   "a": "Present = the CNN exists in the network and gradients flow through it. Load-bearing = the policy's actual outputs depend on what the camera shows. For 9 prior experiments vision was present but not load-bearing.",
+   "id": "8c52eaae1787"
+  },
+  {
+   "s": "Vision load-bearing — the central question",
+   "q": "Why was vision not load-bearing across 7 substrates (R6, R10, R14/R15, R17/R18, R26/R27, R28/R29, R32-R35)?",
+   "a": "Plain SAC + concatenated proprio + pixels follows whichever gradient is easier (always proprio in this body), and the pixel encoder gets no useful training signal. Architecture, not task, was the bottleneck.",
+   "id": "dbadadc417f1"
+  },
+  {
+   "s": "Vision load-bearing — the central question",
+   "q": "What's the \"ornamental CNN\" diagnosis?",
+   "a": "A CNN that exists in the network but has no behavioral influence — its gradients have been suppressed by the actor learning to rely on proprio. Visible as ablation delta < 0.025.",
+   "id": "6a128e716cc9"
+  },
+  {
+   "s": "Vision load-bearing — the central question",
+   "q": "What was the 2026-05-07 breakthrough?",
+   "a": "micoa_freeze_zeroinit_cone30 best checkpoint: ablation delta 0.456, 100% of steps non-trivial. First confirmed vision-load-bearing run in the project's history (after 5+ runs with near-zero sensitivity).",
+   "id": "a3a229415b51"
+  },
+  {
+   "s": "Vision load-bearing — the central question",
+   "q": "What did the 2026-05-07 breakthrough NOT show?",
+   "a": "That vision was steering correctly. Directional spawn test: ball fixed 15° right → 0/30 touches; ball fixed 15° left → 0/30 touches. Vision was influencing actions but had no mapping from \"ball location\" → \"correct turn.\"",
+   "id": "e8bb748e42ca"
+  },
+  {
+   "s": "Vision load-bearing — the central question",
+   "q": "What is \"vision affects behavior\" vs \"vision affects behavior correctly\"?",
+   "a": "Different questions. The first asks whether pixel inputs change actions (load-bearing). The second asks whether those changed actions consistently move the agent toward the target (productive). Phase XII: yes to (1), no to (2).",
+   "id": "5c44de9b9378"
+  },
+  {
+   "s": "Failure modes (the taxonomy)",
+   "q": "What is \"no motion at all\"?",
+   "a": "A failure mode from Phases I, II, III, III.2: auto-entropy collapse to a zero-action deterministic policy. The creature stops moving entirely.",
+   "id": "888361eedd61"
+  },
+  {
+   "s": "Failure modes (the taxonomy)",
+   "q": "What is \"one move then freeze\"?",
+   "a": "A failure mode from Phases IV, V.2, VI, VI.2: the policy commits to one initial action then freezes. Not entropy collapse (ent_coef pin holds) — it's a rational SAC equilibrium under low pressure.",
+   "id": "064bb2a03cf9"
+  },
+  {
+   "s": "Failure modes (the taxonomy)",
+   "q": "What is RND (Random Network Distillation)?",
+   "a": "A curiosity/intrinsic-motivation method (Burda 2018). Keep a fixed random \"target\" net; train a \"predictor\" net to match its output on visited states. The prediction error is a bonus reward — familiar states predicted well (low error, boring), novel states not (high error, curiosity bonus). Fights the freeze attractor: a motionless body sees the same state forever, error → 0, so stillness stops paying and moving does. Simplest robust curiosity method — two small nets, no learned dynamics model.",
+   "id": "c9dd8ba7ddbc"
+  },
+  {
+   "s": "Failure modes (the taxonomy)",
+   "q": "What is the \"freeze attractor\"?",
+   "a": "The basin RL training keeps sliding into where AB's policy collapses to \"do nothing\" (or one move then inert) — motionless, reward dead-flat at pure step cost, zero contacts, episodes time out. An \"attractor\" because it's reached regardless of seed/starting pose. Two causes, neither sufficient alone: raw-torque action space, AND reward/exploration collapse (standing still is a local optimum since moving costs energy and rarely hits the sparse reward). Position-offset control fixed the action-space half but left it unbroken in 60K — proving the reward half is real. Seen Phases IV–VI and again in R50.",
+   "id": "6f74fce26d19"
+  },
+  {
+   "s": "Failure modes (the taxonomy)",
+   "q": "What is the difference between movement and locomotion?",
+   "a": "Movement = any change in the body's configuration (limbs flailing, torso twisting) — the body doing something. Locomotion = the strict subset of movement that translates the whole body through space (the center of mass actually travels A→B). All locomotion is movement; most movement is not locomotion — you can flail every limb while your CoM stays put. The bridge is a gait. Corrected project slogan: movement is reward-fixable; locomotion is not (it needs the gait discovered or supplied).",
+   "id": "fc9de00a5f5e"
+  },
+  {
+   "s": "Failure modes (the taxonomy)",
+   "q": "Why did rnd_directed_250k produce movement but not locomotion?",
+   "a": "RND rewards novelty, and novelty is cheap to get by fidgeting in place — so the body moved continuously (freeze broken) but the CoM never translated. Because it never translated, the approach reward (which can only fire on distance-closed) never got a positive sample, so no pursuit gradient ever formed. In-place flailing is a local optimum that satisfies RND's novelty appetite without propulsion.",
+   "id": "10a8fe01bb6b"
+  },
+  {
+   "s": "Failure modes (the taxonomy)",
+   "q": "What is a \"gait\" and why is it the crawler bottleneck?",
+   "a": "The coordinated, repeating push-off pattern that turns movement into locomotion — the limbs push against the ground in the right sequence/phase so ground-reaction forces sum to net thrust instead of cancelling. The hard part isn't moving each joint; it's discovering the sequence that accumulates propulsion. A gait is a narrow region of action-space RND won't stumble into, and can't be reward-shaped if never sampled — so the indicated tools are ones that supply it (imitation) or force translation directly (velocity-toward-target bonus, cart-steer primitive).",
+   "id": "cc5003bc203f"
+  },
+  {
+   "s": "Failure modes (the taxonomy)",
+   "q": "What is \"geometric refuge\"?",
+   "a": "When the spawn distribution accidentally puts the agent within touching distance of the ball without doing anything. The policy collects free reward by sitting still. Phase V.2 had this on the inside of the goal-threshold geometry.",
+   "id": "00470e4fc564"
+  },
+  {
+   "s": "Failure modes (the taxonomy)",
+   "q": "What is the \"active but not productive\" failure?",
+   "a": "Phase X R38 and Phase XII R41. Vision is integrated into the policy (high ablation delta), but the integrated information doesn't steer behavior in a useful direction. Outcomes don't improve.",
+   "id": "8ae9077b958a"
+  },
+  {
+   "s": "Failure modes (the taxonomy)",
+   "q": "What is \"pathological integration\"?",
+   "a": "When the encoder σ collapses while kl_pred explodes. The pixel pathway dominates the actor's input (high ablation) but the content is degenerate. R41 is the canonical example.",
+   "id": "fbc5570881fd"
+  },
+  {
+   "s": "Failure modes (the taxonomy)",
+   "q": "What is the dependency chain failure?",
+   "a": "body → motion → encounter → memory → map. Most phases broke at link 2 (motion). Phase VII+ resolved motion via the cart substrate but the chain still broke at link 4 (memory) or link 5 (map).",
+   "id": "6e2a962e12c9"
+  },
+  {
+   "s": "Common reward-design concepts",
+   "q": "What is \"reward shaping\"?",
+   "a": "Adding extra reward terms beyond the sparse goal signal to guide learning (e.g., +0.10 per cm/s of forward velocity). The project's \"pressure not bribery\" rule says shaping is bribery unless it makes a non-target behavior instrumental.",
+   "id": "7c53fdc175a8"
+  },
+  {
+   "s": "Common reward-design concepts",
+   "q": "What is HER (Hindsight Experience Replay)?",
+   "a": "A technique where failed transitions are relabeled with the goal \"the agent actually reached,\" not the goal originally specified. Helps with sparse rewards. The project's her_wrapper.py implements it.",
+   "id": "3990077d594f"
+  },
+  {
+   "s": "Common reward-design concepts",
+   "q": "What is the velocity bonus?",
+   "a": "A small reward term proportional to torso speed (e.g., scale × |hip_velocity|). Used to discourage stillness. Phase VI's debate was whether it survives HER's 4/5 relabel dilution.",
+   "id": "b31a5947e13b"
+  },
+  {
+   "s": "Common reward-design concepts",
+   "q": "What is the goal threshold?",
+   "a": "The distance at which a contact counts as \"reached.\" If the ball spawns inside the threshold, the agent gets free reward by doing nothing — a geometric refuge.",
+   "id": "bef9776c304a"
+  },
+  {
+   "s": "Architecture flag reference",
+   "q": "What does `--micoa-beta` control?",
+   "a": "The weight on MICOA's symmetric KL agreement loss (Phase IX). 0.0 disables it. R40 uses 0.0; R36/R37 used 0.1 and 0.03.",
+   "id": "a6e1e41a6066"
+  },
+  {
+   "s": "Architecture flag reference",
+   "q": "What does `--micoa-pred-beta` control?",
+   "a": "The weight on MICOA's temporal predictive KL loss (Phase X+). R40 and R41 used 0.1.",
+   "id": "f2f5c7355988"
+  },
+  {
+   "s": "Architecture flag reference",
+   "q": "What does `--vision` enable?",
+   "a": "Adds the stereo camera observation to the env's obs dict. Without it the policy is blind proprio.",
+   "id": "84309a9e0f36"
+  },
+  {
+   "s": "Architecture flag reference",
+   "q": "What does `--memory-obs` enable?",
+   "a": "Adds memory channels (touched flags, time-since-touch, etc.) to the proprio vector. Used in Phase VII+.",
+   "id": "65637888d0f0"
+  },
+  {
+   "s": "Architecture flag reference",
+   "q": "What does `--hip-actuation` control?",
+   "a": "Whether the hip joint is actuated (controllable by the policy) or passive. `off` = hip is a free joint; agent rides the cart but doesn't drive it.",
+   "id": "131ec6352add"
+  },
+  {
+   "s": "Architecture flag reference",
+   "q": "What does `--cart-mode constant_velocity_bouncer` mean?",
+   "a": "The cart moves at constant velocity and bounces off arena walls — locomotion is given, not learned. Vision (the bouncing balls in FOV) is now potentially load-bearing because contact requires timing.",
+   "id": "941f9091cb99"
+  },
+  {
+   "s": "Architecture flag reference",
+   "q": "What does `--ball-speed` set?",
+   "a": "The constant velocity of the bouncing balls. Phase VIII tested 0.05 and 0.08 m/s. Phase XII used 0.08.",
+   "id": "4bfeb6df0a08"
+  },
+  {
+   "s": "Architecture flag reference",
+   "q": "What does `--curriculum-warmup` set?",
+   "a": "Number of steps before the curriculum starts ramping. In Phase XII: 2000.",
+   "id": "4786362c5c44"
+  },
+  {
+   "s": "Architecture flag reference",
+   "q": "What does `--curriculum-final-offset` set?",
+   "a": "The final difficulty (target offset distance) the curriculum locks at. In Phase XII: 0.15 m.",
+   "id": "39b6f9b78750"
+  },
+  {
+   "s": "Architecture flag reference",
+   "q": "What does `--checkpoint-interval` set?",
+   "a": "How often eval fires and best_model is saved. Phase VIII used 50000 (1 eval total — too sparse). Phase XII used 10000 (25 evals — captures the actual peak).",
+   "id": "dcd475a12724"
+  },
+  {
+   "s": "Diagnostics, eval, and tooling",
+   "q": "What is the \"touch-counting eval\"?",
+   "a": "A standardized 20-seed deterministic eval. Each seed = one episode of up to 2000 steps. Reports: both/20, one/20, neither/20 (touched both balls, one, neither). Plus mean reward and std.",
+   "id": "397d37624621"
+  },
+  {
+   "s": "Diagnostics, eval, and tooling",
+   "q": "What is the \"vision ablation single-step delta\"?",
+   "a": "200 steps × 10 seeds. Compute action with full obs and again with pixels zeroed. Take L2 norm of the difference. Report mean and median. This is the primary load-bearing test.",
+   "id": "a48e8f6e2884"
+  },
+  {
+   "s": "Diagnostics, eval, and tooling",
+   "q": "What is the \"episode-level ablation\"?",
+   "a": "20 seeds with pixels normal, 20 seeds with pixels zeroed. Compare both-touched rates. Whereas single-step measures policy sensitivity, episode-level measures whether vision actually changes outcomes.",
+   "id": "5daa6b644fff"
+  },
+  {
+   "s": "Diagnostics, eval, and tooling",
+   "q": "Why is sanity_render.py used before launches?",
+   "a": "To confirm an episode looks plausible from the starting model. Renders a full episode video showing the body, cameras, balls, contacts. Required before any >50K step run.",
+   "id": "da9d66e495a3"
+  },
+  {
+   "s": "Diagnostics, eval, and tooling",
+   "q": "What is the describe_video.py tool?",
+   "a": "Sends a video file to Gemini 2.5 Flash for native video analysis. Used because Claude can't natively see video. Critical for RL where numbers can hide visually-obvious failures (e.g., creature stuck in early frame).",
+   "id": "16b0a9d714de"
+  },
+  {
+   "s": "Diagnostics, eval, and tooling",
+   "q": "Why watch a video before declaring a run successful or failed?",
+   "a": "Numeric stats can hide visually-obvious failures: agent never approaches the target, posture makes the target unreachable, agent is stuck. Numbers + video together = real assessment.",
+   "id": "a44164e6f115"
+  },
+  {
+   "s": "Project file structure / \"where things live\"",
+   "q": "Where do training results live?",
+   "a": "`alien_baby/results/`. Each run has a `RUN_TAG/` directory (intermediate checkpoints, vec_normalize.pkl) and a `RUN_TAG_best/` directory (best_model.zip). Training log: `RUN_TAG.log`.",
+   "id": "9e1443d34f05"
+  },
+  {
+   "s": "Project file structure / \"where things live\"",
+   "q": "What is FINDINGS.md?",
+   "a": "The full experimental log. Each phase has a dated entry with what was run, the numbers, the analysis, and theory signals. Append-only history of the project.",
+   "id": "254457fd50f9"
+  },
+  {
+   "s": "Project file structure / \"where things live\"",
+   "q": "What is PROJECT_STATUS.md?",
+   "a": "A summary of \"where we stand now.\" Current best numbers, last run, what worked / didn't work. Replaced when new runs land.",
+   "id": "1975ff704947"
+  },
+  {
+   "s": "Project file structure / \"where things live\"",
+   "q": "What is THEORY_LOG.md?",
+   "a": "Hypothesis tracking with verdicts. Each entry: hypothesis → what was tested → status (refuted / confirmed / open). The \"ruled out\" tables grow over time.",
+   "id": "aaffc9c5408e"
+  },
+  {
+   "s": "Project file structure / \"where things live\"",
+   "q": "What is NEXT_SESSION.md?",
+   "a": "A handoff document with the copy-paste prompt for resuming the project in a fresh terminal. Pending writeups, candidates for next experiment, known bugs.",
+   "id": "3cc41f20337c"
+  },
+  {
+   "s": "Project file structure / \"where things live\"",
+   "q": "What is GLOSSARY.md?",
+   "a": "Plain-English definitions of terms in FINDINGS, the training scripts, and conversations. Source of truth for terminology.",
+   "id": "860ece632b7c"
+  },
+  {
+   "s": "Specific R40 / R41 numbers (worth memorizing)",
+   "q": "What was R40's vision ablation delta?",
+   "a": "0.481 (mean). Far past the 0.05 threshold for \"vision is load-bearing.\"",
+   "id": "0355703384a6"
+  },
+  {
+   "s": "Specific R40 / R41 numbers (worth memorizing)",
+   "q": "What was R40's both-touched on static balls?",
+   "a": "15/20 (near R37's best of 18/20). With vision genuinely contributing.",
+   "id": "7ef3348b4acb"
+  },
+  {
+   "s": "Specific R40 / R41 numbers (worth memorizing)",
+   "q": "What was R40's mean reward?",
+   "a": "−234 (vs R38's −757). A big jump in task performance.",
+   "id": "73e873220867"
+  },
+  {
+   "s": "Specific R40 / R41 numbers (worth memorizing)",
+   "q": "What was R41's vision ablation delta?",
+   "a": "0.851 mean (0.799 median). Highest in project history.",
+   "id": "54e367890914"
+  },
+  {
+   "s": "Specific R40 / R41 numbers (worth memorizing)",
+   "q": "What was R41's both-touched on moving balls?",
+   "a": "1/20 (and 9/20 on static-ball generalization).",
+   "id": "72ffb07c2b93"
+  },
+  {
+   "s": "Specific R40 / R41 numbers (worth memorizing)",
+   "q": "What was R42's both-touched?",
+   "a": "2/20 on moving balls; 18/20 on static. R42 = matched proprio control, no MICOA, no vision.",
+   "id": "9334e1fc0c16"
+  },
+  {
+   "s": "Specific R40 / R41 numbers (worth memorizing)",
+   "q": "What was R38's vision ablation delta?",
+   "a": "0.66. The first run that broke the dead zone — but task regressed to 6/20.",
+   "id": "fe70cc1b0dc1"
+  },
+  {
+   "s": "Specific R40 / R41 numbers (worth memorizing)",
+   "q": "What was R36's ablation delta?",
+   "a": "0.0019. Phase IX MICOA + symmetric KL — vision mirrored proprio and stayed inert.",
+   "id": "1f6cc4d7c93d"
+  },
+  {
+   "s": "Specific R40 / R41 numbers (worth memorizing)",
+   "q": "What was R37's ablation delta and reward?",
+   "a": "Ablation 0.0023 (still inert), but 18/20 both-touched (best blind-proprio result). The architecture didn't help vision but didn't hurt proprio.",
+   "id": "4ed563e044c0"
+  },
+  {
+   "s": "Specific R40 / R41 numbers (worth memorizing)",
+   "q": "What was the Phase VII best?",
+   "a": "R19 (cart substrate, ent=0.5 + vel_bonus=0.10): +380 ± 7.8 reward, 20/20 hits at t=14976.",
+   "id": "3aac94b8b2e1"
+  },
+  {
+   "s": "Hyperparameters worth memorizing",
+   "q": "What is the default `max_steps` per episode?",
+   "a": "2000 for Phase VII+. (train_crawler.py defaults to 600 — a known gotcha; specify explicitly.)",
+   "id": "378007f51446"
+  },
+  {
+   "s": "Hyperparameters worth memorizing",
+   "q": "What is the typical replay buffer size?",
+   "a": "50,000 transitions.",
+   "id": "9b82d451139a"
+  },
+  {
+   "s": "Hyperparameters worth memorizing",
+   "q": "What is the default SAC batch size?",
+   "a": "256 samples per gradient step.",
+   "id": "34b7ef54fa0a"
+  },
+  {
+   "s": "Hyperparameters worth memorizing",
+   "q": "What is the default tau (Polyak coefficient)?",
+   "a": "0.005.",
+   "id": "6d927f7d1f40"
+  },
+  {
+   "s": "Hyperparameters worth memorizing",
+   "q": "What is the default learning rate?",
+   "a": "1e-4 (0.0001).",
+   "id": "ef2bde623718"
+  },
+  {
+   "s": "Hyperparameters worth memorizing",
+   "q": "What is the entropy schedule used in Phase XII?",
+   "a": "ent_coef = 0.5 → 0.2 over steps 15000–30000 (linear anneal).",
+   "id": "1c3011fa2682"
+  },
+  {
+   "s": "Hyperparameters worth memorizing",
+   "q": "What is the velocity bonus scale in Phase VII+?",
+   "a": "0.10 (multiplied by hip velocity magnitude).",
+   "id": "7abaf2a83f63"
+  },
+  {
+   "s": "Architectural choices that didn't work",
+   "q": "Why didn't the pancake torso work?",
+   "a": "The torso was flatter than its wheelbase. Tipping onto an edge was a stable resting state — wheels ended up \"on its back.\"",
+   "id": "ca9d6dab1cd1"
+  },
+  {
+   "s": "Architectural choices that didn't work",
+   "q": "Why didn't sideways arms work?",
+   "a": "With 2-DOF shoulder (pitch Y + roll X), an arm aligned with X rotated around its own axis under shoulder_roll — useless. Only pitch (Y) worked, which swings up/down. The body could only push down, creating wheelies, not paddle.",
+   "id": "5b07e900a233"
+  },
+  {
+   "s": "Architectural choices that didn't work",
+   "q": "Why didn't frozen proprio from Stage 0 work in Stage 1?",
+   "a": "Stage 0's proprio was only partially adapted. Freezing it in Stage 1 (different terrain) dropped performance from 6/20 to 1/20. The protect-proprio principle presumes proprio has already learned the *target* terrain.",
+   "id": "aa1ea1f2fc32"
+  },
+  {
+   "s": "Architectural choices that didn't work",
+   "q": "Why didn't hand-only contact detection work?",
+   "a": "Episodes where the creature rolled over the ball or pinned it with the torso got no credit — a bug in the task definition, not the learner.",
+   "id": "46590d19b0da"
+  },
+  {
+   "s": "Architectural choices that didn't work",
+   "q": "Why didn't a min target radius of 0.2 m work?",
+   "a": "A resting hand was already touching the spawn point. \"14/20 touches\" was almost entirely spawn-luck, not learning.",
+   "id": "66daa7bdf099"
+  },
+  {
+   "s": "Bayesian fusion concepts",
+   "q": "What is a Gaussian?",
+   "a": "A bell-curve probability distribution, fully specified by its mean μ (center) and standard deviation σ (spread). Written `N(μ, σ)`. The most-used distribution in ML because it has clean math (closed-form KL, easy sampling, simple precision-weighted fusion).",
+   "id": "d63eefe0976e"
+  },
+  {
+   "s": "Bayesian fusion concepts",
+   "q": "Why do MICOA encoders output Gaussians instead of point estimates?",
+   "a": "A point estimate says \"the latent is here\" with no confidence info. A Gaussian says \"I think it's here (μ), and I'm this sure (σ).\" The PoE fusion needs the σ to weight modalities by precision — without it there's no way to know whose claim should dominate.",
+   "id": "a87ce46f6cb7"
+  },
+  {
+   "s": "Bayesian fusion concepts",
+   "q": "What is precision (in Bayesian terms)?",
+   "a": "The inverse variance: precision = 1/σ². \"How confident am I in this estimate?\" High precision = small σ = sharp claim.",
+   "id": "b97086853c4e"
+  },
+  {
+   "s": "Bayesian fusion concepts",
+   "q": "How does precision-weighted averaging work?",
+   "a": "Each input is weighted by its claimed precision. High-precision (small-σ) inputs dominate the combined estimate. Bayes-optimal when the inputs are conditionally independent.",
+   "id": "b51e9084783e"
+  },
+  {
+   "s": "Bayesian fusion concepts",
+   "q": "Why does PoE multiply distributions instead of adding?",
+   "a": "Multiplying two Gaussians gives a Gaussian whose precision is the sum of the precisions — exactly Bayesian combination of independent estimates. Adding gives a mixture, which represents disjunctive uncertainty, not joint confirmation.",
+   "id": "790b4cf8e546"
+  },
+  {
+   "s": "Bayesian fusion concepts",
+   "q": "What is a posterior in Bayesian terms?",
+   "a": "The updated belief about a variable after seeing evidence: posterior = (likelihood × prior) / evidence. The PoE fused (μ_combined, σ_combined) is the posterior over the latent given both modalities.",
+   "id": "dac456a1f2ce"
+  },
+  {
+   "s": "Bayesian fusion concepts",
+   "q": "What is multisensory integration in Bayesian terms?",
+   "a": "Combining multiple sensory inputs about the same world state using their relative precisions. Reduces uncertainty when modalities agree; preserves uncertainty when they disagree. The brain is theorized to do this.",
+   "id": "1d35c1d4787b"
+  },
+  {
+   "s": "Open questions for Phase XIII",
+   "q": "What is the σ-clamp sweep Phase XIII proposal?",
+   "a": "Train R41-style under moving balls with progressively higher σ_p_min values (0.20, 0.30, 0.50) and see if any clamp value prevents the encoder from collapsing. Tests the \"Goldilocks band narrows with task difficulty\" hypothesis.",
+   "id": "0dbe3d142254"
+  },
+  {
+   "s": "Open questions for Phase XIII",
+   "q": "What is the DrQ-v2 Phase XIII proposal?",
+   "a": "Replace plain SAC with DrQ-v2 (image-aware RL with pixel data augmentation). Tests whether the actor's gradient — not just the encoder — is the missing piece for productive vision use.",
+   "id": "b1553c90fb32"
+  },
+  {
+   "s": "Open questions for Phase XIII",
+   "q": "What is the one-armed body Phase XIII proposal?",
+   "a": "A body where geometric reach cannot cover the arena from a fixed posture. Breaks proprio's \"paddle and hope\" sufficient strategy. Forces directional steering, which requires perception.",
+   "id": "094ef904b8f5"
+  },
+  {
+   "s": "Open questions for Phase XIII",
+   "q": "What is the gaze-gated reward Phase XIII proposal?",
+   "a": "Reward credit only when the agent has visually attended the target before contact. Forces vision to be a prerequisite of credit, not a bonus.",
+   "id": "2cea7b2d312c"
+  },
+  {
+   "s": "Open questions for Phase XIII",
+   "q": "What is the broader Phase XIII framing?",
+   "a": "The substrate level is exhausted (Phase VIII closed it). The encoding level is mostly solved (R38/R40/R41 confirm ablation can be made large). What remains is the actor-gradient level: how the policy update uses the now-rich representation. Phase XIII tests different interventions at the actor level.",
+   "id": "8c1b23896f2c"
+  },
+  {
+   "s": "Big-picture / theory",
+   "q": "What is the project's central thesis?",
+   "a": "Build a minimal embodied agent that learns to perceive the physical world through *survival consequence*, not by rewarding desired behavior. Perception emerges from environmental pressure, not from experimenter design.",
+   "id": "0e5e0a2b6034"
+  },
+  {
+   "s": "Big-picture / theory",
+   "q": "What's the \"mechanical\" interpenetration claim?",
+   "a": "Vision should weave into proprio's pathways, not occupy a separate module. Empirically supported across R38 (0.66), R40 (0.48), R41 (0.85) ablation deltas.",
+   "id": "d4e6d8f423e0"
+  },
+  {
+   "s": "Big-picture / theory",
+   "q": "What's the \"behavioral\" interpenetration claim?",
+   "a": "Interpenetration should produce more capable agents than modular fusion. NOT yet supported in any run in this project — R40's capability came from proprio alone; R41's incapability came from vision interfering.",
+   "id": "9cba079333e7"
+  },
+  {
+   "s": "Big-picture / theory",
+   "q": "What's the difference between mechanical and behavioral support?",
+   "a": "Mechanical = the architecture demonstrably integrates the modalities (vision-ablation L2 ≥ 0.05). Behavioral = the integrated agent outperforms a matched single-modality control. The project has the first, not the second.",
+   "id": "1de33880d04b"
+  },
+  {
+   "s": "Big-picture / theory",
+   "q": "What does \"the architecture is necessary but not sufficient\" mean?",
+   "a": "MICOA + predictive KL is required to break the ablation dead zone (no plain SAC run ever did). But achieving load-bearing vision doesn't automatically yield better outcomes. The actor still has to learn to use the now-rich signal productively.",
+   "id": "08c352e2088c"
+  },
+  {
+   "s": "Big-picture / theory",
+   "q": "What is the long-running \"vision active vs productive\" tension?",
+   "a": "Active = the policy reads pixels (high ablation). Productive = the policy reads pixels well (high outcome lift). All MICOA runs since R38 are active; none has been productive enough to beat a matched proprio control on the harder task.",
+   "id": "64a4b1010a1a"
+  },
+  {
+   "s": "Big-picture / theory",
+   "q": "What would count as a definitive win for the project's central thesis?",
+   "a": "A task where the matched proprio control fails (≤2/20 say) and a MICOA + vision policy succeeds (≥10/20), with healthy encoder metrics (σ > clamp floor, kl_pred < 5) and vision ablation > 0.20. That run has not yet happened.",
+   "id": "1e96c93b0162"
+  },
+  {
+   "s": "Big-picture / theory",
+   "q": "Why isn't 18/20 (R42 static) enough to settle anything?",
+   "a": "Because R42 is pure proprio. It shows proprio alone is sufficient for the static-ball task — confirming what was already known. The question is whether vision adds anything, and 18/20 says it doesn't NEED to.",
+   "id": "8b38b2767302"
+  },
+  {
+   "s": "Big-picture / theory",
+   "q": "What does \"the bottleneck has moved\" mean after Phase XII?",
+   "a": "Before MICOA: the bottleneck was at the encoder (ablation in dead zone). After R40: encoder is solved, bottleneck moved to \"make integration robust across tasks.\" After R41: encoder robustness is fragile, bottleneck has moved to \"make the actor use vision productively.\" Each phase has uncovered a deeper layer.",
+   "id": "43436c145860"
+  },
+  {
+   "s": "Generalization, robustness & recent methods (Phase XII–XV)",
+   "q": "What is DroQ?",
+   "a": "Dropout Q-functions — a tweak to SAC's critics (dropout + layer-norm inside the critic, plus a higher update-to-data ratio). The regularization lets you do many gradient updates per env step without the critic diverging, so the agent learns more per sample. Introduced Phase XIV (R45), run with --droq --dropout-rate 0.01 --utd 4.",
+   "id": "65a6bbb499e1"
+  },
+  {
+   "s": "Generalization, robustness & recent methods (Phase XII–XV)",
+   "q": "What is UTD (update-to-data ratio)?",
+   "a": "How many gradient updates the agent does per environment step. Vanilla SAC is UTD=1; DroQ lets us push to UTD=4 for faster learning in samples. Only stable with regularization like DroQ.",
+   "id": "ea0b8b9bb013"
+  },
+  {
+   "s": "Generalization, robustness & recent methods (Phase XII–XV)",
+   "q": "What is eccentricity (ecc) in our evals?",
+   "a": "How far off-center the target is from straight ahead, in meters of lateral offset. ecc=0.00 = ball dead ahead (easiest); larger = further to the side (harder). Standard bins: 0.00, 0.05, 0.10, 0.15, 0.20, 0.25.",
+   "id": "9fb8e17b5e9e"
+  },
+  {
+   "s": "Generalization, robustness & recent methods (Phase XII–XV)",
+   "q": "Why is the eccentricity sweep the only valid health metric on this substrate?",
+   "a": "The Phase XIV methodological finding: eval mean_reward and critic_loss are invalid here (cart motion and reward shaping make them misleading). Only the deterministic both-touched success at each ecc bin (eval_phase_v.py) reliably reflects behavior.",
+   "id": "18522f77af0d"
+  },
+  {
+   "s": "Generalization, robustness & recent methods (Phase XII–XV)",
+   "q": "What is vision-ablation sensitivity (abl_L2)?",
+   "a": "Zero out the pixel columns of the observation and measure how much the policy's action vector changes (L2). High = policy depends on vision; near-zero (~0.002–0.024 \"dead zone\") = vision inert. Preferred over task-success because AB can solve the task by proprio-grope alone.",
+   "id": "b3c4fe8d9763"
+  },
+  {
+   "s": "Generalization, robustness & recent methods (Phase XII–XV)",
+   "q": "Does high vision-ablation mean vision is useful?",
+   "a": "No. R41 had the highest ablation ever (0.85) yet performed worse than the proprio control. High action-level ablation = \"load-bearing\"; actually winning more episodes than a proprio control = \"productive.\" Vision keeps clearing the first bar without the second.",
+   "id": "6350ec265722"
+  },
+  {
+   "s": "Generalization, robustness & recent methods (Phase XII–XV)",
+   "q": "What is \"generalization-as-primary\"?",
+   "a": "The post-Phase-V reframing: the interesting claim isn't \"vision helps\" but that AB builds a representation that generalizes — lawful behavior on configurations it never trained on. Acid test = zero-shot transfer to held-out objects. Core confirmed for proprio; strong form (vision recruited at the margin) refuted.",
+   "id": "06efbda9bb5e"
+  },
+  {
+   "s": "Generalization, robustness & recent methods (Phase XII–XV)",
+   "q": "What is zero-shot transfer, in Phase XV terms?",
+   "a": "Performance on objects AB was never trained on, with no extra training. Phase XV trains on a subset of an equivalence class (e.g. ball radii {0.040, 0.053, 0.075}) and measures both-touched on held-out members ({0.047, 0.090}).",
+   "id": "bd97e1014a01"
+  },
+  {
+   "s": "Generalization, robustness & recent methods (Phase XII–XV)",
+   "q": "Interpolation vs extrapolation for a held-out value?",
+   "a": "Interpolation = the held-out value sits inside the trained range (0.047 between 0.040 and 0.075). Extrapolation = outside it (0.090 beyond 0.075). Extrapolation is the harder, more telling test of a metric representation.",
+   "id": "7c54b2bc9490"
+  },
+  {
+   "s": "Generalization, robustness & recent methods (Phase XII–XV)",
+   "q": "What is the distance law / time-to-contact finding?",
+   "a": "Steps-to-reach scales lawfully with target distance (R44 proprio ≈ 688·d − 218, r≈0.89) and extrapolates to untrained distances — evidence the representation is metric, not memorized. Confound: the sweeping cart logs spurious ~1-step contacts that add scatter.",
+   "id": "61d1a2164aab"
+  },
+  {
+   "s": "Generalization, robustness & recent methods (Phase XII–XV)",
+   "q": "What is the equivalence-class test (object variety)?",
+   "a": "The Phase XV paradigm: treat \"ball\" as a class with members varying along a dimension (size, shape), train on some, hold others out, and ask whether AB treats held-out members as the same class (still reaches them). Operationalizes the source theory's equivalence-class construct.",
+   "id": "e39c40b9a278"
+  },
+  {
+   "s": "Generalization, robustness & recent methods (Phase XII–XV)",
+   "q": "What is \"the 0.075 anomaly\"?",
+   "a": "A reproducible dip in both-touched success at the TRAINED ball radius 0.075 (~6/20) in both R46 and R48, even though smaller and larger sizes do better. Anomalous because a trained size should be easy; flagged for a focused diagnostic.",
+   "id": "38ee2af59418"
+  },
+  {
+   "s": "Generalization, robustness & recent methods (Phase XII–XV)",
+   "q": "What is the constant_velocity_bouncer cart mode?",
+   "a": "The substrate AB sits on — a cart drifting at constant speed (--cart-speed 0.15) that bounces off the arena walls, giving gentle ongoing motion. Distinct from a static base or a self-moving ball (--ball-speed, set to 0 in Phase XIV/XV).",
+   "id": "24e49591e650"
+  },
+  {
+   "s": "Generalization, robustness & recent methods (Phase XII–XV)",
+   "q": "What is the difference between broad touch and hand-only touch in the cart env?",
+   "a": "Broad (`touched_ball*`) fires on a collision between the ball and ANY MIMo geom (feet/legs/torso/head/hands); hand-only (`hand_touched_ball*`) counts only the 8 hand/finger geoms. Reward, termination, and \"both-touched\" success use the BROAD metric — success need not involve a hand.",
+   "id": "8489c55b86eb"
+  },
+  {
+   "s": "Generalization, robustness & recent methods (Phase XII–XV)",
+   "q": "What did the Phase XV hand-touch diagnostic find?",
+   "a": "both_HAND = 0 across every size AND every ecc bin, on the whole cart line (R44/R45/R46/R48) — the two-ball task is never COMPLETED with two hands. But hands DO engage for one ball (any_HAND up to 21/30), rising with eccentricity where a real reach is needed. Verified not a detection bug (8 hand geoms correctly identified). Reframe: both_HAND=0 is a developmental stage, not a bug.",
+   "id": "caf57d140a90"
+  },
+  {
+   "s": "Generalization, robustness & recent methods (Phase XII–XV)",
+   "q": "What is cart-sweep delivery, and why does it matter?",
+   "a": "The balls sit on the cart's sweep line, so the moving cart carries AB's BODY into the stationary ball — the substrate delivers the ball rather than AB reaching. (The cart geom itself is a non-colliding visual marker; it never pushes the ball.) It's why low-ecc success is hand-free. Not purely a confound — incidental body contact is a valid \"world-is-consistent\" signal; but to study reaching, move balls off the sweep line or score hand-only.",
+   "id": "c6765c4752bc"
+  },
+  {
+   "s": "Generalization, robustness & recent methods (Phase XII–XV)",
+   "q": "What actually causes the \"0.075 anomaly\"?",
+   "a": "A glancing-blow knock-away. A mid-size ball (~0.070-0.080) is struck off-centre and skids to the arena wall, out of the no-locomotion creature's reach; the second ball can't be recovered so the episode never completes. It's a contiguous dead BAND, not a point; geometric (mass unchanged by radius); a manipulation artifact, not a generalization hole.",
+   "id": "6673ea0d6b3e"
+  },
+  {
+   "s": "Generalization, robustness & recent methods (Phase XII–XV)",
+   "q": "Why can't you trust describe_video.py (Gemini) for pass/fail on these runs?",
+   "a": "It narrated the failing 0.075 episodes as successful \"throw-then-pickup\" sequences — it doesn't know the task is \"touch both balls\", so it over-reported success. Pass/fail must come from the metric and from frames read directly, not the free-text narration.",
+   "id": "c79f28e708dc"
+  },
+  {
+   "s": "Encoder / decoder and prior-work concepts",
+   "q": "In our context, what is an encoder?",
+   "a": "The part of the network that turns raw sensory input into the compact internal latent the policy reads. We have two (one per modality): the proprio encoder (3-layer MLP, 7 proprio numbers → 64-dim Gaussian (μ,σ) over the shared latent Z) and the vision encoder (DrQ-v2 4-conv CNN, stereo image → its own 64-dim (μ,σ)). \"The visual latent\" we keep probing IS the vision encoder's output. \"Representation failure\" = the encoder's output doesn't carry the needed info; the encoder is the fix target when the problem is representational.",
+   "id": "07a8f1ea99f5"
+  },
+  {
+   "s": "Encoder / decoder and prior-work concepts",
+   "q": "In our context, what is a decoder?",
+   "a": "A readout that runs the other way — from the internal latent back to an interpretable quantity. We don't keep one as a permanent part of the agent; we attach them in two roles: (1) a PROBE (read-only diagnostic) — the ball-x linear probe is a decoder, latent → ball lateral position, R²≈0.08 measured the representation failure; (2) an AUXILIARY LOSS — a trainable decoder whose error is pushed back into the encoder to force it to encode the target. Read-only decoder measures the failure; auxiliary-loss decoder tries to fix it.",
+   "id": "e2be8e4d019f"
+  },
+  {
+   "s": "Encoder / decoder and prior-work concepts",
+   "q": "What is \"modality dominance / modality competition\"?",
+   "a": "From supervised multimodal learning (Wang/Tran/Feiszli 2020; Peng OGM-GE 2022): trained jointly on two streams, the easier-to-learn stream wins the gradient and the other stays underused — a joint net can lose to the best single modality. It's the closest NAMED neighbor to AB's \"vision integrated but inert\" (proprio solves the task, so vision is starved). Difference: in that literature the weak modality is usually recoverable by rebalancing; AB's is more severe (the latent barely encodes the target — representation failure).",
+   "id": "1c16da1246d7"
+  },
+  {
+   "s": "Encoder / decoder and prior-work concepts",
+   "q": "What is privileged teacher → student distillation?",
+   "a": "The field's standard fix for making vision load-bearing when a non-visual channel already solves the task (Learning by Cheating 2019; RMA 2021; Lee/Hwangbo 2020). Train a teacher with privileged info unavailable at deployment (e.g. the exact target vector), then train a vision-only student to imitate the teacher's actions. Vision becomes load-bearing because supervision forces it — the step AB's end-to-end run skips. The #1 recognized fix for AB's pathology.",
+   "id": "def93bb9a815"
+  },
+  {
+   "s": "Encoder / decoder and prior-work concepts",
+   "q": "What is an asymmetric actor-critic?",
+   "a": "An RL trick (Pinto et al. 2018) where the critic gets extra privileged info (full state) during training while the actor sees only the real sensor observations. The critic is discarded at deployment, so feeding it ground-truth doesn't cheat at test time but gives the actor a better learning signal. \"Asymmetric\" = actor and critic see different things. A gentler alternative to full teacher→student distillation for putting supervisory pressure on a vision policy.",
+   "id": "f70ab120c5c1"
+  },
+  {
+   "s": "Encoder / decoder and prior-work concepts",
+   "q": "What is an auxiliary (ball-position) decode loss?",
+   "a": "A second objective bolted onto the RL loss whose only job is to force the encoder to represent a specific variable. Attach a small decoder to the vision latent, train it to predict ball position, and backprop that error INTO the encoder — so the encoder is rewarded for encoding ball position regardless of whether the task gradient does. AB's #2 candidate fix; targets the encoder directly (vs the read-only probe, which only measures the failure). Success test: does vision-ablation become directional (which side the ball is on) instead of the content-free ecc=0 spike?",
+   "id": "c27f4c5eb17b"
+  },
+  {
+   "s": "Encoder / decoder and prior-work concepts",
+   "q": "Is generalization just \"many variations resolving to the same outcome\"? (domain randomization vs equivalence class)",
+   "a": "That's the mechanism (called domain randomization in robotics RL, and the equivalence class in the source theory: many instances -> one conditioned response). But variation is NECESSARY, not SUFFICIENT. Proof from our own runs: proprio saw the variations and built a lawful, extrapolating class (the distance law); vision saw the SAME variations and still failed (R^2~=0.08) because nothing forced its latent to encode what varied. Variation only generalizes when the learner is compelled to REPRESENT it. Also note: in RL the \"same outcome\" is defined by the reward function, standing in for the body's unconditioned reflex in development.",
+   "id": "5e8391c249d6"
+  },
+  {
+   "s": "Encoder / decoder and prior-work concepts",
+   "q": "What is the \"coordination vs interpenetration\" distinction (Numenta vs Taylor/MICOA)?",
+   "a": "COORDINATION (Numenta voting): each cortical column builds its own object model independently; modules exchange messages and reach consensus, but no module's internal representation is restructured by another's learning history -- experts vote, the vote doesn't rewire any expert. INTERPENETRATION (Taylor Ch.5, what MICOA builds): the modules' representations become mutually constitutive -- vision comes to encode the world the way proprio does because proprio's history reshapes vision. The disagreement is NOT about whether a domain-general mechanism exists (Numenta grants one: reference frames everywhere) -- it's about content-merger. Prism adaptation is the discriminating test.",
+   "id": "63b9bb705615"
+  },
+  {
+   "s": "Encoder / decoder and prior-work concepts",
+   "q": "How does prism adaptation discriminate coordination from interpenetration?",
+   "a": "If vision only COORDINATED with proprio via voting, reversing prisms would produce permanent vision-vs-proprio disagreement (vision votes \"left\", proprio \"right\", forever). Instead, over days of active movement, vision RECALIBRATES onto the motor frame -- its internal mapping is restructured by the other modality's learning history. That restructuring is interpenetration; pure coordination cannot produce it.",
+   "id": "c9b142c81759"
+  },
+  {
+   "s": "Encoder / decoder and prior-work concepts",
+   "q": "What does the prism-adaptation literature establish for AB's proprio-first thesis?",
+   "a": "Two facts. (1) Adaptation requires ACTIVE, self-produced movement -- Held & Hein's 1963 kitten carousel: the passively-carried kitten gets identical visual input and does NOT adapt; exposure isn't enough, action is necessary (the passive kitten = a pure confirmation loss). (2) The motor/world frame is the ANCHOR: when vision and action conflict the system re-anchors vision toward action, not vice versa (\"reality and movement don't switch; vision does\"). Justifies the .detach()-on-proprio asymmetry in MICOA's temporal-predictive loss.",
+   "id": "ea6087951a8b"
+  },
+  {
+   "s": "Encoder / decoder and prior-work concepts",
+   "q": "Does Numenta's \"replication beats centralization\" argument rule out AB's shared generalization mechanism?",
+   "a": "No. That argument is against a BASE COLUMN (one privileged module others query) -- which AB doesn't propose. AB proposes a base MECHANISM (a domain-general way of building generalization every column instantiates) -- and Numenta already believes in one (reference frames used everywhere). They agree on mechanism-generality; they disagree only on content-merger (interpenetration). Refinement AB holds honestly: a general mechanism doesn't guarantee automatic success -- AB's vision stayed inert (R^2~=0.08) despite seeing all the variation.",
+   "id": "b8c01c236f70"
+  },
+  {
+   "s": "Encoder / decoder and prior-work concepts",
+   "q": "What is the \"movement-as-substrate\" thesis, and what's the open bet in it?",
+   "a": "A step beyond generalization-as-primary: movement isn't just learned first, it's the SUBSTRATE the generalizing representation is built on. Confirmed for proprio (the extrapolating distance law; prism adaptation showing the motor frame is the anchor). The OPEN, not-yet-confirmed bet: that building in richer movement makes VISION generalize too. R49 and DOF-curriculum runs are the cheap probes of that causal link -- to be confirmed on the current body BEFORE any expensive port to a richer simulator.",
+   "id": "2eb93a521420"
+  },
+  {
+   "s": "Encoder / decoder and prior-work concepts",
+   "q": "What is the rule \"faithful to the mechanism, free on the implementation\"?",
+   "a": "AB reconstructs human perception but isn't bound to the human developmental path. Judge each human fact by whether it's LOAD-BEARING for the mechanism (active self-produced movement; motor competence before vision is trusted; graded freezing/freeing of DOF -- keep) or an INCIDENTAL detail of being a mammal (gestation, helpless emergence, the literal year of crawling -- drop or compress into a curriculum). Diverge freely where it SERVES the mechanism (privileged training signals, near-perfect proprioception, repeatable resets, compressed lifetimes); stay faithful only to movement-first, interpenetration, and the equivalence class.",
+   "id": "daf7de3aaf36"
+  },
+  {
+   "s": "Encoder / decoder and prior-work concepts",
+   "q": "What are the two concrete levers for building movement in as a substrate, and their cost?",
+   "a": "(1) Graded DOF freezing/freeing (Berthouze & Lungarella) -- lock most joints, master the reduced body, progressively release DOF so each motor competence scaffolds the next; CHEAP, a curriculum change in MuJoCo today. (2) Migrate to a richer/growing body (MIMo v2: hands, foveated vision, sensorimotor delays, birth->24mo growth) -- EXPENSIVE, justified only once the substrate->vision-generalization link is confirmed on the current simplified body.",
+   "id": "8dfa172807bb"
+  },
+  {
+   "s": "Encoder / decoder and prior-work concepts",
+   "q": "What is the \"winnability\" rule (every episode must be winnable)?",
+   "a": "The project's governing design rule (2026-06-16): we must give AB the tools to succeed; if AB never gets near the target, that's OUR setup failure, not AB's learning failure, and it teaches nothing. Every episode must be winnable -- the action we want reinforced (touching the ball) must be physically possible for AB's body, and for vision runs the target must be in view or bringable into view by an action AB can execute (a head turn). Never present a target that can't be seen and can't be found. Don't score impossible configs as \"AB failed.\" Body fidelity never outranks winnability. Rationale: an action can only be reinforced if it can occur.",
+   "id": "3b822a5a7007"
+  },
+  {
+   "s": "Encoder / decoder and prior-work concepts",
+   "q": "What is a \"constrained action space\" (position-offset control) and why does it matter for AB?",
+   "a": "From \"A Walk in the Park\" (2022): the policy outputs small OFFSETS around a default pose (turned into motion by a PD position controller with damping Kd~10), instead of raw joint torques. Their ablation: a raw-torque (\"unconstrained\") action space makes ZERO progress; position-offset control trains stably (a quadruped walks in ~20 min). AB's mimo_crawler.xml uses 26 raw-torque <motor> actuators and 0 position servos -- exactly the failing config -- which is the leading verified-precondition hypothesis for why AB's locomotion collapsed (stillness / one-move-then-freeze). Fix = small additive XML/wrapper change, not new research.",
+   "id": "fdc8509e88b6"
+  },
+  {
+   "s": "Encoder / decoder and prior-work concepts",
+   "q": "What is a reverse / start-state curriculum?",
+   "a": "The principled way to enforce the winnability rule (Florensa 2017/2018): start every episode with the goal trivially achievable (target close, in reach, in view) and push start-states/goals outward only as success rate rises, so the agent always has a winnable episode and difficulty tracks competence. Replaces AB's hand-tuned spawn-cone/eccentricity scaffolds with a mechanism that never presents an impossible config. Pairs with automatic goal generation (goals of intermediate, feasible-but-not-mastered difficulty).",
+   "id": "aeb5ff8f7eac"
+  },
+  {
+   "s": "Locomotion & imitation (crawler track, 2026-07)",
+   "q": "What was the single biggest lever that unblocked crawling?",
+   "a": "The crawl-ready DEFAULT POSE. In position-offset control the actuator ranges are centred on a default pose; offsets only reach useful behaviour if that pose is locomotion-adjacent. Our old default was flat prone; re-centring on an arms-forward \"commando\" pose raised hand-driven translation 6× (0.039→0.225 m) and let RL discover crawling. Lesson: change the default pose, not just the clamp width.",
+   "id": "7e8d27d65de1"
+  },
+  {
+   "s": "Locomotion & imitation (crawler track, 2026-07)",
+   "q": "What is early / tip-termination and why does it matter for locomotion?",
+   "a": "Ending an episode (with a penalty) when the body fails — here when it tilts past 50°. DeepMimic: early termination \"eliminates local optima by penalising the character when on the ground.\" Without it, lying still or rolling onto one's side and sliding are unpunished optima. It's the standard tool that makes from-scratch locomotion trainable.",
+   "id": "ef0a05100ea0"
+  },
+  {
+   "s": "Locomotion & imitation (crawler track, 2026-07)",
+   "q": "What is specification gaming, in our project's own example?",
+   "a": "Optimising the literal reward against its intent. Our case: rewarding |CoM velocity| (unsigned speed) was maximised by rocking in place — high speed, zero net displacement. Fix: a signed reward (approach = distance-closed toward the goal) plus structurally blocking the cheap exploit (tip-termination).",
+   "id": "fc50cb4af494"
+  },
+  {
+   "s": "Locomotion & imitation (crawler track, 2026-07)",
+   "q": "Why couldn't the creature home on the ball until we added target_obs?",
+   "a": "The ball's position wasn't in the observation, so the approach reward fired only when random locomotion happened toward the ball — zero directional gradient (mean toward-ball translation exactly 0.000 m). Appending the ball's body-frame position converted the random walk into directed homing (+0.195 m). It's privileged info; vision is meant to supply it next.",
+   "id": "9ca649a78ed2"
+  },
+  {
+   "s": "Locomotion & imitation (crawler track, 2026-07)",
+   "q": "What is potential-based reward shaping?",
+   "a": "A dense reward = the change in a potential function (here, drop in distance-to-ball per step). Being a difference of a potential, it gives a smooth gradient toward the goal without changing the optimal policy — the safe way to guide sparse-reward tasks.",
+   "id": "c74e08243bc2"
+  },
+  {
+   "s": "Locomotion & imitation (crawler track, 2026-07)",
+   "q": "Do you need motion-capture to use reference-motion imitation (DeepMimic/AMP)?",
+   "a": "No. Hand-authored keyframes work, and often just reference-state initialization (RSI — starting episodes from a few good poses of the target motion) suffices. We held this in reserve; the affordance fix made the gait discoverable without imitation, but RSI/DeepMimic is the indicated tool if a gait stays unsampled.",
+   "id": "02800b3e4129"
+  },
+  {
+   "s": "Locomotion & imitation (crawler track, 2026-07)",
+   "q": "Why did PPO succeed where SAC couldn't on the crawl task?",
+   "a": "SAC (off-policy, replay buffer) discovered directed crawling but never stabilised it — it burst to a good policy then regressed as the buffer drifted. PPO (on-policy, no replay drift) trained smooth-monotonically and roughly doubled contacts (23%→57%). MIMo's one working whole-body skill used PPO. On-policy stability can beat off-policy sample-efficiency for consolidating a sparse-reward motor skill.",
+   "id": "8ac13ddf166d"
+  },
+  {
+   "s": "Locomotion & imitation (crawler track, 2026-07)",
+   "q": "Crawling vs creeping — what's the difference?",
+   "a": "Clinically, \"crawling\" = belly on the floor (commando/belly-crawl); \"creeping\" = up on hands-and-knees. Our arms_fwd result is belly-crawl. Creeping is harder — it needs the body to support its weight (strength), which MIMo's rolling paper flags as a separate hard requirement.",
+   "id": "867465f13574"
+  },
+  {
+   "s": "Vision-phase cards (added 2026-07-04)",
+   "q": "What is the \"substrate/capability split\" and why use it?",
+   "a": "A way to measure \"reinforced not destroyed\": track the proprioceptive SUBSTRATE (gait, tip-rate, displacement, speed — must be preserved) separately from the visual CAPABILITY (contact rate — must climb). Reinforced = capability up, substrate held. It stops a single success number from hiding a degraded gait.",
+   "id": "97f10a62db38"
+  },
+  {
+   "s": "Vision-phase cards (added 2026-07-04)",
+   "q": "What is the \"vision load-bearing gap\"?",
+   "a": "Contact rate with pixels minus contact rate with pixels zeroed. Stage B: 63.3% → 20.0% (+43 pts), and 20% is exactly the blind baseline — so vision does real directional work and proprio is fully recoverable. A gap that drops BELOW baseline instead means \"integrated but inert.\"",
+   "id": "37326bfa9e00"
+  },
+  {
+   "s": "Vision-phase cards (added 2026-07-04)",
+   "q": "Why did reward-alone (Stage C) fail to grow vision but warm-started Stage B succeed?",
+   "a": "Because the bottleneck was policy-gradient, not representation. The bearing IS decodable from pixels (Stage A R²=0.84), but on a cone where forward-crawl already scores, reward is too weak to grow steering. Warm-starting the vision head from the distilled encoder (distil-then-RL) hands reward a working representation, so it only has to use it.",
+   "id": "8ef8edf6493f"
+  },
+  {
+   "s": "Vision-phase cards (added 2026-07-04)",
+   "q": "Representation failure vs policy-gradient failure — which was AB's vision problem?",
+   "a": "Policy-gradient. For years it looked like a representation failure (decode R²≈0.08), but that was an unwinnable camera. Fix the camera + supervise, and R²=0.84 — the encoder can build direction; the real failure was reward not connecting that signal to behavior.",
+   "id": "11cdaa6f342d"
+  },
+  {
+   "s": "Vision-phase cards (added 2026-07-04)",
+   "q": "What is a zero-init residual vision head?",
+   "a": "A trainable CNN whose output is added to a frozen base policy's action, final layer initialized to zero, so at init the policy equals the frozen base (gait preserved) and vision can only ADD. From \"No More Blind Spots\" / residual RL / ControlNet zero-init.",
+   "id": "231c07050873"
+  },
+  {
+   "s": "Vision-phase cards (added 2026-07-04)",
+   "q": "Why can't you trust Gemini's description of the crawler videos?",
+   "a": "It anthropomorphizes the prone MIMo infant as a person \"trying to stand and failing,\" and reads the floor ball as part of its head — contradicting measured contacts. For this body, inspect extracted frames directly instead.",
+   "id": "2ef7d1de4109"
+  },
+  {
+   "s": "Vision-phase cards (added 2026-07-04)",
+   "q": "What is search lateralization and how do we detect it?",
+   "a": "A learned search sweep that favors one side — e.g. head-search seed 1 hits far-right spawns 88% but far-left 11%. Invisible in aggregate contact rate; detected by logging spawn bearing per episode and binning contact by left/right extremes. Also shrinks the measured vision gap by inflating the blind baseline on the favored side.",
+   "id": "2b0381ba1717"
+  },
+  {
+   "s": "Vision-phase cards (added 2026-07-04)",
+   "q": "What is reward-shaping fragility of the vision gap?",
+   "a": "An auxiliary reward term (e.g. tilt penalty) can erase vision dependence without hurting overall success: the posture run kept ~the same contact rate as the +22.5-gap recipe but its gap flipped to −7.5, because the penalty made vision-triggered aggressive maneuvers unprofitable and training found a blind-sweep solution. Always re-measure the ablation gap after any reward change.",
+   "id": "c8dbe09c4d00"
+  },
+  {
+   "s": "Vision-phase cards (added 2026-07-04)",
+   "q": "What is the touch-search escape, and why couldn't time pressure close it?",
+   "a": "With one solid object on the platform, blind sweeping eventually wins — vision stays optional. Calibration showed the blind sweep is FAST (37-55% contact inside 150-350 steps), so every episode clock that starves the sweep also starves the sighted reach (gap never opened; one model's gap went negative under pressure). The escape needs a wrong-answer cost, not a time cost.",
+   "id": "d5b002e0c450"
+  },
+  {
+   "s": "Vision-phase cards (added 2026-07-04)",
+   "q": "How does the decoy-discrimination task force vision to carry direction?",
+   "a": "A blue decoy ball, physically identical to the red target, spawns every episode; touching it ends the episode with a penalty. Touch can't distinguish the balls, so above-chance target choice requires reading the red ball's direction from pixels. Blind performance should drop to ~chance.",
+   "id": "0cd7a5e92f28"
+  },
+  {
+   "s": "Vision-phase cards (added 2026-07-04)",
+   "q": "What is choice accuracy and why did it replace contact rate on the decoy task?",
+   "a": "red/(red+blue) among ball-touching episodes. Exchangeable placement pins the blind floor at exactly 50%, so above-chance choice is unambiguously vision. Contact rate stays high for a blind grab-the-nearest policy, so it no longer measures seeing. First result: 63.2% sighted vs 49.4% ablated (decoy_v2_s0, 100 eps each).",
+   "id": "db877deee187"
+  },
+  {
+   "s": "Vision-phase cards (added 2026-07-04)",
+   "q": "What is the gaze-choice inversion in the decoy task?",
+   "a": "AB fixates the ball it will NOT take (rejected ball in view ~60% of steps; chosen ball ~13-20%), already in the early phase of the episode. Vision may work as a veto/repulsor on the fixated ball rather than attraction to red. Found by quantifying color-in-view from the obs pixels after a human noticed red almost never appears in the eye panels.",
+   "id": "b83bedce7e2d"
+  },
+  {
+   "s": "Vision-phase cards (added 2026-07-04)",
+   "q": "What is the touch-as-information proposal, and why is it deferred until after prism?",
+   "a": "Make incidental contact informative (tactile obs + non-terminal wrong-touch + memory) instead of purely a terminal success/failure signal — bumps then teach object positions like a hip-bump on a table does. Deferred because a blind policy could then discriminate by touch alone (bump → episode continues → it was the decoy → seek the other), reopening the touch-search escape and destroying the above-chance-choice = vision metric the current phase depends on.",
+   "id": "b0f649951c00"
+  }
+ ]
+}
