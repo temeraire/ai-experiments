@@ -82,7 +82,8 @@ def build_envs(args):
     ck = dict(
         vision=True, stereo=True, target_obs=False, approach_reward_scale=10.0,
         velocity_bonus_scale=0.0, action_mode="position_offset",
-        spawn_radius=tuple(args.spawn_radius), step_cost=0.0, xml_path=XML,
+        spawn_radius=tuple(args.spawn_radius), step_cost=0.0, xml_path=args.xml,
+        prism_offset_deg=args.prism_offset,
         crawl_pose=CRAWL_POSES["arms_fwd"], terminate_tilt_deg=50.0, tip_penalty=-5.0,
         tilt_cost=args.tilt_cost,
         decoy_ball=args.decoy,
@@ -135,6 +136,10 @@ def main():
     p.add_argument("--init-model", default=None,
                    help="continue training from this checkpoint .zip (extension run; "
                         "use a fixed cone, not --curriculum)")
+    p.add_argument("--xml", default=XML,
+                   help="env XML (prism adaptation uses mimo_crawler_pos_wide_prism.xml)")
+    p.add_argument("--prism-offset", type=float, default=0.0,
+                   help="train under a fixed prism displacement (whole-field with --decoy)")
     args = p.parse_args()
 
     tag = args.run_tag
