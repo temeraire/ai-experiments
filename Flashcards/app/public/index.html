@@ -43,6 +43,8 @@
   /* ---- study ---- */
   .meta { display:flex; justify-content:space-between; align-items:center;
     color:var(--muted); font-size:13px; margin-bottom:8px; }
+  .meta button { border:1px solid var(--edge); background:var(--chip); color:var(--ink);
+    padding:5px 10px; border-radius:8px; font-size:13px; }
   .flips { display:flex; gap:6px; }
   .flips span { width:10px; height:10px; border-radius:50%; background:var(--edge); }
   .flips span.used { background:var(--accent); }
@@ -113,6 +115,7 @@
   <!-- STUDY -->
   <div class="panel" id="panel-study">
     <div class="meta">
+      <button id="btn-home" title="End session">⌂ Home</button>
       <span id="prog"></span>
       <span id="secname"></span>
       <span class="flips" id="flips"><span></span><span></span><span></span></span>
@@ -280,6 +283,14 @@ async function answer(result) {
 }
 $("btn-right").onclick = () => answer("right");
 $("btn-wrong").onclick = () => answer("wrong");
+
+$("btn-home").onclick = () => {
+  // End the session early. Answers already given are recorded server-side;
+  // show them a summary if there are any, else straight back to setup.
+  const answered = session ? session.right.length + session.wrong.length : 0;
+  if (answered > 0) { endSession(); session = null; }
+  else { session = null; showPanel("setup"); }
+};
 
 function endSession() {
   const n = session.right.length + session.wrong.length;
