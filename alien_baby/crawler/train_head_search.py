@@ -140,6 +140,9 @@ def main():
                    help="env XML (prism adaptation uses mimo_crawler_pos_wide_prism.xml)")
     p.add_argument("--prism-offset", type=float, default=0.0,
                    help="train under a fixed prism displacement (whole-field with --decoy)")
+    p.add_argument("--freeze-encoder", action="store_true",
+                   help="with --init-model: freeze the vision CNN; locates adaptation "
+                        "in the policy heads vs the encoder")
     args = p.parse_args()
 
     tag = args.run_tag
@@ -158,6 +161,12 @@ def main():
         model = PPO.load(args.init_model, env=train_env, device=args.device)
         model.ent_coef = args.ent_coef
         print(f"[head_search] continuing from {args.init_model}")
+        if args.freeze_encoder:
+            n = 0
+            for p_ in model.policy.features_extractor.parameters():
+                p_.requires_grad = False; n += 1
+            print(f"[head_search] froze features_extractor ({n} tensors) — "
+                  f"adaptation must happen in the policy/value heads")
     else:
         model = PPO(
             "MlpPolicy", train_env,
