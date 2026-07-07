@@ -360,6 +360,12 @@
       <geom name="ghost_geom" type="sphere" size="0.053" rgba="1 0.12 0.12 1" contype="0" conaffinity="0"/>
     </body>
 
+    <!-- GHOST decoy (blue): visible non-physical twin of target2, for two-ball prism
+         mode (whole-field displacement). Parked far off-platform unless prism+decoy. -->
+    <body name="ghost2" mocap="true" pos="10 10 0">
+      <geom name="ghost2_geom" type="sphere" size="0.053" rgba="0.12 0.3 1 1" contype="0" conaffinity="0"/>
+    </body>
+
     <!-- TARGET BALL 2 (blue) — used by Phase C two-ball env -->
     <body name="target2" pos="0 0.4 2.078">
       <joint name="target2_free" type="free" armature="0" damping="0" limited="false" stiffness="0" frictionloss="0"/>

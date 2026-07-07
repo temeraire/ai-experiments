@@ -245,12 +245,24 @@ class MimoCrawlerEnv(gym.Env):
         self.prism_offset_deg = float(prism_offset_deg)
         self._headcam_vopt = None
         self._ghost_mocap_id = -1
+        self._ghost2_mocap_id = -1
         if self.prism_offset_deg != 0.0:
             self.model.geom_group[self._target_geom_id] = 3
             self._headcam_vopt = mujoco.MjvOption()
             self._headcam_vopt.geomgroup[3] = 0   # real ball invisible to the agent's cameras
             gbody = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_BODY, "ghost")
             self._ghost_mocap_id = int(self.model.body_mocapid[gbody])
+            if self.decoy_ball:
+                # Two-ball prism = whole-field displacement: hide the real blue
+                # decoy too and show a blue ghost at its rotated bearing. (Rotating
+                # only red would be confounded by the gaze-choice inversion — the
+                # anchored blue would steer AB to true-red via blue-avoidance.)
+                self.model.geom_group[self._target2_geom_id] = 3
+                g2 = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_BODY, "ghost2")
+                if g2 < 0:
+                    raise ValueError("prism+decoy needs a 'ghost2' body in the XML "
+                                     "(use mimo_crawler_pos_wide_prism.xml)")
+                self._ghost2_mocap_id = int(self.model.body_mocapid[g2])
 
         # Cache joint qpos/dof addresses for fast obs
         self._jpos_adr = np.array([
@@ -380,6 +392,12 @@ class MimoCrawlerEnv(gym.Env):
             r = float(np.hypot(bx, by))
             th = np.arctan2(bx, by) + np.deg2rad(self.prism_offset_deg)
             self.data.mocap_pos[self._ghost_mocap_id] = [r * np.sin(th), r * np.cos(th), bz]
+            if self._ghost2_mocap_id >= 0 and self._ball2_active:
+                b2x, b2y, b2z = self.data.qpos[tgt2_qadr:tgt2_qadr + 3]
+                r2 = float(np.hypot(b2x, b2y))
+                th2 = np.arctan2(b2x, b2y) + np.deg2rad(self.prism_offset_deg)
+                self.data.mocap_pos[self._ghost2_mocap_id] = [
+                    r2 * np.sin(th2), r2 * np.cos(th2), b2z]
 
         mujoco.mj_forward(self.model, self.data)
         # Crawl track: let the body drop the few cm onto the platform and settle into
