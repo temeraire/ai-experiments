@@ -2406,3 +2406,25 @@ s2 details: official gap +25.0 (62.5 vs 37.5), blind wrong-ball 55.0% vs sighted
 Videos frame-verified (arrow + haircut instrumentation). NEXT: the flagship prism-displacement
 test on a strong discriminator (ext_s0 78% or s2 77%) — THEORY_LOG 2026-07-06 Q4 has the
 pre-registered predictions (follow-the-ghost vs arousal-gate vs partial binding).
+
+### PRISM DISPLACEMENT RESULT (2026-07-08 overnight) — AB FOLLOWS THE GHOST. Vision drives target selection.
+Whole-field two-ghost displacement (both reals solid+hidden, ghost pair rotated by offset), eval-only,
+100 eps/cell, both strong discriminators. Sanity gates passed (off-0 sighted 76.4/77.5 vs known 78/77;
+ablated 47.8/45.5 ≈ floor). choice_vs_true by offset:
+- ext_s0: 76.4 (0) → 76.7 (15) → 62.0 (30) → **53.2 (45) → 44.7 (60)** → 51.6 (90)
+- s2:     77.5 (0) → 65.6 (15) → 47.6 (30) → **53.3 (45) → 37.8 (60)** → 36.3 (90)
+Collapse is monotone-ish and — decisively — goes **BELOW chance at 60-90°** in both checkpoints.
+Arousal-gating can only degrade toward 50, never below: systematic mis-selection means the displaced
+picture is steering. Wrong-ball rate rises with offset in both (21→47% ext; 20→58% s2).
+**Conditional smoking gun** (pooled per-episode, all offsets): when the red GHOST appears nearer the
+true-BLUE position, AB touches blue **67.7%** (n=334); when it appears nearer true-red, **34.8%**
+(n=563). At off 30/45: 74.5%/71.8% vs ~30%. AB goes where red APPEARS and takes whatever solid
+object is there. **VERDICT: REGIME 1 — FOLLOW THE GHOST**, in both checkpoints, by the primary
+pre-registered metric (choice ≤58 by 45° ✓✓, CI-separated from baseline) plus the conditional
+analysis. Honesty note: the pre-registered displayed_red heading fraction was uninformative as
+implemented (start→end bearing necessarily lands on a real ball for committed episodes; threshold
+unusable) — the conditional analysis above is its valid replacement and is stronger.
+Implication: decoy training produced genuinely DIRECTION-CARRYING vision — the "presence/arousal
+only" account is dead for these policies. The prism ADAPTATION + AFTEREFFECT experiment (the
+project flagship) is now unblocked and meaningful; strategist's draft awaits human approval.
+Files: eval_prism_decoy.py, ghost2 in mimo_crawler_pos_wide_prism.xml, env two-ghost placement.
