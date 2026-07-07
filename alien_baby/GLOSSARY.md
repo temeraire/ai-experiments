@@ -389,3 +389,35 @@ incidental bumps update AB's knowledge of object positions. Deliberately deferre
 prism experiment: informative touch reopens the touch-search escape at the tactile level ("bump it;
 if the episode continues it was the decoy; go find the other"), which would wreck the clean
 choice-accuracy = vision metric. See TOUCH_AS_INFORMATION_PROPOSAL.md.
+
+**Whole-field prism displacement (two-ghost design).** The displacement mechanism for the two-ball
+task: BOTH real balls stay solid at their true positions but are hidden from AB's cameras, and a
+red + blue ghost pair appears at the true bearings rotated by the prism offset. Displacing only the
+red cue would have been confounded by the gaze-choice inversion — an anchored blue ghost would
+steer AB to true-red via blue-avoidance even under full visual control. Rotating the whole picture
+means every visual selection rule points at the displaced bearing, so "follows the picture" vs
+"ignores the picture" separates cleanly. The classical prism experiment, faithfully.
+
+**Follow-the-ghost (prism regime 1).** The pre-registered outcome in which displacing the visible
+picture drags AB's choice with it — confirmed 2026-07-08 in both strong discriminators. Signatures:
+choice-vs-true collapses with offset and goes BELOW chance at 60-90° (an arousal gate can only decay
+toward 50%, never through it), and conditionally, when the red ghost appears near the true-blue
+position AB touches blue 67.7% vs 34.8% otherwise. The other pre-registered regimes: arousal-gate
+(choice ignores the offset) and partial binding (in between). Caution on record: follow-the-ghost
+proves vision's position signal drives selection, NOT that AB has a spatial map — a retinotopic
+"climb the red gradient" salience-follower predicts the same curve.
+
+**Negative aftereffect (prism adaptation).** The decisive signature of genuine sensorimotor
+recalibration: after adapting to displaced vision, remove the prism and behavior errs in the
+OPPOSITE direction of the displacement before re-converging — the system re-mapped vision-to-action,
+and the re-mapping now misfires on normal input. Distinguishes true recalibration from mere
+relearning (a second policy for prism conditions), which recovers during adaptation but shows NO
+aftereffect when the prism comes off. The arousal account predicts neither. This is the measurement
+the whole project is named for.
+
+**Synthetic-null metric check.** Standing methods rule (theory-monitor, 2026-07-08) after the third
+"tautological metric" trap: before any new metric becomes a headline number, run it on a case where
+the true answer is known to be null/chance and confirm it reports that. The traps it would have
+caught: the ±22° cone where forward-crawl made vision look load-bearing, the decoy_v1 placement
+bias that made a blind sweep look like discrimination, and the displayed-red heading fraction whose
+committed-episode end-positions could only land on real balls (structurally incapable of its job).

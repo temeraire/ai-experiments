@@ -1580,3 +1580,29 @@ purely a terminal success/failure signal — bumps then teach object positions l
 table does. Deferred because a blind policy could then discriminate by touch alone (bump → episode
 continues → it was the decoy → seek the other), reopening the touch-search escape and destroying
 the above-chance-choice = vision metric the current phase depends on.
+
+**Q: Why did the prism experiment displace BOTH balls' images instead of just the red one?**
+A: Because of the gaze-choice inversion: AB picks red partly by avoiding blue. With blue anchored
+at its true bearing, blue-avoidance alone would steer AB to true-red and fake an "ignores the
+picture" result even if vision fully drives selection. Rotating the whole visual field (red + blue
+ghosts together, both real balls hidden but solid) makes every visual strategy point at the
+displaced bearing — the confound-free classical prism.
+
+**Q: What was the smoking-gun evidence that AB follows the displaced picture (follow-the-ghost)?**
+A: Two things. Choice-vs-true fell BELOW chance at 60-90° offsets in both checkpoints (an arousal
+gate can only decay toward 50%, never through it — systematic wrongness means the picture steers).
+And conditionally: when the red ghost appeared near the true-blue position, AB touched blue 67.7%
+of the time vs 34.8% when the ghost sat near true-red.
+
+**Q: What is the negative aftereffect, and why is it the decisive prism measurement?**
+A: After adapting to displaced vision, remove the prism: genuine recalibration errs OPPOSITE the
+trained offset before re-converging (the re-mapped vision-action link misfires on normal input).
+Mere relearning recovers during adaptation but snaps back clean with no aftereffect; arousal
+predicts nothing changes. Only the aftereffect separates the three — recovery during adaptation
+alone cannot.
+
+**Q: What is the synthetic-null metric check and which three traps motivated it?**
+A: Run every new metric on a known-null case before trusting it as a headline number. Motivated by:
+the ±22° cone (forward-crawl faked vision value), the decoy_v1 placement bias (geometry faked
+discrimination), and the displayed-red heading fraction (committed episodes end at real balls, so
+the metric could never report ghost-following even when it happened).
