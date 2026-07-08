@@ -421,3 +421,42 @@ the true answer is known to be null/chance and confirm it reports that. The trap
 caught: the ±22° cone where forward-crawl made vision look load-bearing, the decoy_v1 placement
 bias that made a blind sweep look like discrimination, and the displayed-red heading fraction whose
 committed-episode end-positions could only land on real balls (structurally incapable of its job).
+
+**Per-bearing symmetry check (central-cone reading; 2026-07-07).** The diagnostic that decides
+whether the decoy discriminator is *really seeing color* or just *always going one way*. Worry:
+if the policy had a habit of always crawling left, and red happened to spawn on the left more
+often, its choice accuracy would look like color vision when it is actually a motor bias (a
+*lateralization confound* — the same "aggregate hides the tails" trap that bit head-search seed 1).
+Test: with fair exchangeable placement (red/blue assigned to the two bearings at random, blind
+floor exactly 50%), bin every episode by which side the red ball actually spawned and read accuracy
+per bin. Result (decoy_v2_ext_s0, 100 ep): accuracy is *symmetric*, not one-sided — ~93–100% when
+red is within ±40° of center (left OR right), falling to ~50% (chance) at BOTH far edges. That
+symmetric central-strong / edge-weak shape rules out a left-going motor bias and instead points to
+a benign field-of-view limit: the camera can resolve the two balls near center but not at the
+extreme angles, so the edge bins are effectively unwinnable (cf. winnability rule — do not score
+out-of-view configs as "AB failed to discriminate"). Consequence: the headline "vision drives the
+choice" survives; the honest caveat is that it drives the choice *only inside the central cone*,
+and the ~76% aggregate is pulled down by edge bins that no color signal could win.
+
+**Visual object-agnosticism (mismatched-shape decoy test; 2026-07-08).** The visual analogue of
+the proprioceptive object-agnostic equivalence class — and a stronger claim. Proprio's shape-
+invariance (Phase XV: held-out ellipsoid/capsule reached like spheres) is nearly by-construction,
+because a touch-driven reach *cannot perceive shape*. Vision can: a box and a sphere have different
+32×32 silhouettes. The test overrides the two decoy balls' geom primitive zero-shot on the sphere-
+trained policy and asks whether the color choice survives. It does: choice_vs_true is 76–81%
+whether the red target is a sphere, box, or capsule, whether the blue decoy is too, and even when
+BOTH objects are boxes (neither the trained shape). So the visual channel keys on COLOR identity,
+not object geometry — a *learned* indifference to shape information it demonstrably has, which is
+why it outranks the proprio version. Two controls make it airtight: the ablated (blind) floor is
+~52% for box and sphere alike (no cube-vs-rolling-sphere touch/physics asymmetry), and the fixed
+red-sphere prism "ghost" distractor is hidden in all conditions (else it would supply a red sphere
+in the box conditions and fake the result). Open: approach-red vs avoid-blue, and whether shape
+would compete at higher camera resolution.
+
+**Ghost distractor (offset-0 confound).** A pre-existing scene element the shape test forced into
+the open: the prism env's `ghost`/`ghost2` mocap bodies are only repositioned/hidden when
+prism_offset ≠ 0, so at offset 0 a fixed RED-sphere ghost sits in view. Hiding it left the decoy
+control unchanged (77.2% vs prior 76–79%), so it did NOT confound prior offset-0 results — but it
+WOULD have silently defeated the shape test by supplying a red sphere in every box condition. Now
+neutralized (alpha=0) in the shape-eval harness. Canonical example of a distractor that is inert
+for one question and fatal for the next — check scene contents per experiment, don't assume.

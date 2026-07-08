@@ -1667,3 +1667,22 @@ It does **not**, however, prove a genuine spatial map in the full sense (a coord
 **Recommended diagnostic** (not a training run — just a measurement): re-score the already-collected aftereffect eval episodes, binned by bearing distance from the trained −30° offset, to check whether the 77–100%-vs-~33% conditional-capture split is a clean step (consistent with a single global bias) or itself has structure (consistent with a spatially varying remap) — this uses data already on disk.
 
 ---
+
+## 2026-07-08 — Visual object-agnosticism: the decoy discrimination is color-bound, not shape-bound
+
+The mismatched-shape decoy test (FINDINGS 2026-07-08) overrides the two balls' geom primitive zero-shot on the sphere-trained decoy policies. Result across two seeds, four shapes (sphere/box/capsule + both-non-sphere): sighted choice_vs_true is 76–81% in every condition; ablated floors sit at ~52% for both box and sphere.
+
+**Generalization-as-primary / object-agnostic equivalence-class claim: EXTENDED TO VISION for the first time.** Phase XV gave this claim its proprio support (held-out ellipsoid/capsule reached like spheres). That support was epistemically weak because proprio *cannot perceive shape* — invariance there is nearly definitional. The present result extends the equivalence class to the visual channel, where it is a genuine learned fact: vision HAS shape information (a box and a sphere have different 32×32 silhouettes, and the ablated floor confirms the difference is real to physics) and the policy nonetheless binds its choice to color, not geometry. Condition D (both objects boxes, neither the trained shape) at 79% is the sharpest cut — discrimination survives with the trained shape entirely absent. This is the strong form of the equivalence-class claim that the proprio-only result could not deliver.
+
+**Presence/arousal-vs-direction framework: consistent, and further constrained.** Today's prism-displacement entry established the decoy channel is directional (displacement degrades choice). This adds that the directional cue it uses is CHROMATIC — the policy computes "go toward the red one," and that binding is indifferent to the red object's shape. Together: the visual channel on the two-ball task is a color-keyed directional selector, robust to object geometry, limited only by field of view (central ~90–96%, edges →chance, unchanged across shapes).
+
+**Methodological note (synthetic-null / give-the-baseline-a-chance-to-cheat, again).** Two controls were load-bearing and both fired correctly. (1) The offset-0 prism `ghost` is a fixed red-sphere distractor left visible by the env; hiding it left the control unchanged (77.2% vs the prior 76–79%), so it did NOT confound prior offset-0 numbers — but it WOULD have silently defeated the shape test by supplying a red sphere in the box conditions. (2) The ablated floor was run per-shape; B′(box)=A′(sphere)=~52% rules out a cube-vs-rolling-sphere contact asymmetry masquerading as a visual result. Neither control was optional; both are now folded into the shape-eval harness.
+
+**What this resolves and what it doesn't.** Resolves: the decoy discrimination is not a shape/texture artifact and not a sphere-lock — it is color object-agnosticism. Does not resolve: whether the color binding is "approach red" or "avoid blue" (recolor test needed); whether shape would compete at higher camera resolution; shape × prism-displacement interaction.
+
+### Theory Monitor Note — 2026-07-08 (visual object-agnosticism)
+Object-agnostic equivalence class: **EXTENDED TO VISION (strong form)** — sphere-trained decoy policy discriminates color at full strength on boxes/capsules zero-shot, incl. both-object-novel (79%), across 2 seeds; ablated floor ~52% per-shape rules out a physical confound. First project evidence that the *visual* channel is object-agnostic (a learned indifference to available shape info, stronger than proprio's by-construction invariance).
+**Most important thing we don't know yet:** whether the color binding is approach-red or avoid-blue, and whether shape competes with color once the camera can resolve it.
+**Recommended diagnostic** (measurement, not a run): recolor test — target=green vs decoy=red (does the policy follow the rewarded target when it is no longer red → "approach target/avoid blue"), and target=red vs decoy=green (no blue present → does "avoid blue" collapse to chance). Separates approach-red from avoid-blue using the existing harness plus a geom_rgba override.
+
+---

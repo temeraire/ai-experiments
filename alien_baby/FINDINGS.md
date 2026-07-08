@@ -2482,3 +2482,34 @@ Files: prism_adapt_s0 run + curve/aftereffect JSONs (prism_battery_aftereffect_*
 > episodes already on disk by how far the ball is from the trained -30 degree offset direction, and
 > check whether the "captures the wrong ball" rate changes smoothly with that distance (a structured
 > remap) or is a flat step on/off either side of a fixed line (a single global bias). No new compute.
+
+## 2026-07-08 — Mismatched-shape decoy: vision's color discrimination is SHAPE-INVARIANT (first visual object-agnosticism)
+
+**Question.** "Object-agnostic reach" was established only for PROPRIO (Phase XV R47/R48: held-out ellipsoid/capsule reached like spheres), where agnosticism is nearly by-construction — a touch-driven reach cannot perceive shape. Every VISION result to date used red vs blue **spheres**, so whether the *visual* channel is object-agnostic was untested. This tests it directly: does the decoy policy's color choice survive when the objects are no longer the spheres it trained on?
+
+**Method (zero-shot, no retraining).** Override the two decoy balls' MuJoCo geom primitive at eval time (`eval_decoy_shape.py`; the env loads the model once and resets use `mj_resetData`, so a geom_type/size override persists). Sizes match the cart-env `_SHAPE_MAP` that produced clean proprio shape-transfer. Ran on `decoy_v2_ext_s0` (the clean symmetric seed) and `decoy_v2_s2`, 200 ep/cell, offset 0, exchangeable placement (blind floor 50%). **Confound caught & fixed:** at offset 0 the prism `ghost` bodies are not repositioned/hidden by the env, leaving a fixed RED-sphere ghost in view — a red-sphere reference that would defeat a shape test. Made both ghosts invisible (alpha=0) in ALL conditions incl. control. Verified via sanity render (overhead shows exactly 2 objects; agent left-eye at step 60 clearly sees the red box).
+
+**Result — color-driven, shape-invariant. EXT_S0 choice_vs_true (→RED), 200 ep:**
+
+| cond | red | blue | P(reach red) | 95% CI |
+|------|-----|------|-------------|--------|
+| A (control) | sphere | sphere | 77.2% | [70.6, 82.7] |
+| B | **box** | sphere | 81.4% | [75.2, 86.4] |
+| C | sphere | **box** | 80.7% | [74.2, 85.8] |
+| D | **box** | **box** | 79.0% | [72.4, 84.3] |
+| E | **capsule** | sphere | 76.4% | [69.7, 82.0] |
+| F | sphere | **capsule** | 79.1% | [72.5, 84.4] |
+| A′ ablated | sphere | sphere | 52.7% | [45.5, 59.8] |
+| B′ ablated | **box** | sphere | 52.2% | [45.0, 59.3] |
+
+All six sighted conditions are statistically identical (76–81%). The sphere-preference hypothesis (predicting B≪50%, C high) is refuted: B and C match the control, and **condition D holds at 79% with NEITHER object the trained sphere.** S2 replicates exactly (A 78.9 / B 77.0 / C 78.3 / D 79.1) — its earlier lateralization wedge does not touch shape-invariance.
+
+**Full shape vocabulary (EXT_S0, 200 ep each) — matching the proprio Phase-XV set:** red=ellipsoid/blue=sphere 79.4%; red=cylinder/blue=sphere 76.4%; both-ellipsoid 78.0%; both-capsule 74.6%; **red=box/blue=capsule (two different novel shapes, neither trained) 84.4%** — the hardest case and the cleanest. Invariance is complete across sphere/box/cylinder/ellipsoid/capsule, the exact vocabulary in which proprio shape-transfer was shown (R47/R48).
+
+**Critical control (ablated floors).** A′ and B′ both sit at ~52% (chance), and crucially B′ (red=box) equals A′ (red=sphere): **the box introduces no non-visual touch/physics/placement asymmetry**, so the sighted invariance is genuinely a property of the visual channel, not an artifact of how a cube contacts vs a rolling sphere. The by-bearing structure (central ~90–96%, edges toward chance) is unchanged across all shapes — the same field-of-view limit found in the per-bearing symmetry check, not a shape effect.
+
+**Interpretation.** The decoy policy keys on **color identity, not object geometry.** A policy trained only on spheres discriminates red-from-blue at full strength on boxes and capsules, zero-shot. This is the project's **first demonstration of visual object-agnosticism** — and it is a *stronger* claim than the proprio version, because vision CAN perceive shape (unlike the touch-driven reach) and still ignores it in favor of color. So the corrected, complete statement is: the proprioceptive reach program is shape-invariant largely by construction; the visual discrimination channel is shape-invariant *by learning* — it had shape information available and did not bind to it.
+
+**Files:** `crawler/eval_decoy_shape.py` (new), `crawler/_run_shape_battery.sh`, `crawler/_run_shape_ext.sh`, `crawler/_analyze_shape.py`; results `results/decoy_shape_*.json`.
+
+**Caveats / open:** (1) tested red-vs-blue only — whether the binding is "approach red" vs "avoid blue" is a separable follow-up (recolor test). (2) 32×32 stereo — shape is a coarse silhouette cue at this resolution, which is part of *why* color dominates; a higher-res camera might let shape compete. (3) all offset 0 (no prism); shape × displacement interaction untested.

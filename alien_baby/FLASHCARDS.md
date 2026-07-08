@@ -1606,3 +1606,27 @@ A: Run every new metric on a known-null case before trusting it as a headline nu
 the ±22° cone (forward-crawl faked vision value), the decoy_v1 placement bias (geometry faked
 discrimination), and the displayed-red heading fraction (committed episodes end at real balls, so
 the metric could never report ghost-following even when it happened).
+
+**Q: What was the per-bearing symmetry check, and what did it rule out?**
+A: The test for whether the decoy discriminator sees color or just always crawls one way (a
+lateralization confound). With fair exchangeable placement (blind floor 50%), bin episodes by the
+red ball's spawn side and read accuracy per bin. decoy_v2_ext_s0 came back SYMMETRIC — ~93–100%
+within ±40° of center on both sides, ~50% at both far edges. Symmetric edge-drop rules out a
+one-sided motor bias; it looks like a field-of-view limit (can't resolve the balls at extreme
+angles). The "vision drives the choice" headline holds, but only inside the central cone.
+
+**Q: What is visual object-agnosticism, and why is it a stronger result than the proprio version?**
+A: The decoy policy (trained on red/blue spheres) discriminates color at full strength — 76–81% —
+when the objects are boxes or capsules instead, zero-shot, even when BOTH are boxes (neither the
+trained shape). So vision keys on COLOR, not geometry. Stronger than proprio's shape-invariance
+because proprio literally can't sense shape (invariance is by-construction), whereas vision CAN see
+shape (different 32×32 silhouettes; the ~52% blind floor confirms the difference is physically real)
+and still ignores it — a learned indifference. Controls: ablated floor ~52% for box AND sphere (no
+touch/physics asymmetry); the fixed red-sphere prism "ghost" hidden in all conditions.
+
+**Q: What was the ghost-distractor confound in the shape test?**
+A: At prism offset 0 the env doesn't hide its `ghost` mocap bodies, so a fixed red-SPHERE ghost is
+in view every episode. Harmless for prior offset-0 results (hiding it left the control at 77% vs
+76–79%), but it would have wrecked the shape test — supplying a red sphere reference even when the
+real red target was a box. Fixed by setting ghost alpha=0 in all conditions. Lesson: a distractor
+inert for one question can be fatal for the next; inspect scene contents per experiment.
