@@ -1630,3 +1630,11 @@ in view every episode. Harmless for prior offset-0 results (hiding it left the c
 76–79%), but it would have wrecked the shape test — supplying a red sphere reference even when the
 real red target was a box. Fixed by setting ghost alpha=0 in all conditions. Lesson: a distractor
 inert for one question can be fatal for the next; inspect scene contents per experiment.
+
+**Q: Is the decoy policy's color rule "approach red" or "avoid blue", and how do we know?**
+A: Approach red — a positive attraction to the red channel. Recolor test (reward fixed on one
+object regardless of color): color it blue with a red decoy → the policy chases the red decoy
+(18% success); no red present (green vs blue) → chance, which a blue-avoider would beat; green vs
+yellow → prefers yellow (shares red's high R channel). So it's a chromatic phototropism ("steer
+toward the reddest region"), which leans the salience-vs-spatial fork toward salience: a
+red-channel-keyed directional attractor, not an abstract target-bearing map.

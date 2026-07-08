@@ -1685,4 +1685,10 @@ Object-agnostic equivalence class: **EXTENDED TO VISION (strong form)** — sphe
 **Most important thing we don't know yet:** whether the color binding is approach-red or avoid-blue, and whether shape competes with color once the camera can resolve it.
 **Recommended diagnostic** (measurement, not a run): recolor test — target=green vs decoy=red (does the policy follow the rewarded target when it is no longer red → "approach target/avoid blue"), and target=red vs decoy=green (no blue present → does "avoid blue" collapse to chance). Separates approach-red from avoid-blue using the existing harness plus a geom_rgba override.
 
+### Recolor addendum — 2026-07-08 (mechanism: approach-red, not avoid-blue)
+
+The visual-object-agnosticism cue was pinned down by a zero-shot recolor sweep (reward always on target_geom): target=red/decoy=green 73%, target=green/decoy=blue 53% (chance), target=blue/decoy=red 18% (chases the red decoy 72%), target=green/decoy=yellow 30% (goes to yellow 63%). Reading: a positive attraction to the RED channel — "approach red." The blue-target row (pursues red into the wrong choice) refutes an "avoid-blue" account; the green/blue chance row confirms it (a blue-avoider would pick green well above chance); the green/yellow row shows the rule keys on the R chromatic channel and generalizes to yellow.
+
+**Salience-vs-spatial fork: LEANS SALIENCE.** This is the same fork the prism-displacement entry left open. "Approach the reddest region in view" is a chromatic phototropism, not an abstract target-bearing computation. So the two 2026-07-08 results combine to: the decoy visual channel is a **red-channel-keyed directional attractor** — directional (displacement degrades choice → not pure arousal), object-agnostic (shape-invariant), FOV-limited, and salience-flavored rather than a spatial map. A true bearing/spatial-map account is now the less-supported branch, though not excluded (a phototropism can still carry usable bearing information at short range).
+
 ---

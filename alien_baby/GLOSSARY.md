@@ -460,3 +460,16 @@ control unchanged (77.2% vs prior 76–79%), so it did NOT confound prior offset
 WOULD have silently defeated the shape test by supplying a red sphere in every box condition. Now
 neutralized (alpha=0) in the shape-eval harness. Canonical example of a distractor that is inert
 for one question and fatal for the next — check scene contents per experiment, don't assume.
+
+**Approach-red / chromatic phototropism (recolor test; 2026-07-08).** What the decoy policy's
+color cue actually is, pinned down by recoloring the balls zero-shot (reward stays on the same
+object regardless of its color). The rule is a POSITIVE attraction to the red channel — "steer
+toward the reddest region in view" — not "avoid blue." Evidence: with the reward object colored
+blue and the decoy red, the policy chases the red decoy (reaches the rewarded object only 18%);
+with no red present (green target vs blue decoy) it drops to chance (a blue-avoider would still
+pick green); and it generalizes to yellow (R channel 0.95 ≈ red's 1.0) over green (0.12). Why it
+matters: this leans the long-open salience-vs-spatial-code fork toward SALIENCE — the visual
+channel is a chromatic phototropism (approach-the-red-blob), not an abstract "compute the target's
+bearing" spatial map. Combined with the displacement-degradation result (vision is directional),
+the decoy visual channel is best described as a red-channel-keyed *directional attractor*:
+directional, object-agnostic, field-of-view-limited, salience-flavored.

@@ -2512,4 +2512,20 @@ All six sighted conditions are statistically identical (76–81%). The sphere-pr
 
 **Files:** `crawler/eval_decoy_shape.py` (new), `crawler/_run_shape_battery.sh`, `crawler/_run_shape_ext.sh`, `crawler/_analyze_shape.py`; results `results/decoy_shape_*.json`.
 
-**Caveats / open:** (1) tested red-vs-blue only — whether the binding is "approach red" vs "avoid blue" is a separable follow-up (recolor test). (2) 32×32 stereo — shape is a coarse silhouette cue at this resolution, which is part of *why* color dominates; a higher-res camera might let shape compete. (3) all offset 0 (no prism); shape × displacement interaction untested.
+**Caveats / open:** (1) 32×32 stereo — shape is a coarse silhouette cue at this resolution, which is part of *why* color dominates; a higher-res camera might let shape compete. (2) all offset 0 (no prism); shape × displacement interaction untested.
+
+### Recolor mechanism test (2026-07-08) — the cue is "approach RED", not "avoid blue"
+
+The shape test shows the cue is color; this pins down *which* color rule. Recolor the two balls zero-shot (reward always on target_geom regardless of its color), sphere/sphere, ext_s0, 200 ep. P(reach the REWARDED target):
+
+| target | decoy | P(reach rewarded) | reads as |
+|--------|-------|-------------------|----------|
+| red | blue | 77% (baseline) | — |
+| red | green | 73.2% | red still works with no blue present |
+| **green** | **blue** | **52.7% (chance)** | no red present → cannot pick → **kills "avoid-blue"** |
+| **blue** | **red** | **17.7%** (chases red decoy 72%) | **chases red even when red is WRONG** |
+| green | yellow | 29.6% (goes to yellow 63%) | generalizes to yellow (shares the red channel) |
+
+**Verdict: the learned rule is a positive attraction to the red channel — "approach red."** The blue-target/red-decoy row is decisive (it pursues red into the wrong choice); the green/blue chance row rules out "avoid blue" (a blue-avoider would pick green well above chance, it doesn't); and the green/yellow row shows the rule keys on the R chromatic channel (yellow R=0.95 ≈ red R=1.0, green R=0.12), so it even prefers yellow over green.
+
+**Connection to the salience-vs-spatial fork (previously "unresolved").** This leans the fork toward the salience side: the mechanism is a color-keyed *phototropism* — steer toward the reddest region in view — rather than an abstract "compute the target's bearing" spatial code. Combined with today's displacement-degradation result (vision IS directional), the synthesized picture is: **the visual channel is a red-channel-keyed directional attractor** — directional (refutes pure arousal), shape-invariant (object-agnostic), field-of-view-limited, and chromatic-salience-flavored rather than a spatial map. Video evidence: `results/videos/decoy_shape_Rbox_Bsphere.mp4` (agent crawls to the red BOX, ignoring the blue sphere — a shape it never trained on).
