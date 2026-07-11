@@ -2529,3 +2529,136 @@ The shape test shows the cue is color; this pins down *which* color rule. Recolo
 **Verdict: the learned rule is a positive attraction to the red channel — "approach red."** The blue-target/red-decoy row is decisive (it pursues red into the wrong choice); the green/blue chance row rules out "avoid blue" (a blue-avoider would pick green well above chance, it doesn't); and the green/yellow row shows the rule keys on the R chromatic channel (yellow R=0.95 ≈ red R=1.0, green R=0.12), so it even prefers yellow over green.
 
 **Connection to the salience-vs-spatial fork (previously "unresolved").** This leans the fork toward the salience side: the mechanism is a color-keyed *phototropism* — steer toward the reddest region in view — rather than an abstract "compute the target's bearing" spatial code. Combined with today's displacement-degradation result (vision IS directional), the synthesized picture is: **the visual channel is a red-channel-keyed directional attractor** — directional (refutes pure arousal), shape-invariant (object-agnostic), field-of-view-limited, and chromatic-salience-flavored rather than a spatial map. Video evidence: `results/videos/decoy_shape_Rbox_Bsphere.mp4` (agent crawls to the red BOX, ignoring the blue sphere — a shape it never trained on).
+
+---
+
+## 2026-07-09 (overnight) — AFTEREFFECT REPLICATES ON SEED s2: the flagship is now a two-seed result
+
+**Context.** The 2026-07-08 prism-adaptation aftereffect (the project flagship) was single-seed (ext_s0). Two on-disk cells argued against it: an earlier `s2` aftereffect and a `frozen-encoder` aftereffect both showed *no* negative aftereffect. Overnight step 1 (`_rescore_aftereffect.py`, pure re-analysis) quantified this with the direction-conditional metric and flagged s2 replication as the pivotal open test.
+
+**Step 1 re-bin diagnostic (no compute).** s0 aftereffect is real and lawful: blue-capture 78% when blue is near the phantom (red−30°) vs 7% far (near−far **+71**). It is roughly **uniform across |bearing| bins** (+67/+61/+84 central/mid/peripheral) → leans a *global* "subtract ~30°" bias over a finely structured remap (the bearing_gen probe concentrates the effect at 0°/+30°, so global-dominant, not pure). It does **not wash out** (near−far stays +45..+77 across 50–300K de-adaptation steps). The old `s2` (near 31/far 53) and `frozen-enc` (near 9/far 56) cells show no aftereffect — motivating a proper full-chain s2 run.
+
+**Step 2 — full s2 adaptation chain (this run).** Phase B: continued the clean `decoy_v2_s2_best` discriminator under a fixed **+30° whole-field prism**, decoy task, weights unfrozen, **1M steps**, seed 2 (`prism_adapt_s2_rep`; ~2h14m, final eval reward 142). Phase C: prism-off aftereffect + −30° control + 300-ep pre-adaptation symmetric baseline (`eval_prism_decoy`).
+
+**Result — clean replication, matches s0:**
+
+| Cell | agg P(red) | blue-cap \| NEAR-phantom | blue-cap \| FAR | near−far |
+|---|---|---|---|---|
+| s2 PRE-adapt baseline (300 ep) | 76% | 27% [21,35] | 15% [10,22] | **+12** (≈symmetric) |
+| **s2_rep aftereffect (prism off)** | 53% | **78% [64,87]** | **11% [5,22]** | **+67** |
+| s2_rep −30° control | 52% | 80% [66,89] | 13% [6,24] | +67 |
+| [ref] s0 flagship aftereffect | 55% | 78% [64,87] | 7% [3,17] | +71 |
+
+**Interpretation.** The negative aftereffect is now **two-seed** (s2 +67 ≈ s0 +71), and the s2 run carries its own internal control: the pre-adaptation baseline is near-symmetric (+12), so adaptation *created* the +67 lawful capture toward the phantom (red−30°). The −30° control reproducing +67 confirms the bias is a persistent re-mapping, not a reaction to the current visual displacement. The earlier on-disk s2/frozen cells that showed no aftereffect are now explained: they were weaker/frozen adaptations — the frozen-encoder cell (near 9/far 56) shows that **freezing the encoder abolishes the aftereffect**, i.e. genuine recalibration requires the visual encoder to be plastic. Recalibration (not relearning, not arousal) is confirmed on a second seed by its decisive direction-specific signature.
+
+**Files:** `results/prism_adapt_s2_rep_{final,best}.zip`, `results/prism_battery_{aftereffect_s2_rep_off0,aftereffect_s2_rep_offm30,sym_s2_rep_300}.json`.
+
+---
+
+## 2026-07-09 (overnight) — "GENTLER ADAPTER" REFUTED: over-gentling abolishes recalibration (informative null)
+
+**Hypothesis.** The flagship Phase-B adaptation curve was noisy/partial (62→67→58→56→49→55). Try a
+gentler optimizer for a cleaner recovery curve: continue `decoy_v2_ext_s0_best` under +30° prism with
+**lower entropy (--ent-coef 0.003 vs flagship 0.01) and 2× training (2M steps)**, seed 0
+(`prism_adapt_ext_s0_gentle`). (Note: `--lr` is ignored on the continue path, so entropy + steps were the
+only working knobs.)
+
+**Result — it did not clean up the curve; it destroyed the adaptation.**
+
+Adaptation curve, choice-vs-true UNDER the +30° prism (recovery toward the ~78% no-prism baseline = the
+policy has re-aimed to compensate):
+
+| step | 0 | 100K | 250K | 500K | 750K | 1.0M | 1.25M | 1.5M | 1.75M | 2.0M |
+|---|---|---|---|---|---|---|---|---|---|---|
+| choice_vs_true | 60.9% | 56.0 | 52.3 | 50.6 | 49.4 | 51.1 | 42.4 | 48.9 | 54.8 | 48.2 |
+
+Instead of climbing toward compensation, it **drifts down to chance (~48%)** and stays there.
+
+Aftereffect (prism OFF) on the final gentle model, conditional phantom-capture:
+
+| cell | agg P(red) | blue-cap \| NEAR | blue-cap \| FAR | near−far |
+|---|---|---|---|---|
+| gentle aftereffect off0 | 48% | 33% | 49% | **−16** |
+| gentle −30° control | 51% | 27% | 56% | −30 |
+| [ref] s0 flagship | 55% | 78% | 7% | +71 |
+| [ref] s2_rep | 53% | 78% | 11% | +67 |
+
+**Interpretation.** Lower entropy + longer training did **not** stabilize recalibration — it abolished it.
+The prism-off discrimination itself eroded from ~78% to ~48% (near chance), and the aftereffect signature
+is absent (near−far −16, wrong sign). This bounds the recipe: the flagship regime (ent≈0.01, ~1M steps) is
+where recalibration happens; over-gentling drifts the policy to chance under the prism and carries no
+compensatory bias out.
+
+**Why this matters (strengthens Step 2).** The negative aftereffect is now shown to **track whether
+recalibration occurred**, not to be a generic outcome of any prism-adaptation run: present when the policy
+recalibrates (s0 flagship +71, s2_rep +67), **absent when it does not** (frozen-encoder near−far ≈ −47;
+this over-gentled run −16). Recalibration requires a *plastic encoder* AND *sufficient exploration*; remove
+either and the aftereffect vanishes. That the aftereffect appears exactly in the recalibrating cases and
+nowhere else is itself evidence it is a genuine recalibration signature.
+
+**Files:** `results/prism_adapt_ext_s0_gentle_{final,best}.zip` + `.../ckpt_*_steps.zip`;
+`results/prism_battery_gentlecurve_off30_*.json`, `results/prism_battery_gentle_aftereffect_{off0,offm30}.json`.
+
+---
+
+## 2026-07-09 (overnight) — SHAPE × DISPLACEMENT: follow-the-ghost is SHAPE-INVARIANT
+
+**Question.** Offset-0 showed the color discrimination is shape-invariant. Does that survive under a
+prism? Under displacement the head-cam sees the red/blue GHOSTS (reals hidden+solid, only touched), so
+this overrides the **ghost** shapes (the seen picture) while holding the touched real balls as spheres —
+isolating "does follow-the-ghost depend on the SEEN shape?". `eval_decoy_shape.py --offset` (new,
+additive); `decoy_v2_ext_s0_best`, 200 ep/cell.
+
+**Result — shape-invariant at both offsets** (choice_vs_true → RED; sphere-ghost = the flagship
+displacement condition):
+
+| offset | sphere/sphere (ctrl) | box/sphere | box/box | ablated (box/sphere) |
+|---|---|---|---|---|
+| 30° | 63.4% [±6.9] | 65.0% | 59.2% | 52.7% (chance) |
+| 45° | 55.5% [±7.2] | 58.1% | 57.0% | — |
+
+At each offset the box-ghost cells match the sphere-ghost control within CI, and the sphere/sphere
+controls reproduce the flagship displacement values (62.0 @30°, 53.2 @45°). **Follow-the-ghost degrades
+by the same amount regardless of the seen ghost shape** — even with BOTH ghosts boxes (neither a trained
+sphere), AB follows the displaced red the same. The ablated floor (52.7% ≈ chance) confirms the box adds
+no non-visual asymmetry, so the invariance is genuinely a property of the visual channel.
+
+**Interpretation.** The directional vision-following (not just static color choice) is shape-invariant:
+AB's "approach red" phototropism keys on the red chromatic channel and follows the displaced *picture*
+whatever its silhouette. Closes the FINDINGS caveat "(2) all offset 0; shape × displacement untested."
+Caveats: modest power (200 ep, ±7 CI); ext_s0 only; offsets 30/45 only.
+
+**Files:** `results/decoy_shape_disp_off{30,45}_{RsBs,RbBs,RbBb}.json`, `results/decoy_shape_disp_off30_RbBs_abl.json`.
+
+---
+
+## 2026-07-09 — HIGHER-RES (64×64) camera: shape-vs-color test INCONCLUSIVE (underpowered discriminator)
+
+**Question.** At 32×32, color completely dominated and discrimination was shape-invariant (a coarse
+silhouette can't compete). Does 64×64 let *shape* start to matter? Trained a from-scratch decoy run at
+64px (curriculum, 2M, seed 0; `AB_CAM_RES=64` env-var override — reversible, default stays 32). CNN
+adapts automatically (conv output computed at runtime). Run completed 2M steps in ~9.9h (fps throttled
+121→56 over the long sustained load — NOT ~4.5h as the 50K smoke projected).
+
+**Result — the 64px model discriminated too weakly for a clean test.** Choice→red (150 ep):
+
+| cell | choice→red |
+|---|---|
+| sphere/sphere control (sighted) | 56.2% ±8.5 |
+| sphere/sphere ablated (floor) | 45.8% (chance) |
+| box/sphere | 62.1% |
+| box/box | 64.7% |
+| capsule/sphere | 46.1% (chance) |
+
+The control is only 56% (CI overlaps chance) — the from-scratch, single-seed, throttled 64px run never
+reached the 63–78% the 32px seeds hit at 2M, so all cells sit near the noise floor. Box holds (62–65%,
+still color-driven); capsule/sphere drops to chance (46%) where 32px held at 74–76% — a *tantalizing*
+possible shape effect, but indistinguishable from noise at this base discrimination.
+
+**Verdict: inconclusive.** Higher resolution neither confirmed nor refuted shape competing with color,
+because the discriminator was too weak. To answer it, a 64px model must first be trained to comparable
+discrimination strength (more steps / continuation / seed replication); only then is the shape battery
+meaningful. The capsule hint is a flag for that follow-up, not a result. Infra note: 64px works
+end-to-end and is reversible (`AB_CAM_RES`); it is ~2× wall-clock at sustained load due to throttling.
+
+**Files:** `results/decoy_64px_s0_{final,best}.zip`, `results/decoy_shape_px64_*.json`.

@@ -23,6 +23,7 @@ Observation (vision, optional):
 Action: 25 continuous values in [-1, 1], scaled by strength_scale.
 """
 
+import os
 import pathlib
 import numpy as np
 import gymnasium as gym
@@ -52,8 +53,12 @@ CRAWL_POSES = {
     "arms_fwd": {7: 0.7, 11: 0.7, 10: -0.4, 14: -0.4},
 }
 
-CAM_H = 32
-CAM_W = 32
+# Camera resolution. Default 32 preserves all existing 32px models/behavior; set the
+# env var AB_CAM_RES=64 (before import) to train/eval at higher resolution. The CNN
+# extractor computes its conv output size at runtime, so it adapts automatically; note a
+# model trained at one resolution can only be loaded under the same AB_CAM_RES.
+CAM_H = int(os.environ.get("AB_CAM_RES", "32"))
+CAM_W = CAM_H
 
 PROPRIO_DIM = 69  # 3 pos + 4 quat + 6 vel + 25 jpos + 25 jvel + 3 acc + 3 gyro
 VISION_DIM_STEREO = CAM_H * CAM_W * 3 * 2  # stereo: left + right, each (H, W, 3)

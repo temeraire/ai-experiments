@@ -1638,3 +1638,29 @@ object regardless of color): color it blue with a red decoy → the policy chase
 yellow → prefers yellow (shares red's high R channel). So it's a chromatic phototropism ("steer
 toward the reddest region"), which leans the salience-vs-spatial fork toward salience: a
 red-channel-keyed directional attractor, not an abstract target-bearing map.
+
+**Q: What is the "grounding program," and why is it a contribution to AI (not just the theory)?**
+A: The plan (GROUNDING_LLMS.md) to use AB's developmentally-grounded perception to ground an LLM.
+It's a contribution because today's VLMs bolt a static CLIP encoder onto an LLM — which is AB's
+own "all-at-once fusion," the architecture AB proved brittle (95%→30% under noise). AB embodies
+the developmental/interpenetrated alternative, giving a real control group: AB-grounded vs
+CLIP-grounded language.
+
+**Q: How can AB ground language when it only grounds a few invariants (bearing, distance, color)?**
+A: The image-schema bridge (Lakoff-Johnson). Abstract language is metaphorically extended from a
+small set of bodily-spatial schemas (source-path-goal, near-far, toward-away). So AB only needs
+to ground the sensorimotor CORE those metaphors are built on — not the whole lexicon. The claim
+is about mechanism/structure, not percept content.
+
+**Q: What is the concept-anchoring probe and what would a null result mean?**
+A: The cheapest first test of the grounding thesis: check whether AB's grounded latent space and
+an LLM's word-activation space share structure (RSA + linear decode vs permutation baselines),
+changing neither model. Positive → spatial words are anchored to sensorimotor structure AB has.
+Null → text-only words are ungrounded relative to AB's code, which motivates the bridge even more.
+Both outcomes are informative.
+
+**Q: Governor vs. foundation — what's the fork in the grounding program?**
+A: Governor = constrain a finished LLM post-hoc with AB as a consistency-critic (AB's
+vision-agrees-with-proprio loss scaled up to language-agrees-with-perception); easy, but leaves
+the ungrounded core. Foundation = make grounded perception the base and grow language ON it
+(distil-then-RL); theory-faithful but hard. Plan: prototype governor for signal, aim at foundation.

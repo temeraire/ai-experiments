@@ -473,3 +473,36 @@ channel is a chromatic phototropism (approach-the-red-blob), not an abstract "co
 bearing" spatial map. Combined with the displacement-degradation result (vision is directional),
 the decoy visual channel is best described as a red-channel-keyed *directional attractor*:
 directional, object-agnostic, field-of-view-limited, salience-flavored.
+
+**Grounding program / rival grounding architecture (2026-07-09, `GROUNDING_LLMS.md`).** The
+project's proposed next goal: use AB's developmentally-grounded perception to GROUND a language
+model, and thereby demonstrate an alternative to how AI grounds language today. Current VLMs
+bolt a static web-contrastive image encoder (CLIP) onto an LLM — which is AB's own "all-at-once
+fusion," the architecture AB showed is brittle (v1: 95%→30% under noise). AB embodies the
+developmental / interpenetrated alternative. Why it matters: it reframes eight months of
+perception work as building the grounded substrate that LLMs lack, with a built-in control group
+(AB-grounded vs CLIP-grounded).
+
+**Image-schema bridge (metaphor-extension).** The move that makes grounding an LLM tractable
+despite AB grounding only a few invariants. From embodied-cognition theory (Lakoff-Johnson):
+abstract language is metaphorically extended from a small set of bodily-spatial schemas
+(source-path-goal, near-far, toward-away, containment). So AB need only ground the sensorimotor
+CORE (bearing, distance, toward/away, reach) that the abstract vocabulary is claimed to be built
+on — not the whole lexicon. Claim is at the level of mechanism/structure, not percept content.
+
+**Concept-anchoring probe.** The cheapest first test of the grounding thesis (near-zero build):
+measure whether AB's grounded latent space and an LLM's word-activation space share structure,
+changing neither model. Extract AB encoder latents for scene states with known invariants
+(bearing, distance, toward/away); extract an LLM's hidden activations for the words naming those
+states; test alignment via RSA + cross-validated linear decode against permutation baselines. A
+positive says spatial words are anchored to sensorimotor structure AB has; a NULL says text-only
+words are ungrounded relative to it — which motivates the bridge even more. Either way informative.
+
+**Governor vs. foundation (the grounding fork).** The strategic choice the whole grounding
+program turns on. GOVERNOR: constrain a pretrained LLM post-hoc with AB's grounded model as a
+consistency-critic (AB's own vision-must-agree-with-proprio loss, scaled up to
+language-must-agree-with-perception) — easy to prototype, leaves the LLM's ungrounded core
+intact. FOUNDATION: make grounded perception the base and grow language ON it (via the
+distil-then-RL lesson) — the theory-faithful reading of "perception underpins language," and the
+far harder build. Recommendation: prototype the governor for signal, write foundation as the
+north star.

@@ -1,3 +1,97 @@
+# Overnight run — 2026-07-08 → 07-09 (approved: "do #1-5 in order, keep running all night")
+
+Chain of the five FINDINGS next-steps. Sequential (single MPS device → no parallel training).
+
+- [x] **1. Aftereffect re-bin diagnostic** (no compute; `_rescore_aftereffect.py`).
+      RESULT: s0 aftereffect real (near-phantom 78% / far 7%), ~uniform across bearing (leans global
+      "subtract ~30°" bias), persistent (no washout 50–300K). s2 & frozen cells on disk show NO
+      aftereffect → makes #2 the pivotal test.
+- [ ] **2. Seed-replicate the aftereffect on s2.** Phase B: continue `decoy_v2_s2_best` under +30° prism,
+      decoy task, 1M steps, seed 2 → `prism_adapt_s2_rep`. Phase C: prism-off aftereffect + −30 control
+      + 300-ep symmetric baseline (eval_prism_decoy), then re-run `_rescore` for the new s2 cell.
+- [ ] **3. Gentler adapter (clean Phase-B curve) on ext_s0.** Continue `decoy_v2_ext_s0_best` under +30°,
+      `--ent-coef 0.003`, `--steps 2000000` → `prism_adapt_ext_s0_gentle`. (Note: `--lr` is ignored on the
+      continue path; entropy + steps are the working knobs.)
+- [ ] **4. Shape × displacement (eval-only).** Add additive `--offset` passthrough to eval_decoy_shape.py
+      (safe/additive), then run shape battery at offset 30/45 on ext_s0.
+- [ ] **5. Higher-res camera (64×64), from scratch.** CNN adapts automatically; must be from-scratch.
+      Smoke-test first; apply resolution change revertibly so 32px models stay usable. Launch last.
+
+## Progress log
+- ~22:30 — Step 1 done (result above).
+- ~22:35 — Step 2 Phase-B training LAUNCHED (~2h15m).
+- ~02:17 — Step 2 DONE. **Aftereffect REPLICATES on s2: near-far +67 (s0 ref +71), pre-adapt baseline
+  +12 symmetric.** Two-seed result. FINDINGS entry written. Frozen-enc cell (near9/far56) shows freezing
+  abolishes it → recalibration needs a plastic encoder.
+- ~02:20 — Step 3 (gentle adapter, 2M) LAUNCHED (~7.9h @ ~70fps, slower than est).
+- ~02:25 — Step 4 code (--offset ghost-shape passthrough) added + smoke-verified during the wait.
+- ~09:57 — Step 3 DONE. Curve evals + aftereffect run (~10:30). **NEGATIVE/informative:** gentler adapter
+  (ent 0.003, 2M) did NOT clean the curve — it ABOLISHED recalibration. Under-prism curve drifts to chance
+  (60.9→48%), prism-off aftereffect near-far −16 (wrong sign), discrimination eroded 78→48%. Bounds the
+  recipe (flagship ent 0.01/~1M is the recalibrating regime) and shows the aftereffect TRACKS recalibration
+  (present s0/s2, absent frozen-enc + over-gentle). FINDINGS entry written.
+- ~10:35 — Step 4 shape×displacement battery. DONE. **Follow-the-ghost is SHAPE-INVARIANT** (off30 63/65/59%,
+  off45 56/58/57%, all within CI; ablated floor 52.7% = chance). FINDINGS entry written. Closes the
+  offset-0-only caveat.
+- ~11:xx — GROUNDING_LLMS.md written (user requested); GLOSSARY + FLASHCARDS updated with 4 new terms.
+- ~11:xx — Step 5 setup: made CAM resolution a REVERSIBLE env-var override (`AB_CAM_RES`, default 32 →
+  existing 32px models untouched). 64px env verified to build (VISION_DIM 24576).
+- ~11:xx — 64px smoke: **fps 121 — SAME as 32px** (bottleneck is physics/PPO, not conv). So full 2M
+  64px run ≈ 4.5h, not the feared 10h+. Plumbing validated (warmstart loads, reward climbs, CNN adapts).
+- ~12:xx — Step 5 FULL 64px run LAUNCHED (task bspb6m33d, decoy_64px_s0, curriculum, 2M).
+- 20:49 — Step 5 COMPLETED all 2M steps (final saved). CORRECTION: an earlier turn wrongly read it as
+  "interrupted at ~287K" — it actually kept running to 2M. Took ~9.9h (fps throttled 121→56, not ~4.5h).
+- Step 5 EVAL done: **INCONCLUSIVE.** 64px control choice only 56% (< 32px seeds' 63–78%) → too weak a
+  discriminator to run a clean shape-vs-color test. Box holds (62–65%), capsule drops to chance (46%,
+  vs 32px 74–76%) — a possible shape effect but within noise. Needs a stronger 64px discriminator first.
+
+## Review — overnight #1–5 chain (2026-07-09)
+- **1 Aftereffect re-bin:** s0 aftereffect real, ~global bias, persistent. (done, no compute)
+- **2 s2 replication:** ✅ HEADLINE — negative aftereffect REPLICATES on s2 (+67 vs s0 +71). Two-seed.
+- **3 Gentler adapter:** ❌ informative null — over-gentling ABOLISHED recalibration (no aftereffect,
+  discrimination eroded). Aftereffect tracks whether recalibration happened.
+- **4 Shape × displacement:** ✅ follow-the-ghost is SHAPE-INVARIANT (box=sphere at every offset).
+- **5 Higher-res 64px:** ⚠️ INCONCLUSIVE — discriminator too weak (56%) to test shape-vs-color.
+- Net: the flagship recalibration result is now two-seed and better-characterized; one clean new
+  invariance result; one useful null; one open follow-up (train a strong 64px discriminator).
+- Code: `AB_CAM_RES` env-var (reversible res override), `eval_decoy_shape --offset` (shape×displacement).
+- Separately: launched the LLM-grounding program (GROUNDING_LLMS.md + grounding/ probe) and set two
+  standing rules (agent visibility; literature-scout prior-art check).
+- All work uncommitted but safe on disk; not committed (awaiting go-ahead).
+
+## Grounding program (GROUNDING_LLMS.md) — separate track, user-directed 2026-07-09
+- Doc written; decisions locked: governor-first-then-see, lean foundation (both can work, foundation
+  ceiling conditional on grounding breadth); probe is a multi-EMBEDDING ladder (RSA primary), not one model.
+- Probe (a) AB-side DONE: `grounding/probe_ab_extract.py` → `results/grounding/ab_latents.npz`
+  (N=400, latent128 + conv2592 + true bearing/dist). NEXT: LLM ladder + RSA alignment
+  (all-mpnet + OpenAI embed + Qwen2.5-7B text vs Qwen2.5-VL contrast); filter to in-view |theta|<68.
+
+## Command reference (verified — all paths exist; run from repo root, prefix `PYTHONPATH=<repo>`)
+**Step 2 Phase B (running):** `train_head_search --init-model results/decoy_v2_s2_best/best_model.zip
+  --decoy --prism-offset 30 --xml crawler/mimo_crawler_pos_wide_prism.xml --steps 1000000 --seed 2
+  --run-tag prism_adapt_s2_rep`  → outputs `results/prism_adapt_s2_rep_final.zip`, `..._best/`.
+**Step 2 Phase C (after B):**
+  - `eval_prism_decoy --model results/prism_adapt_s2_rep_final.zip --prism-offset 0  --eval-eps 100 --run-tag aftereffect_s2_rep_off0`
+  - `eval_prism_decoy --model results/prism_adapt_s2_rep_final.zip --prism-offset -30 --eval-eps 100 --run-tag aftereffect_s2_rep_offm30`
+  - `eval_prism_decoy --model results/decoy_v2_s2_best/best_model.zip --prism-offset 0 --eval-eps 300 --run-tag sym_s2_rep_300` (pre-adapt symmetric baseline)
+  - then re-run `_rescore_aftereffect.py` (add the new s2_rep cell) to check near≫far.
+**Step 3 (gentler adapter):** `train_head_search --init-model results/decoy_v2_ext_s0_best/best_model.zip
+  --decoy --prism-offset 30 --xml crawler/mimo_crawler_pos_wide_prism.xml --steps 2000000 --ent-coef 0.003
+  --seed 0 --run-tag prism_adapt_ext_s0_gentle`  (~4h30m). Then adaptation-curve evals like Phase C above.
+**Step 4 (shape×disp) — CODE DONE + smoke-verified (overhead frame shows red-BOX ghost).** eval_decoy_shape.py
+  now takes `--offset`: at offset 0 overrides the REAL balls (as before); at offset≠0 overrides the seen
+  GHOST shapes and keeps reals as spheres (contact physics held constant). Battery to run on
+  `decoy_v2_ext_s0_best` (200 eps each), reusing eval_prism_decoy's sphere-ghost baselines (off30=62%, off45=53%):
+    - off30: `--red box --blue sphere`, `--red sphere --blue box`, `--red box --blue box`
+    - off45: same three
+    - ablated floor check: one `--offset 30 --red box --blue sphere --ablate`
+  Shape-invariant follow-the-ghost ⇒ box-ghost choice_vs_true matches sphere-ghost at each offset.
+**Step 5 (64px):** set `CAM_H=CAM_W=64` in mimo_crawler_env.py (CNN adapts via runtime dummy-forward);
+  MUST be from-scratch (no 32px ckpt loads). Smoke-test ~50K first. Apply revertibly (keep 32px usable).
+  `train_head_search --decoy --curriculum --steps 2000000 --seed 0 --run-tag decoy_64px_s0`.
+
+---
+
 # Vision-as-reinforcement plan (A → B → C) — proposed 2026-07-04, AWAITING SIGN-OFF
 
 ## Goal

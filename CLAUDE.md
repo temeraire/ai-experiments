@@ -21,6 +21,60 @@ Next steps: [list]
 Do not wait to be asked. If a significant amount of work has been done, offer the summary.
 Keep it dense and copy-paste friendly — no markdown that won't survive a paste into Word/Notes.
 
+## Agents & visibility (standing rule)
+
+The user records these sessions on video by copy-pasting the MAIN conversation transcript (see
+Conversation Capture above). Subagents work off to the side — only their final summary returns to
+the main thread — so heavy background delegation HIDES the work from the record. The governing
+priority is therefore visibility: the user must be able to SEE what happened in the main transcript.
+
+- **Default to the main loop.** Run experiments, evals, and writeups directly in the main thread so
+  every step is visible and recordable. Do NOT delegate routine execution to background agents just
+  because a specialized agent exists for it.
+- **Use subagents only when they earn it:** (a) read-heavy scouting/search across many files,
+  (b) genuine INDEPENDENT verification of a load-bearing claim (theory-monitor / results-analyst /
+  code-review acting as a second opinion), (c) true parallel fan-out. Not for work the main loop can
+  do visibly.
+- **When you do use an agent, make it visible.** BEFORE spawning: say in the main thread what the
+  agent is, why, and what it will do. Prefer synchronous/foreground agents so the hand-off appears
+  inline. AFTER it returns: relay its actual findings into the transcript (not just "done"), so the
+  video record is complete. Avoid silent background agents for anything the user would want to see.
+  (The user can also watch live via `/workflows`, but the copy-paste transcript is the durable record.)
+- **Independent theory-monitor verification is MANDATORY for every result.** Whenever an
+  experiment, eval, or training run produces a result — headline, null, or inconclusive — the
+  main loop must NOT be the sole judge of what it means. Before the verdict is written into
+  FINDINGS.md / THEORY_LOG.md as settled, dispatch the **theory-monitor** agent (results-analyst
+  where the question is "what do the logs actually say") to independently check whether the
+  result confirms, challenges, or is neutral to the theory. Then relay its verdict verbatim into
+  the main transcript so the conclusion is both independent AND visible. If the monitor disagrees
+  with the main-loop reading, record BOTH views and flag the disagreement — do not silently
+  average them. No result is "confirmed" in project docs without this check having run.
+- **Flag the mode.** If about to run a long stretch primarily one way (all-direct, or a big fan-out),
+  say so first, so the user can choose.
+
+## Prior-art check with the literature-scout (standing rule)
+
+Whenever we make a determination that could be a NEW method/technique, or articulate a newly
+established PRINCIPLE — anything we'd be tempted to frame as "we found/invented X" — dispatch the
+**literature-scout** agent to search the internet (and the project's local PDFs) for whether it is
+already an established, published result. Do this proactively, without being asked, the way the
+glossary rule fires.
+
+- **Trigger:** a genuinely candidate-novel method or a general principle — NOT routine per-run
+  results. Examples: "distil-then-RL grows grounded vision where reward-alone can't," "the prism
+  aftereffect tracks whether recalibration happened," "phrasing-invariant meaning lives in grounding,
+  not in text embeddings." When in doubt, run it — cheap insurance against claiming known work as ours.
+- **What it returns:** honest per-question verdicts with cited sources — is this established, and if
+  so, where; if the search found no prior art, that too.
+- **How to fold it in:** relay the scout's findings into the main transcript (per Agents & visibility),
+  and annotate the FINDINGS / THEORY_LOG / relevant-doc entry — if it's known, reframe from "we
+  discovered" to "we reproduce/confirm [citation]"; if no prior art was found, say so with due
+  humility (absence of evidence, not proof of novelty).
+- **Composition:** the lit-scout is a sanctioned agent use (read-heavy external scouting + independent
+  check) — announce it before spawning and relay its findings, per Agents & visibility above.
+- **Batch if useful:** several determinations can go in one scout dispatch; don't fire a separate
+  search on every minor observation.
+
 ## Glossary + Flashcards upkeep (standing rule)
 
 Whenever a genuinely new term, method, or piece of jargon comes up in our work — a new

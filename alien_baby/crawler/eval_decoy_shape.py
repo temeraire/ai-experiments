@@ -59,37 +59,52 @@ COLOR_MAP = {
 
 
 def make_env(red_shape, blue_shape, cone_deg, radius, max_steps, seed,
-             target_color=None, decoy_color=None):
+             target_color=None, decoy_color=None, offset=0.0):
     env = MimoCrawlerEnv(
         vision=True, stereo=True, target_obs=False, crawl_pose=CRAWL_POSES["arms_fwd"],
         action_mode="position_offset", xml_path=XML, spawn_cone_deg=cone_deg,
         spawn_radius=tuple(radius), random_start_orientation=False, max_steps=max_steps,
         step_cost=0.0, approach_reward_scale=10.0, velocity_bonus_scale=0.0,
         terminate_tilt_deg=50.0, tip_penalty=-5.0, decoy_ball=True,
-        prism_offset_deg=0.0,
+        prism_offset_deg=offset,
     )
-    # override the two balls' primitive shape (persists: model loaded once, resets
-    # use mj_resetData which does not rewrite geom_type/geom_size).
-    for gid, shape in ((env._target_geom_id, red_shape),
-                       (env._target2_geom_id, blue_shape)):
+
+    def _set_shape(gid, shape):
+        # persists: model loaded once, resets use mj_resetData which does not rewrite
+        # geom_type/geom_size.
         gtype, gsize = SHAPE_MAP[shape]
         env.model.geom_type[gid] = gtype
         env.model.geom_size[gid, :] = gsize
-    # At offset=0 the prism GHOST bodies are not repositioned/hidden by the env, so a
-    # fixed RED-sphere ghost (and a parked blue one) sit in view — a red-sphere
-    # reference that would confound a shape test. Make both ghosts invisible (alpha=0)
-    # in ALL conditions incl. the control, so only the two real balls are seen.
-    for gname in ("ghost_geom", "ghost2_geom"):
-        gid = mujoco.mj_name2id(env.model, mujoco.mjtObj.mjOBJ_GEOM, gname)
-        if gid >= 0:
-            env.model.geom_rgba[gid, 3] = 0.0
+
+    ghost_ids = {n: mujoco.mj_name2id(env.model, mujoco.mjtObj.mjOBJ_GEOM, n)
+                 for n in ("ghost_geom", "ghost2_geom")}
+
+    if offset == 0.0:
+        # No prism: the two REAL balls are both SEEN and touched -> override their
+        # shapes. The prism ghosts are unused; hide them (alpha=0) so a stray fixed
+        # red-sphere ghost cannot confound the shape test.
+        _set_shape(env._target_geom_id, red_shape)
+        _set_shape(env._target2_geom_id, blue_shape)
+        for gid in ghost_ids.values():
+            if gid >= 0:
+                env.model.geom_rgba[gid, 3] = 0.0
+        seen_red, seen_blue = env._target_geom_id, env._target2_geom_id
+    else:
+        # Prism: the head-cam sees the GHOSTS (reals are hidden+solid, only touched).
+        # Override the GHOST shapes (the seen picture) and leave the real balls as the
+        # trained sphere so contact physics is held constant -> isolates "does
+        # follow-the-ghost depend on the SEEN shape?". Ghosts stay visible.
+        _set_shape(ghost_ids["ghost_geom"], red_shape)
+        _set_shape(ghost_ids["ghost2_geom"], blue_shape)
+        seen_red, seen_blue = ghost_ids["ghost_geom"], ghost_ids["ghost2_geom"]
+
     # optional recolor (mechanism test: is the binding "approach red" or "avoid blue"?)
     # NOTE: reward is tied to target_geom regardless of its color; changing the color
-    # tells us what visual cue the policy actually uses to find the rewarded object.
+    # tells us what visual cue the policy actually uses. Recolor whichever geoms are SEEN.
     if target_color is not None:
-        env.model.geom_rgba[env._target_geom_id, :] = COLOR_MAP[target_color]
+        env.model.geom_rgba[seen_red, :] = COLOR_MAP[target_color]
     if decoy_color is not None:
-        env.model.geom_rgba[env._target2_geom_id, :] = COLOR_MAP[decoy_color]
+        env.model.geom_rgba[seen_blue, :] = COLOR_MAP[decoy_color]
     env.reset(seed=seed)
     return env
 
@@ -128,6 +143,10 @@ def main():
     p.add_argument("--max-steps", type=int, default=1000)
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--ablate", action="store_true")
+    p.add_argument("--offset", type=float, default=0.0,
+                   help="whole-field prism offset (deg). 0 = no prism (override REAL "
+                        "ball shapes); nonzero = override the displaced GHOST shapes "
+                        "(shape x displacement test).")
     p.add_argument("--sanity-frames", default=None,
                    help="path prefix; render frames of the scene and exit")
     p.add_argument("--run-tag", default="decoy_shape")
@@ -135,14 +154,16 @@ def main():
 
     env = make_env(args.red, args.blue, args.cone_deg, args.radius,
                    args.max_steps, args.seed,
-                   target_color=args.target_color, decoy_color=args.decoy_color)
+                   target_color=args.target_color, decoy_color=args.decoy_color,
+                   offset=args.offset)
     if args.sanity_frames:
         model = PPO.load(args.model, device="cpu")
         sanity_frames(env, args.sanity_frames, model=model, step_to=60)
         return
 
     model = PPO.load(args.model, device="cpu")
-    r = run_cell(model, env, args.eval_eps, args.max_steps, 0.0, ablate=args.ablate)
+    r = run_cell(model, env, args.eval_eps, args.max_steps,
+                 np.deg2rad(args.offset), ablate=args.ablate)
     cvt = r["choice_vs_true"]
     se = (np.sqrt(cvt * (1 - cvt) / (r["red"] + r["blue"])) if cvt is not None else 0)
     print(f"\n=== {args.run_tag}  red={args.red} blue={args.blue}"
