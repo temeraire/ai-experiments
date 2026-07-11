@@ -195,6 +195,34 @@ mean nothing. We do not draw conclusions from a corpse. So:
   / zero hunger), hunger, novelty, velocity bonus. We do not need a "justification" for motion; a
   living thing moves. Reward designs whose global optimum is "do nothing" are the bug.
 
+### Render EVERY experiment — no result is read without watching the behavior (governing rule)
+No experiment is complete — and no result is interpreted, written up, or acted on — until the
+behavior behind it has been **rendered to video and watched**. This is NOT limited to training
+runs: it applies equally to **eval-only batteries** (prism, decoy, generalization sweeps,
+anything scored from `info`/JSON). The reason is concrete and has already bitten us: our headline
+metrics are outcome flags, and **an outcome flag cannot tell a directed action from an incidental
+one.** The decoy "choice" terminates on the ball touching *any* MIMo geom (foot, elbow, torso,
+head — not just a hand; see `_check_ball_contact`), so a creature that thrashes and rolls a foot
+into the red ball scores identically to one that deliberately reached for it. The number says
+"chose red"; only the video says whether AB *reached* or *thrashed into* it. That distinction is
+usually the whole ballgame (directed reach vs. geometry-driven contact), and it is invisible in
+every aggregate we log.
+- **Before** any eval battery is treated as a result: render a handful of episodes of the exact
+  checkpoint+condition being scored (matched env: same spawn radius/cone/offset as the eval), and
+  watch them. If no render script exists for that eval's env, write a thin one that reuses the
+  eval's own `make_env` (e.g. `render_prism_decoy.py` reuses `eval_prism_decoy.make_env`).
+- **"It's just thrashing" is not permission to skip it.** Thrashing is exactly when to look —
+  the point is that *something else happens inside the thrash* (which body part contacts, whether
+  the body translates toward the chosen ball) that the metric hides. Watch it anyway.
+- **Gemini `describe_video.py` is an unreliable narrator for the MIMo infant body** — it reads
+  crude-but-real crawl as "passive ragdoll / random flailing" (see the SAC caveat below). Use it
+  as a first pass, but corroborate against the logs (net root displacement, heading-vs-touched
+  alignment) and, for load-bearing calls, watch with an experimenter's eye. Do not let Gemini's
+  "passive" verdict override a locomotion log that says the creature moved.
+- This composes with the mandatory theory-monitor rule: the monitor's verdict on a result should
+  not be finalized until the behavior has been watched, because the video can overturn what the
+  numbers seem to say.
+
 ### Always watch a video before committing to a training run
 Before launching any training run longer than a smoke test (>50K steps), render one episode
 using whatever model the run will start from:

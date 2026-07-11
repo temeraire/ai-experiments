@@ -506,3 +506,13 @@ intact. FOUNDATION: make grounded perception the base and grow language ON it (v
 distil-then-RL lesson) — the theory-faithful reading of "perception underpins language," and the
 far harder build. Recommendation: prototype the governor for signal, write foundation as the
 north star.
+
+**Forward model / world-model predictor.** A learned "what happens next" simulator: given the
+current state and a candidate action, predict the sensory consequences (next latent, next
+proprio, "the ball will move and hit the wall"). Grounding architecture (e) in GROUNDING_LLMS.md
+(added from reframed.docx): instead of only checking that a language model's *representations*
+match grounded perception, make it predict the *consequences* of the actions it proposes, scored
+against an embodied forward model — a governor over outcomes, not just plausibility. Sibling of
+the deferred MICOA Phase II "anticipatory vision" (vision predicts proprio's next step — seeing
+contact before feeling it). Matters here because it is the one integration idea that adds
+causality rather than reference to the grounding program.

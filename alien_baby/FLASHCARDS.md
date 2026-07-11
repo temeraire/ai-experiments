@@ -1664,3 +1664,10 @@ A: Governor = constrain a finished LLM post-hoc with AB as a consistency-critic 
 vision-agrees-with-proprio loss scaled up to language-agrees-with-perception); easy, but leaves
 the ungrounded core. Foundation = make grounded perception the base and grow language ON it
 (distil-then-RL); theory-faithful but hard. Plan: prototype governor for signal, aim at foundation.
+
+**Q: What is the world-model predictor (forward model), and what does it add over the governor-as-critic?**
+A: A learned simulator predicting the sensory consequences of a proposed action (state + action →
+next state). As grounding architecture (e), the language layer must predict outcomes and is scored
+against the embodied forward model — so it is constrained by *causality* (what would actually
+happen), not just representational plausibility (what sounds consistent). First cheap step: test
+whether AB's grounded latent supports consequence-prediction from existing rollouts.

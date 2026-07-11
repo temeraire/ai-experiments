@@ -161,6 +161,29 @@ lesson (build the representation first; the higher process cannot grow it from s
 own objective alone). This is a pointed critique of how LLMs are trained today — language
 modeling with no grounded substrate — and it is the hardest, most research-heavy path.
 
+### (e) World-model predictor — *grounded consequences, not just grounded reference*
+(Added 2026-07-11, from David's `documents/reframed.docx` — the one genuinely additive idea in
+that document.) Architectures (a)–(d) are all *representational*: they test or transfer the
+structure of AB's percepts. This one adds a **predictive/causal** dimension: the language layer
+must predict the *sensory consequences* of the actions it proposes, trained with a prediction
+loss against an embodied forward model ("if I push this ball, it moves ~1 m and hits the wall").
+A governor built this way scores claims against *predicted outcomes*, not just representational
+plausibility — arguably a stronger constraint than the consistency-critic (c). It has a dormant
+sibling already in the project: the deferred MICOA Phase II "anticipatory vision" (vision learns
+to predict proprio's next-step distribution — *seeing contact before feeling it*, todo.md).
+Cheap first step, analogous to probe (a): train a small forward model on existing AB rollouts
+(state + action → next latent/proprio) and test whether AB's grounded latent supports
+consequence-prediction at all. If it does, (e) becomes a real candidate; if not, that bounds
+what the current substrate can govern.
+
+**A cautionary note on external proposals (2026-07-11).** The other integration ideas in
+`reframed.docx` — and, in our experience, the default shape of outside embodiment-LLM proposals
+generally — converge on concatenating text + vision + proprio into a single state vector. That
+is precisely the **all-at-once fusion** architecture AB's own v1 result refuted (95% → 30%
+collapse under sensor noise, vs. graceful degradation for the staged/interpenetrated agent).
+That the field's default is the architecture our findings argue against is part of this
+program's contribution claim, and worth saying explicitly when writing any of this up.
+
 ---
 
 ## 7. The concept-anchoring probe, concretely (the recommended first step)
