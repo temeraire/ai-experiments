@@ -1,3 +1,38 @@
+## North Star — read this first, every session (governing frame)
+
+We are not scientists testing whether a phenomenon is real. We are engineers
+building a creature that can do a thing we already know is real.
+
+The touchstone is prism adaptation. In real organisms it is an established fact:
+wear sideways-shifting spectacles, and over time your vision itself swings back
+into line with the world — you come to see things where they actually are, even
+with the spectacles on, and you re-adjust again when you take them off. This is
+proven. It is not in question.
+
+So our task is never "does AB do this?" It is "what do we have to give AB so that
+it CAN?" If AB fails to realign, that is OUR setup failing to supply what
+realignment requires — exactly like the winnability rule (if AB never reaches the
+target, that is our failure, not AB's). A failure is a diagnosis of the setup, not
+a finding about AB's limits, and not a reason to weaken the goal in the record.
+
+The deeper goal behind all of it is grounding: perception genuinely tied to the
+world through a creature's own moving and touching, as the substrate meaning can
+grow on. Prism realignment is the sharpest test of whether AB's vision is really
+world-coupled. Keep that as the fixed target; everything else is means.
+
+### How to talk about this work (non-negotiable)
+- Plain language first. No term goes in without a plain-English gloss the first
+  time. If David and I might mean different things by a word, stop and check
+  before building on it.
+- Do not perform enthusiasm. "Sharp observation," "this changes everything," and
+  similar are banned — they substitute excitement for retained understanding, and
+  they are the tell that a correction is being re-learned instead of held.
+- When corrected, state the correction back in one plain sentence and carry it
+  into the NEXT sub-problem, not just the current one. Reverting to the old frame
+  after acknowledging the new one is the specific failure this block exists to stop.
+
+---
+
 ## Conversation Capture (important — read this)
 
 The user wants to preserve our conversations. OBS screen recording does NOT work for this —
@@ -52,18 +87,29 @@ priority is therefore visibility: the user must be able to SEE what happened in 
 - **Flag the mode.** If about to run a long stretch primarily one way (all-direct, or a big fan-out),
   say so first, so the user can choose.
 
-## Prior-art check with the literature-scout (standing rule)
+## Prior-art check with the literature-scout (standing rule — MANDATORY & CROSS-DISCIPLINARY)
 
-Whenever we make a determination that could be a NEW method/technique, or articulate a newly
-established PRINCIPLE — anything we'd be tempted to frame as "we found/invented X" — dispatch the
-**literature-scout** agent to search the internet (and the project's local PDFs) for whether it is
-already an established, published result. Do this proactively, without being asked, the way the
-glossary rule fires.
+**For EVERY experiment or determination, the literature-scout MUST be dispatched to answer: "Has
+this been researched? What were the results? Is this an already-solved problem?" — searching ANY
+field it could live in, not just ours.** This is not limited to candidate-novel methods; it runs
+for every experiment, proactively, the way the glossary rule fires.
 
-- **Trigger:** a genuinely candidate-novel method or a general principle — NOT routine per-run
-  results. Examples: "distil-then-RL grows grounded vision where reward-alone can't," "the prism
-  aftereffect tracks whether recalibration happened," "phrasing-invariant meaning lives in grounding,
-  not in text embeddings." When in doubt, run it — cheap insurance against claiming known work as ours.
+**Why mandatory & cross-disciplinary (the cautionary tale — read this).** We ran a prism-adaptation
+experiment for days before discovering there is an entire established **"prism literature"** in
+psychophysics/motor-control, with a standard term — **"dual adaptation"** (Welch, Bridgeman, Anand &
+Browman 1993) — for the exact phenomenon we were rebuilding. Neither of us knew the field existed, so
+neither of us could have asked for it by name. **That is the failure mode this rule exists to prevent,
+and it is why the scout must NOT be scoped to ML.** The whole point is that we do not know which
+discipline a result lives in. So the scout's FIRST task on any dispatch is to ask *"what fields could
+this phenomenon belong to?"* (ML, psychophysics, motor control, psychology, neuroscience, control
+theory, …) and search each in ITS OWN vocabulary — the reversing-spectacles / prism-adaptation /
+dual-adaptation case is the worked example of why domain-agnostic search is required.
+
+- **Trigger:** every experiment we design, and every determination we'd frame as a finding/principle.
+  When in doubt, run it — cheap insurance against re-deriving solved work or claiming known work as ours.
+  Examples of the *phenomenon-first* framing to hand the scout (so it can find the field name we don't
+  know): "a creature relearns to reach under a sideways visual shift" (→ prism adaptation), "vision
+  grows from a cross-modal error signal, not reward" (→ sensory substitution / recalibration lit).
 - **What it returns:** honest per-question verdicts with cited sources — is this established, and if
   so, where; if the search found no prior art, that too.
 - **How to fold it in:** relay the scout's findings into the main transcript (per Agents & visibility),
@@ -74,6 +120,41 @@ glossary rule fires.
   check) — announce it before spawning and relay its findings, per Agents & visibility above.
 - **Batch if useful:** several determinations can go in one scout dispatch; don't fire a separate
   search on every minor observation.
+
+## Local Book Agent — mine the local corpus (standing rule)
+
+Whenever a new subject, construct, or phenomenon becomes the focus of the work (e.g. we start
+looking into "reversing spectacles"), dispatch the **local-book-agent** to go through the project's
+LOCAL books and papers — starting with J.G. Taylor's *The Behavioral Basis of Perception*
+(`numenta/taylor-behavioral-basis-of-perception.txt` and `Chapters/`), plus any other books/PDFs the
+human has stored locally — and bring back EVERY passage relevant to that subject, with a report of
+what matters. This is the *inward* complement to the lit-scout's *outward* search: the scout finds
+what the world knows; the book agent finds what our own shelf already says.
+
+- **Trigger:** a new topic/subject enters the work — before we lean on our own partial reading of it.
+  The test case: once we were on "reversing spectacles," the book agent should have returned all of
+  Taylor Ch. 9 (the three experiments, response-specificity, the contextual-cue "parameter"),
+  proactively, instead of us discovering it piecemeal.
+- **Scope split (by LOCATION, not topic):** local behavioral/perception texts (Taylor; Skinner or
+  other behavioral sources if stored) → local-book-agent. External literature in ANY field →
+  lit-scout. This keeps the two from assuming the other covered something.
+- **Fold-in:** relay its findings into the main transcript and annotate the relevant doc, per Agents
+  & visibility. Behavioral principles it surfaces (from Taylor or other stored sources) get captured
+  the way glossary terms do — if it's load-bearing, it goes into the plan/FINDINGS.
+
+## Team-of-agents by default for experiments (standing rule)
+
+The human has opted into multi-agent orchestration and accepts the wall-clock cost (it is minutes in
+parallel, not hours). **For every substantive experiment, run the agent panel as a PROCESS GATE, not
+as an optional extra** — because a gate that runs regardless is more reliable than trusting the main
+loop to remember:
+- **Before** committing compute: experiment-strategist + literature-scout + local-book-agent, in
+  parallel (design + external prior-art + internal source-check). Do not launch the experiment until
+  these have reported and been relayed.
+- **After** a result: results-analyst + theory-monitor (independent verification is already mandatory).
+- Run them concurrently where independent; announce before spawning and relay findings, per Agents &
+  visibility. The only reason to skip a leg is if it genuinely cannot apply (say so explicitly).
+- Slowdown is acceptable; a missed prism-literature-scale gap is not.
 
 ## Glossary + Flashcards upkeep (standing rule)
 

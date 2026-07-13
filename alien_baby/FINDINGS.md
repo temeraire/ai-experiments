@@ -1,5 +1,34 @@
 # Interpenetration Simulation: Findings
 
+> ## How to read this document (engineering frame — 2026-07-12)
+>
+> Much of the older writeup below is phrased as a science experiment: "does AB do
+> X? let's measure and find out." For the prism/realignment work that frame is
+> wrong, and this note is the correction.
+>
+> **Prism adaptation is an established fact about real organisms.** Put on
+> sideways-shifting spectacles and, over time, your vision itself swings back into
+> line with the world — you see things where they truly are, even with the
+> spectacles on, and you re-adjust when they come off. This is not in question. So
+> our task was never "does AB genuinely recalibrate?" It is **"what do we have to
+> give AB so that it CAN?"**
+>
+> Read every prism result below in that light. When AB fails to realign, that is a
+> **diagnosis of our setup** — it left an easier path open than the one we want —
+> **not a verdict on AB's limits, and not a reason to weaken the goal.** This is the
+> winnability rule applied to perception: if AB can win the task without using its
+> eyes, that is our failure to make vision necessary, and we fix the setup.
+>
+> The entries dated **2026-07-08 / 07-09** ("AB FOLLOWS THE GHOST", "recalibration
+> CONFIRMED") were written in the old frame and later found to over-claim. They are
+> kept verbatim for the record, each now carrying a correction banner pointing to
+> the **2026-07-12** entry, which supersedes them and states the corrected reading
+> plus the rebuild we are running to actually give AB the capability.
+>
+> (The oldest sections — the three-agent reaching/interpenetration study — are a
+> genuinely comparative study and read fine as written; the engineering frame is
+> specifically about the AB creature and the prism realignment goal.)
+
 ## What We Built
 
 A simulated robotic arm in a physics engine (MuJoCo) that learns to reach and touch objects on a table. The arm has two senses: **proprioception** (knowing where its joints are, how fast they're moving, and whether it's touching something) and **vision** (an overhead camera image of the table).
@@ -2408,6 +2437,12 @@ test on a strong discriminator (ext_s0 78% or s2 77%) — THEORY_LOG 2026-07-06 
 pre-registered predictions (follow-the-ghost vs arousal-gate vs partial binding).
 
 ### PRISM DISPLACEMENT RESULT (2026-07-08 overnight) — AB FOLLOWS THE GHOST. Vision drives target selection.
+> **⚠ SUPERSEDED — see 2026-07-12 entry.** The "follows the ghost" headline holds only
+> at SMALL displacement (15°, later replicated on both checkpoints). At 30–60° AB's body
+> aims closer to the REAL ball than the ghost and its aim degrades toward random — the
+> displacement corrupts vision's steering rather than redirecting it to the ghost. The
+> choice-outcome facts in this entry (below-chance choice at 45–90°, the 67.7% conditional)
+> still stand and still refute a pure arousal account; the *mechanism* wording is corrected.
 Whole-field two-ghost displacement (both reals solid+hidden, ghost pair rotated by offset), eval-only,
 100 eps/cell, both strong discriminators. Sanity gates passed (off-0 sighted 76.4/77.5 vs known 78/77;
 ablated 47.8/45.5 ≈ floor). choice_vs_true by offset:
@@ -2431,6 +2466,14 @@ Files: eval_prism_decoy.py, ghost2 in mimo_crawler_pos_wide_prism.xml, env two-g
 
 ### PRISM ADAPTATION + AFTEREFFECT (2026-07-08 overnight) — NEGATIVE AFTEREFFECT CONFIRMED.
 ### AB genuinely recalibrated vision-to-action. The experiment the project is named for.
+> **⚠ SUPERSEDED — see 2026-07-12 entry.** A later decomposition (heading-tracks-ball
+> correlation + a blind-policy control) found that most of this "aftereffect" is a
+> pre-existing motor-search bias the blind policy already carries (+54 of the +67–71),
+> and that adaptation did NOT re-map vision — it ABOLISHED vision's directional steering
+> (heading↔true-ball circular corr 0.38 → 0.00, indistinguishable from blind). In the
+> engineering frame this is not "AB can't recalibrate"; it is our setup letting AB win by
+> dropping its eyes and running on a motor habit. The 2026-07-12 entry has the corrected
+> reading and the rebuild that closes the shortcut.
 Phase B: ext_s0 continued 1M steps under fixed +30° whole-field prism (decoy task, weights
 unfrozen, no reward changes). Phase C: prism removed, 100-ep evals on the adapted model.
 - **Adaptation curve (+30°, choice-vs-true):** 62.0 (pre) → 67.0 (100K) → 58.1 (250K) → 56.2
@@ -2533,6 +2576,11 @@ The shape test shows the cue is color; this pins down *which* color rule. Recolo
 ---
 
 ## 2026-07-09 (overnight) — AFTEREFFECT REPLICATES ON SEED s2: the flagship is now a two-seed result
+> **⚠ SUPERSEDED — see 2026-07-12 entry.** The two-seed near−far (+67/+71) is real as a
+> number, but the 2026-07-12 decomposition shows it is mostly the blind motor bias, not a
+> vision re-mapping. "Recalibration confirmed" over-claims; the aftereffect tracks whether
+> adaptation ran, but its magnitude is carried by a pre-existing habit, not by re-aligned
+> seeing. See 2026-07-12 for the corrected reading.
 
 **Context.** The 2026-07-08 prism-adaptation aftereffect (the project flagship) was single-seed (ext_s0). Two on-disk cells argued against it: an earlier `s2` aftereffect and a `frozen-encoder` aftereffect both showed *no* negative aftereffect. Overnight step 1 (`_rescore_aftereffect.py`, pure re-analysis) quantified this with the direction-conditional metric and flagged s2 replication as the pivotal open test.
 
@@ -2662,3 +2710,165 @@ meaningful. The capsule hint is a flag for that follow-up, not a result. Infra n
 end-to-end and is reversible (`AB_CAM_RES`); it is ~2× wall-clock at sustained load due to throttling.
 
 **Files:** `results/decoy_64px_s0_{final,best}.zip`, `results/decoy_shape_px64_*.json`.
+
+---
+
+## 2026-07-12 — Prism realignment, reframed as engineering: what the old flagship really shows, and the rebuild to give AB the capability
+
+**Frame (governing this entry — see the note at the top of this file).** Prism
+realignment is an established fact about real organisms, so the question is not
+"did AB recalibrate?" but "what must we give AB so it CAN?" Under that frame the
+2026-07-08/09 flagship entries were re-examined, found to over-claim, and used as a
+*diagnosis of the setup* rather than a verdict on AB. Two things happened this
+session: (1) we decomposed the old flagship and corrected the record; (2) we built
+and began testing the tool the phenomenon actually requires. Every load-bearing
+number below was independently re-derived by the theory-monitor (it hand-computed
+from raw episodes, not re-read our summaries); its verdicts are quoted at the end.
+
+### Part 1 — Correcting the old flagship (decomposition of the "aftereffect")
+
+The headline "near−far +67/+71 = genuine recalibration" does not survive
+decomposition against a blind-policy control:
+
+| condition | near−far (blue-capture near-phantom minus far) |
+|---|---|
+| unadapted, **sighted** | +12 |
+| unadapted, **blind (vision ablated)** | +54 |
+| adapted, **sighted** | +68 |
+| adapted, **blind** | +57 |
+
+Read plainly: **the blind policy already carries a large +54 geometric bias** (a
+lateralized motor-search sweep interacting with spawn geometry). Adaptation barely
+moved it (+54 → +57). What changed is vision's *contribution*: unadapted vision
+**suppresses** the blind bias (+54 → +12, steering to the true ball); adapted
+vision **stops suppressing** it (+57 → +68). So most of the celebrated aftereffect
+was a pre-existing habit showing through once vision stopped correcting it.
+
+Two more measurements triangulate the same conclusion:
+- **Flat offset sweep.** Adapted-sighted choice_vs_true is flat (54.9 / 54.4 / 51.5
+  / 52.8% across offsets 15/30/45/60), where the unadapted model falls from 77.5%
+  at 0° to 47.6% at 30°. A still-working recalibrated map would be offset-*sensitive*;
+  dead-flat is better explained by vision decorrelating from displacement.
+- **Heading-tracks-ball correlation (the direct test).** Does the direction AB
+  moves follow where the ball truly is? Circular correlation of net heading vs
+  true-ball bearing: unadapted-sighted **+0.38** (blind −0.14); adapted-sighted
+  **0.00** (blind −0.08). Fisher-z on the sighted-vs-blind gap ≈ 4.16 (p≈3×10⁻⁵);
+  the 0.38 → 0.00 collapse is significant at p<0.001; monitor sign-concordance
+  replication 72% → 55.6% on independently extracted episodes.
+
+**Corrected claim:** adaptation did not compute a new, offset-corrected steering
+signal — it **eliminated the trial-level coupling between visual bearing and motor
+heading**, leaving a heading distribution statistically indistinguishable from the
+vision-ablated control. In the engineering frame this is not "AB can't recalibrate";
+it is **our setup let AB win by dropping its eyes and running on a motor habit.**
+
+**"Follows the ghost," corrected.** With the proper geometric chance baseline
+(~0.25, not the naive 1/3 — the three candidate regions are not equal thirds;
+verified analytically and by Monte-Carlo), there is **genuine following of the
+displaced picture at small displacement** (15°: ext_s0 0.422 vs ~0.25 baseline,
+~3 SE; replicated s2 0.378, ~2.6 SE, heading equidistant to real and ghost). By
+30–60° the ghost preference vanishes, heading aims closer to the REAL ball, and aim
+degrades toward random — **displacement corrupts steering, it does not redirect it
+to the ghost.** The choice-outcome facts (below-chance choice at 45–90°; pooled
+conditional 67.7% blue when the ghost sits near true-blue, n=334) still stand and
+still refute a pure arousal account.
+
+**What is genuinely solid (paradigm vindicated).** AB does **directed whole-body
+approaches**, not accidental contact — heading lands ~17–19° from the touched ball
+(random baseline ~45–68°). But directedness alone is motor competence (equal in the
+blind control); vision's real job is **direction-selection** (which side to commit
+to), and pre-adaptation that job is done well (+0.38 correlation, blind shows none).
+Also settled by instrumentation: the termination logic is correct — any MIMo geom
+touching the *real* ball ends the episode; the "red at AB's head that didn't stop"
+was the non-colliding mocap **ghost** (what AB sees under the prism), not a bug.
+
+### Part 2 — Diagnosis: why the setup let AB avoid realigning
+
+Gradient descent, like water, takes the easiest path. Four things left a path
+easier than realigning open: (1) the task didn't *need* vision — a blind motor
+sweep scored often enough; (2) we only ever trained with the shift ON, so "stop
+trusting the eyes" was a consistent solution (a person realigns by living *both*
+with and without the glasses); (3) there was no seen-versus-felt **error signal**
+telling vision it was wrong — reward only paid for contact; (4) a strong motor
+habit was there to fall back on. Realignment needs a mismatch signal, a
+vision-necessary task, and (for holding two mappings) a state cue. Taylor Ch. 9
+independently backs this: adaptation is response-specific — vision realigns only
+through the specific corrective action, which is exactly contact-gating.
+
+### Part 3 — The rebuild: a seen-versus-contacted mismatch signal
+
+Built the tool the phenomenon requires: a small bearing head reads the ball's
+direction from the visual latent (θ_vis) and is corrected by **where AB's body
+actually met the ball on contact** (the honest true bearing). It is trained by a
+**separate eye-only optimizer**; `MismatchPPO` freezes the encoder during PPO's
+update so reward can only shape the motor policy, never reshape the eye toward the
+shortcut. Contact-gated for honesty (the eye learns only from episodes where the
+body reached the ball).
+
+**Stage 1 (no lens — "learn to see straight"): the signal grounds the eye.** The
+eye learns to read ball-direction from 32×32 pixels (bearing readout +0.54 vs ~0
+untrained), and on the body-frame base vision is genuinely necessary and
+behaviorally load-bearing: sighted choice 0.67 vs blind 0.48 (chance), sighted-vs-
+blind heading sign-concordance 67% vs 43% (z≈2.65). This is the whole premise —
+the eye can be grounded by lived, contact-confirmed experience.
+
+**A detour that taught a real principle (frame matters for USE, not just accuracy).**
+On a monitor suggestion we retargeted the eye to the head/camera frame (the camera
+rides on the yawing head). It made the eye's *readout* more accurate (aiming error
+59°→40°) but **killed behavioral steering**: at matched step count, body-frame
+steering is real (z≈2.65) and head-frame steering is indistinguishable from zero
+(z≈0.36). Reverted to the body/action frame. The lesson is the project's own
+interpenetration idea in miniature: **the perceptual signal has to live in the
+frame the body acts in.** This is textbook — the retinal-position + head-position →
+body-centered-location transform is ~40-year-old neuroscience (gain fields, Zipser
+& Andersen 1988; basis functions, Pouget & Sejnowski 1997) — so we cite it, not
+claim it; the modest genuine bit is the *measured* double-dissociation (accurate in
+head-frame, usable in body-frame) in one learning agent.
+
+**Stage 2 (lens held at +30° — the actual recalibration test): mixed, still open.**
+Measured with the *residual*, not correlation (a constant ghost = true + 30° offset
+makes correlation mathematically blind to the difference between "reads the true
+ball" and "reads the ghost"): across an offset sweep the adapted eye's error-vs-true
+stays nearly flat (slope 0.13) where the un-adapted base grows with the lens (slope
+0.64) — the fingerprint of the eye learning to read *through* the prism. But this
+did **not** show up in behavior: steering to the real ball did not improve (choice
+0.75→0.63, borderline z≈1.42 p≈0.16; heading concordance flat per monitor). The
+contact-starvation worry was **refuted** (the eye got 1,800–3,500 samples/update,
+not starved). So Stage 2 is the "eye adapts, body underuses it" gap again, and at
+30° the ghost and real ball are only ~0.4 m apart so behavior can't cleanly show
+it. **Undetermined, not a win** — the clean decider is a 60° behavioral dissociation
+test, still to run.
+
+### Theory-monitor trail (mandatory independent verification, quoted)
+
+Across four rounds the monitor hand-recomputed every load-bearing number from raw
+episodes and did not rubber-stamp: it (a) confirmed the aftereffect decomposition
+and that ~75–80% of the "aftereffect" is blind motor bias; (b) endorsed downgrading
+"genuine recalibration" and caught that our first heading correlation used a linear
+statistic on wrap-around angles (recomputed circular: 0.38→0.00 held); (c) caught
+that the "1/3 chance" ghost baseline was wrong (~0.25), which *rescued* the
+small-offset following as a real effect; (d) isolated the frame detour with a
+matched-step A/B and formally superseded its own earlier "don't revert" call; (e)
+proved the Stage-2 correlation jump (−0.04→+0.59) is *mathematically* uninformative
+under a constant offset and steered us to the residual-slope test. Where it
+disagreed with the main loop, both readings were recorded (per the mandatory rule).
+
+### Open questions / next
+
+1. **60° behavioral dissociation** — the clean test of Stage-2 recalibration (ghost
+   and real ball separate enough to tell pursuit from degradation).
+2. **Make the task unwinnable blind** (Taylor: correction happens only where errors
+   carry a consequence) — the primary fix so vision is forced, run as a single
+   attributable change; in-view gating as a separate later change, not bundled.
+3. **The embodiment-grounded cue** (narrowed field of view, not an abstract on/off
+   bit — dual-adaptation literature: state cues work, arbitrary cues fail), needed
+   before Stage 3 (holding both lens-on and lens-off mappings, Taylor's Experiment I).
+4. **Offset curriculum** (+5→+30) so real-ball contact keeps the corrective signal
+   flowing as the shift grows — "start where the error is still correctable."
+
+**Files (code):** `crawler/{mimo_crawler_env.py, crawler_cnn_extractor.py,
+train_head_search.py, eval_bearing_readout.py (new), render_prism_decoy.py}`.
+**Results:** `prism_battery_stage1_*`, `prism_battery_recal_{base,stage2}_off30.json`,
+plus the decomposition/heading JSONs referenced in-session. Uncommitted at time of
+writing; safe on disk. Full session transcript:
+`transcripts/3f775bd4-aaea-4d48-a476-5ec2794816cf.txt`.
