@@ -100,6 +100,13 @@ def main():
 
     env = make_env(args.prism_offset, args.cone_deg, list(args.radius), args.max_steps, 7,
                    gaze_spawn=args.gaze_spawn)
+    # Make GHOST balls clearly distinct from REAL balls: 0.3 opacity vs 1.0 (David 2026-07-18).
+    # Ghosts are the non-physical "what AB sees under the lens" markers; at offset 0 they're
+    # inert but still present, so dimming them stops them reading as a second real ball.
+    for gname in ("ghost_geom", "ghost2_geom"):
+        gid = _id(env.model, mujoco.mjtObj.mjOBJ_GEOM, gname)
+        if gid >= 0:
+            env.model.geom_rgba[gid][3] = 0.3
     eye_id = _id(env.model, mujoco.mjtObj.mjOBJ_CAMERA, "left_eye")
     ball_id = _id(env.model, mujoco.mjtObj.mjOBJ_BODY, "target")   # red target body
     model = PPO.load(args.model, device="cpu")

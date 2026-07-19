@@ -28,6 +28,7 @@
     <material name="hair_mat"   rgba="0.30 0.18 0.10 1"/>   <!-- dark brown hair -->
     <material name="lip_mat"    rgba="0.85 0.40 0.35 1"/>   <!-- mouth/lip color -->
     <material name="neck_mat"   rgba="0.92 0.78 0.48 1"/>   <!-- skin, slightly darker than face -->
+    <material name="nose_mat"   rgba="1.00 0.72 0.05 1"/>   <!-- bright gold: unmistakable FRONT marker -->
 
     <material name="MatPlatform" rgba="0.72 0.72 0.68 1"/>
     <material name="MatGround"   rgba="0.35 0.30 0.25 1"/>
@@ -220,10 +221,11 @@
                     material="head_mat" pos="0.01 0 0.0735"/>
               <site name="vestibular" type="sphere" size="0.01" pos="0.01 0 0.0735"/>
 
-              <!-- Visible neck: cylinder descending from base of head body toward chest.
-                   Visual only (no contact). Helps see head articulation in renders. -->
+              <!-- Visible neck: cylinder bridging the head base down to the chest so the head no
+                   longer looks detached (David 2026-07-18). Visual only (no contact). Lengthened to
+                   reach the chest capsule (~.041 above chest origin, i.e. head-relative z~-.094). -->
               <geom name="neck" type="cylinder" material="neck_mat"
-                    size=".025 .024" pos="0 0 -.013" mass="0.001"
+                    size=".022 .060" pos="0 0 -.048" mass="0.001"
                     contype="0" conaffinity="0"/>
 
               <!-- Eye whites (sclera) — visible spheres in render -->
@@ -242,10 +244,11 @@
               <geom name="pupil_right" type="sphere" material="pupil_mat" size=".0045"
                     mass=".0001" pos=".081 -.025 .067" contype="0" conaffinity="0"/>
 
-              <!-- Nose: small skin-toned protrusion between and slightly below the eyes.
-                   Unambiguously marks the front of the face in any render angle. -->
-              <geom name="nose" type="sphere" material="head_mat" size=".010"
-                    mass=".001" pos=".082 .0 .055" contype="0" conaffinity="0"/>
+              <!-- Nose: bright-gold protrusion at the front of the face. Recolored + enlarged
+                   (David 2026-07-18) so the FRONT of the head is an unmistakable bright marker from
+                   any angle, including straight overhead — pairs with the brown hair on the BACK. -->
+              <geom name="nose" type="sphere" material="nose_mat" size=".016"
+                    mass=".001" pos=".083 .0 .058" contype="0" conaffinity="0"/>
 
               <!-- Mouth: small reddish horizontal bar below the nose. -->
               <geom name="mouth" type="box" material="lip_mat" size=".012 .002 .003"
@@ -260,12 +263,13 @@
               <geom name="eyebrow_right" type="box" material="hair_mat" size=".012 .004 .0035"
                     mass=".0002" pos=".078 -.026 .082" euler="0 8 0" contype="0" conaffinity="0"/>
 
-              <!-- Hair: positioned on the back-top of the head so it does not
-                   occlude the forward-facing eye cameras. -->
-              <geom name="hair_top"  type="sphere" material="hair_mat" size=".045"
-                    mass=".005" pos="-.005 0 .135" contype="0" conaffinity="0"/>
-              <geom name="hair_back" type="sphere" material="hair_mat" size=".045"
-                    mass=".005" pos="-.045 0 .080" contype="0" conaffinity="0"/>
+              <!-- Hair: shifted clearly onto the BACK of the head (David 2026-07-18) so the two
+                   spheres overlap into one back-of-head mass rather than reading as two blobs on top.
+                   Brown mass = BACK; bright-gold nose = FRONT. Kept off the forward eye cameras. -->
+              <geom name="hair_top"  type="sphere" material="hair_mat" size=".046"
+                    mass=".005" pos="-.032 0 .120" contype="0" conaffinity="0"/>
+              <geom name="hair_back" type="sphere" material="hair_mat" size=".048"
+                    mass=".005" pos="-.056 0 .086" contype="0" conaffinity="0"/>
               <!-- Stereo cameras: look forward-and-down when body is PRONE.
                    When prone: head+Z = world+Y (forward), head+X = world-Z (down).
                    Cameras are tilted 15° downward from horizontal so the ball
