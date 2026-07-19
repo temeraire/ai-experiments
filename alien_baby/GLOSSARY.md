@@ -520,3 +520,41 @@ against an embodied forward model — a governor over outcomes, not just plausib
 the deferred MICOA Phase II "anticipatory vision" (vision predicts proprio's next step — seeing
 contact before feeling it). Matters here because it is the one integration idea that adds
 causality rather than reference to the grounding program.
+
+**Binocular disparity (two-eye depth).** Depth you get by comparing the slightly different views
+from your left and right eyes: a near object sits at noticeably different spots in the two eyes, a
+far object at nearly the same spot. The size of that left-vs-right difference ≈ eye-separation ÷
+distance, so it shrinks with distance. Why it matters here: AB's eyes are 5 cm apart and only 32×32
+pixels over a 120° view, so each pixel is a chunky ~3.75° of the world. The two-eye difference is
+~2 pixels at 0.35 m (detectable) but drops below ONE pixel past ~0.6–0.7 m — both eyes then land the
+ball on the same pixel and there's literally no difference to read. So AB's two-eye depth is
+resolution-limited to roughly arm's length; the fix is sharper eyes (more pixels) or wider-set eyes
+(bigger baseline). Contrast with motion parallax (depth from self-movement over time).
+
+**Motion parallax.** Depth from your OWN movement over time: as you move sideways, near things sweep
+across your view faster than far things. It's a memory-over-time cue (you must compare now vs a
+moment ago), so a single-frame vision system can't use it — which is why AB needed frame-stacking
+(visual memory) to attempt it. Taylor's PRIMARY distance cue (he ranks it above two-eye depth), and
+in humans it comes online before stereo. For AB it only carries depth if he actually translates his
+viewpoint enough between the compared frames (hence a temporal stride so >1 px of motion accumulates).
+
+**mildhead (run nickname).** Our internal name for the model from run tag `mildhead_vis_s0` — NOT a
+literature term. It's the current best vision policy, retrained on the head with MILD joint damping
+(the setting we landed on after heavy damping calmed the head but hurt far-distance vision-steering,
+76.8%→59.4%; mild recovered it to 85%). Naming convention for our runs generally: descriptive
+nicknames + `_vis` (vision) + `_sN` (seed N), e.g. dist_holdout, steadyhead, mildhead, parallax_mem —
+all ours, none external.
+
+**Gain-field arm.** A version of AB's vision network with an extra piece (a FiLM modulation) that lets
+his head-pose adjust how visual features are read — the bet being that knowing your head angle helps
+undo a lens fixed to the eye. Named for real "gain-field" neurons that blend "what I see" with "where
+my eyes/head point" to convert eye-centred to body-centred coordinates. In the Stage-2 prism runs the
+gain-field arm INVERTED (vision-on did worse than vision-off), reproducibly — it hurt rather than
+helped. The "plain arm" is the version without it.
+
+**Aux loss (mismatch aux loss).** "Aux" = auxiliary — a side teaching signal separate from the game's
+reward. Here it's a "how wrong is the eye's guess?" score: the gap between where AB's eye estimates the
+ball is and where it actually turned out to be (confirmed by touching it). Training should shrink it as
+the eye learns. Under a prism lens, minimizing it forces the eye to subtract the lens offset =
+recalibration. In the failed Stage-2 run it never dropped (flat), meaning the teaching signal never
+engaged — a key reason that run couldn't show recalibration.

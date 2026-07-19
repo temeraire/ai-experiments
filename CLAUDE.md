@@ -246,6 +246,10 @@ without being asked. Rules:
 - Skip terms already defined; don't duplicate.
 - A term counts as "new" the first time it would need explaining to a non-specialist reader.
 - When in doubt, add it — an over-full glossary is cheaper than a forgotten term.
+- **If David ASKS what a term means, that question IS the trigger — add that term to the
+  glossary (+ a flashcard) as part of answering, every time (David's standing request,
+  2026-07-19). His asking is proof it needed an entry. This includes our own run/nickname
+  conventions (e.g. mildhead), not just external jargon.**
 
 ## Standard Workflow
 1. First think through the problem, read the codebase for relevant files, and write a plan to todo.md.
