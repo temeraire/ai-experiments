@@ -46,6 +46,17 @@ with a control group, and half the control group's result is already in our own 
 
 ## 3. What AB has actually established (the assets we are bringing)
 
+> **⚠ ASSET AUDIT (2026-07-13).** This section is a 2026-07-09 draft and predates the
+> **2026-07-12** correction banner atop `FINDINGS.md`. Two of the five bullets below are
+> now stated above what the record supports: the **"genuine sensorimotor recalibration"**
+> bullet cites the two-seed aftereffect, which the 07-12 decomposition showed is ~75–80%
+> **blind motor bias**, not a vision re-mapping (the genuinely vision-dependent
+> recalibration is the narrower 07-13 heading-only, single-seed result); and the **"genuine
+> visual reference"** bullet is really a **red-channel chromatic attractor ("approach red")**,
+> the salience side of the salience-vs-spatial fork. The other three bullets hold (with the
+> presence-vs-direction qualifier on head-search). Reconcile §3 with the 07-12/07-13 entries
+> before leaning on it. Full audit: `documents/reframed_assessment.md` §4.
+
 This program stands on results already in `FINDINGS.md`, not on hope. What AB has:
 
 - **A grounded visual representation that reads direction from pixels.** The years-long
@@ -433,3 +444,35 @@ be corrected by David, not treated as settled.
 Both connect to the same target: an embedding whose geometry carries the phrasing-invariant MEANING
 that §"Meaning-cloud test" showed off-the-shelf text embeddings lack. Open question for the
 discussion: do these two ideas compose (atoms = the elements, physics = the laws relating them)?
+
+## Appendix — external prior art for the "governor" idea (lit-scout, 2026-07-13)
+
+Folded in per the standing lit-scout rule after reviewing `documents/reframed.docx`. §5 above
+already argues "weights as a governor" doesn't type-check; the outside literature independently
+confirms both the point and the fix (expose an affordance **scalar**, don't fuse weight tensors),
+and shows the "propose action → check feasibility → filter/re-rank" loop is a mainstream 2022–
+present paradigm. Citations §2/§6 of this doc lacked (it had CLIP/LLaVA + the cog-sci lineage,
+not the LLM-robotics grounding line):
+
+- **SayCan** — Ahn et al. 2022, arXiv:2204.01691 — a skill's RL **value function** = P(succeeds
+  from this state) is multiplied by the LLM's P(helps the instruction); the type-checking form of
+  "governor." This is mechanism (1) of `reframed.docx`, already built and evaluated.
+- **Grounded Decoding** — Huang et al. 2023 (NeurIPS), arXiv:2303.00855 — same gate at token
+  granularity, with a slot for a **safety** grounding function.
+- **Inner Monologue** — Huang et al. 2022, arXiv:2207.05608 — closed-loop check → replan under
+  infeasibility.
+- **PaLM-E** — Driess et al. 2023, arXiv:2303.03378 — continuous sensor/state embeddings injected
+  into an LLM (mechanism 2/3 territory).
+- **RT-2** — Brohan et al. 2023 — the fused vision-language-action architecture = `reframed.docx`
+  mechanism (3), which is the **all-at-once fusion** our own v1 result argues against.
+- **Xu et al. 2025, Nature Human Behaviour** — text-only LLMs recover non-sensorimotor but **not**
+  sensorimotor features of human concepts: the empirical anchor for "text lacks sensorimotor
+  grounding" (our meaning-cloud probe reproduces this independently).
+- Follow-up scout worth running: safe-RL **shielding** (Alshiekh et al. 2018) as the formal name
+  for mechanism (1) as a hard constraint; **reachability-aware grounded planners** (arXiv:
+  2505.20573), the closest analogue to AB's proprioceptive reach envelope.
+
+**Bottom line:** `reframed.docx`'s three mechanisms map onto SayCan/Grounded-Decoding,
+world-model-as-verifier, and VLA/RT-2 — all established, all citable, none novel. The one open
+slice is the *source* of grounding (a proprioception-first, from-scratch encoder), which is a bet
+this doc's §b/§d already frames more carefully than the external document does.

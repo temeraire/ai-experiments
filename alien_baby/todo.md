@@ -1,3 +1,182 @@
+# Visual realignment program (prism) — staged & gated. Framing approved 2026-07-11.
+
+GOAL (engineering, not a test): give AB the tools to LEARN genuine visual realignment — vision
+swinging into line with reality via the sensorimotor loop — replicating the ESTABLISHED human prism
+result. Winnability rule: if AB won't realign, our setup is missing a tool; that is not AB failing
+and not a disproof of the phenomenon.
+
+DIAGNOSIS (this session, theory-monitor-verified 3×): under a held +30° visual shift, AB DROPPED
+vision and ran on a fixed motor habit — heading↔real-ball circular corr fell 0.38 → 0.00 (= blind).
+Causes of the shortcut: (1) task winnable blind; (2) trained only under the shift, never reconciling
+worlds; (3) NO seen-vs-felt error signal; (4) strong motor fallback.
+
+THE TOOL: a seen-vs-CONTACTED mismatch signal. Eye's reported ball-bearing (theta_vis) vs the
+direction the BODY actually met the ball at contact (theta_contact). David's call 2026-07-11:
+contact-anchored / honest signal, NOT the sim oracle. Gradient trains the EYE ONLY (stop-grad on
+the policy trunk), so the motor side cannot "solve" it by compensating. Sparse (updates at contact).
+
+STAGED, GATED curriculum (David's hard constraint — do NOT be premature; each gate must pass before
+advancing; if a gate fails, fix THAT stage, do not advance):
+  S1 no lens: eye learns true ball-direction. GATE: heading↔real corr ≥0.30 (blind ~0) AND a
+     blind-ablation control FAILS the task (vision-necessary) AND bearing-decode R² ≥0.30.
+  S2 lens held +30°: mismatch drives re-align. GATE: under the lens, heading↔REAL corr recovers
+     (≥~0.25, not merely "scores well") AND mismatch error re-minimizes (theta_vis shifts ~-30°).
+  S3 lens alternates on/off: GATE: sight-steers in BOTH worlds; post-switch wrong-way error shrinks.
+
+## SMALLEST FIRST STEP (build the new signal + de-risk it, NO lens) — IN PROGRESS (2026-07-12, overnight, autonomous)
+- [x] env (mimo_crawler_env.py): `ball1_bearing` (true ego-bearing to real red) in info dict. Additive.
+      NOTE: implemented as true ego-bearing; honesty enforced at the LEARNING level via contact-gating
+      (eye trains only on episodes that reached the ball), not by withholding the geometry from info.
+- [x] encoder (crawler_cnn_extractor.py): bearing head (sin,cos) → theta_vis off the pixel latent; shared
+      `_pixel_latent` refactor so existing runs are byte-unaffected.
+- [x] trainer (train_head_search.py): `--mismatch-coef` aux loss (unit-vec MSE of theta_vis vs true
+      bearing) via a SEPARATE optimizer over the encoder; `MismatchPPO` freezes the encoder during
+      PPO.train so reward trains heads only. `--no-gate-contact` toggles honesty off (default honest).
+- [x] smoke test (2K steps): non-strict load OK (missing=6 = bearing head's 3 shared refs), aux loss
+      falls 0.29→0.05, saved model LOADS for render (fixed an optimizer-surgery load bug via MismatchPPO).
+- [x] render check: mm_smoke renders clean → cameras/physics intact under the new code path.
+- [x] run 250K no-lens validation (stage1_ground_smoke_s0): DONE, no VOID. aux loss 0.29→0.078.
+- [x] eval: **VALIDATION PASSED.** bearing readout circ_corr(theta_vis,theta_true)=**+0.54** (vs ~0
+      untrained) → eye reads direction. Vision-necessary: sighted choice **0.67** vs ablated **0.48**
+      (chance) → blind FAILS. Behavioral heading↔real corr +0.174 sighted vs −0.065 blind (modest,
+      below the 0.30 full-S1 gate → strengthen with 1M). Caveat: MAE 59°, signed bias −22° = likely
+      body-vs-head-frame artifact (cancels in the S2 pre/post recalibration difference).
+- [x] render (stage1_ground_off0.mp4) watched (Gemini): crude rolling, approaches balls, cameras intact.
+- [x] theory-monitor verdict on 250K validation: **PASSED, advance justified, no fatal problem.**
+      Independently found MORE support: sign-concordance 66.7% sighted vs 43.3% blind (cleaner than the
+      Pearson +0.174, which is dragged down by timeout-wander outliers → use a robust circular stat on
+      1M); and the BLIND policy has a strong rightward motor bias (82% of blind headings +) that vision
+      OVERRIDES (sighted back to balanced 42%) — independent non-choice evidence the eye steers. Two asks:
+      (a) confirm bearing corr is per-timestep [CONFIRMED: 1364 per-step samples, not per-episode];
+      (b) **fix theta_true to head/camera frame before S2** (rejected my "it cancels" argument: head yaws,
+      so the offset won't cancel if head-scan differs under the lens).
+- [x] FRAME FIX applied: `_ball1_ego_bearing` now computed in the HEAD body frame (camera is on body
+      "head", id 13), not torso/root. Verified head vs body bearings differ 40–60° by head pose → the fix
+      matters. Stopped the body-frame 1M (PID 54196).
+- [~] **HEAD-FRAME S1 (1M) RELAUNCHED** from ext_s0 (fresh eye, learns head-frame target), PID 59317,
+      run-tag stage1_headframe_s0. Early-checking readout at 50K ckpt (expect signed bias −22°→~0) before
+      trusting the full run. GATE to S2: heading↔real corr ≥0.30 (report a robust circular stat too).
+## STAGE-1 GATE RESOLVED (2026-07-12) — head-frame fix HURT behavior; reverted to body/action frame
+The head-frame 1M run FAILED the gate (behavioral steering within noise). A matched-step A/B
+(monitor-verified with z-tests) isolated the cause: **the head-frame target itself hurt behavioral
+steering**, NOT step-count drift.
+- body-frame 250K: sighted-vs-blind steering 67% vs 43% (z≈2.65, REAL); vision-necessary choice 0.67
+  vs 0.48 (z≈2.03); blind at chance.
+- head-frame ~200K (matched): 53% vs 50% (z≈0.36 — NO detectable effect); choice 0.55 vs 0.47.
+- head-frame 1M: 65% vs 54% (z≈1.21, ns); blind rose to 0.55 (winnability drifted with extra steps).
+PRINCIPLE (Taylor interpenetration): the eye's signal must be in the frame the policy ACTS in
+(body), not the frame the pixels arrive in (head). Head frame = cleaner readout (MAE 40 vs 59) but
+the policy reads the CNN latent and steers the BODY, so a head-relative signal needs a head-pose
+composition it doesn't learn → steering collapses. Body frame = blurrier readout but action-aligned →
+used directly.
+RESOLUTION: reverted `_ball1_ego_bearing` to body/root frame. **The body-frame 250K checkpoint
+(stage1_ground_smoke_s0_best) is the VALIDATED Stage-1 base** (significant steering + vision-necessary
++ blind-at-chance, by the robust sign-concordance/z metrics — the raw 0.30 circ_corr gate was too
+strict; use the robust metric). Head-frame detour closed.
+- GATE METRIC going forward: robust sign-concordance sighted-vs-blind (z-test) + vision-necessity, NOT
+  raw circular corr ≥0.30.
+- DEFERRED upgrade — head-pose into the VISUAL pathway (lit-scout verified 2026-07-12, cross-disciplinary):
+  the transform "retinal + eye/head position -> body/spatiotopic location" is TEXTBOOK sensorimotor
+  neuroscience (**gain fields**: Andersen & Mountcastle 1983; Zipser & Andersen 1988 = canonical net demo;
+  **basis functions**: Pouget & Sejnowski 1997; Salinas & Abbott 2001). Reaching needs an effector/body-frame
+  target (Batista 1999; Cohen & Andersen 2002; Buneo 2002). RL confirms action-frame reps help control
+  (VICES, Martin-Martin 2019). -> FRAME OUR FINDING AS APPLY/CONFIRM, cite these; the modest genuine bit is
+  the *measured* double-dissociation (accurate in head-frame, usable in body-frame, head-pose the bridge)
+  via the decode-probe. TWO PITFALLS if we build the upgrade:
+  (1) the transform ADDS noise — head-pose error corrupts the body-frame estimate (Sober & Sabes 2005); our
+      body-frame blur is EXPECTED, not a bug -> reliability-WEIGHT the two frames, don't commit to one.
+  (2) gain fields are MULTIPLICATIVE -> use FiLM-style gating of the visual latent by head-pose, NOT plain
+      concatenation (a linear cat may not build the product term).
+- Winnability: fine at ~250K (blind at chance); only drifts up with over-training → keep S1 ≤ ~250-400K.
+
+- [ ] on S1 base (body-frame 250K) → **Stage 2**: continue under +30 lens FROM stage1_ground_smoke_s0_best;
+      gate = heading↔real recovers under lens AND signed bias shifts ~−30° (theta_vis recalibrates),
+      measured CONTROLLING for head pose. Build the embodiment cue first. Render + monitor each.
+
+## LOCAL-BOOK-AGENT SWEEP of Taylor for prism/spectacles (2026-07-12) — what we'd MISSED
+Full-corpus sweep (validated the new local-book-agent workflow). Beyond the Ch.9 items already logged:
+- **Experiment III (prism-in-contact-lens):** adaptation happens with NO reaching — from SCANNING alone,
+  IF the eye movements themselves are put in error. SHORT corrective movements adapt fast (line straight
+  in ~20 s); long sweeps FAIL. Bit-by-bit, not global (bookcase bottom straightens, top still curved).
+  Clean negative aftereffect, dissociable between the two eyes. → train on small corrective steps to near goals.
+- **Taylor PROPOSES ~our task (9.22):** "hold a tray with a ball… tilt it to make the ball roll" — invented
+  to INJECT a corrective DRIVE into a subsystem that has none. Principle: a shift is corrected ONLY where
+  errors carry a consequence the agent is driven to minimize. → mis-reaching must have a cost in every
+  region we want recalibrated (ties to winnability/liveness).
+- **Head-first staged order WITH rationale (5.2–5.11):** head→trunk→arms→legs→stand→walk, each requires the
+  prior stable; reason = multistable speed argument (adapt ONE subsystem at a time, FREEZE the rest — "head
+  held rigidly during first efforts to stand"). Papert staged → true perception day 8 vs >2 wks for
+  "be maximally active" Innsbruck. → theoretical backing for the staged curriculum + freezing.
+- **Positive/negative feedback sign-flip (5.2):** a visual shift can FLIP a control loop's sign, making the
+  naive controller destabilizing until relearned. Explains WHY AB dropped vision (under the shift vision
+  became positive/harmful feedback → abandon it); recalibration = restoring negative feedback. Check our
+  setup doesn't trap AB in a positive-feedback loop it must survive.
+- **Timescale targets:** Papert day 8; Exp II 13 days; Exp III ~20 s to straighten a line; INTERMITTENT wear
+  eliminates the aftereffect AND adapts faster than continuous.
+- **CAVEAT 1 — a rigid self-anchored frame can BLOCK adaptation:** one subject wore reversing specs 71 DAYS
+  and never adapted, anchoring to an invariant head-referenced frame. Flag on our head-frame target: it's
+  right for removing yaw noise, but must still provide genuine error under the lens (it does — contact-
+  confirmed true bearing still errs when pixels shift) and not become an invariant the system hides behind.
+- **CAVEAT 2 — Taylor's cleanest recalibration data are SLOPE/SHAPE, not lateral POSITION** (our exact
+  transform). He avoided pure lateral-displacement responses (walked defensively) and predicts little change
+  in perceived lateral position. Mechanism support is strong; quantitative design-target support for a
+  sideways-position shift is weaker. Weigh before leaning on Taylor numerically for our transform.
+- Reusable principles surfaced: response-specificity, interpenetration, multistable subsystems walled by
+  inactive part-functions, functional equivalence classes, (cue,1)/(cue,0) parameter, goal-gradient/START,
+  negative-aftereffect=recalibration, feedback sign-flip, drive-prerequisite-for-correction.
+
+## TAYLOR CH.9 REFRAME (2026-07-12, after reading the source — David directed) — changes the plan
+Read Taylor "Behavioral Basis of Perception" Ch 9 (Experiments I reversing / II wedge-prism). Key points
+that DIRECTLY reshape our design:
+1. **The cue is the linchpin, and Taylor formalizes it.** Intermittent wearing works because s' (glasses on)
+   carries "constant stimuli such as the pressure of the spectacles on the nose, narrowing of the visual
+   field... an afferent function having only two values, 1 and 0." State = (s',1) with / (s,0) without. That
+   bit lets the subject hold TWO mappings and switch with NO disruption, NO aftereffect (Papert biked,
+   removed+replaced glasses mid-ride, no wobble). → my "no cue needed" was WRONG; the cue is the mechanism.
+2. **Adaptation is RESPONSE-SPECIFIC (interpenetration).** Exp II: ground he WALKED on leveled; distant
+   objects he only LOOKED at stayed distorted to the end ("stability for objects within reach... undiminished
+   instability beyond that range"). Vision realigns ONLY through the specific corrective action. → VALIDATES
+   contact-gating; predicts AB's realignment is specific to the ball-approach it practices, not global.
+3. **Head-centered frame of reference** (8.11 Innsbruck subject) → independently vindicates the head-frame fix.
+4. **Start the response correctly** (Schermann tapped the hand the instant it started wrong; roundabout paths
+   that still reach the goal get reinforced) → weight the START of the approach, not just contact.
+
+DESIGN CHANGES (implement before Stage 2):
+- [ ] Add a LENS-STATE CUE to AB's obs — but it MUST be STATE/EMBODIMENT-grounded, NOT an abstract bit.
+      **Literature-scout correction (2026-07-12):** "dual adaptation" is the correct standard term (Welch,
+      Bridgeman, Anand & Browman 1993, Percept&Psychophys — origin; Lee & Schweighofer 2009; Kim et al.
+      2021). BUT "requires a reliable cue" was OVERSTATED: the cue must be TASK/STATE/MOVEMENT-relevant to
+      drive IMPLICIT dual adaptation — ARBITRARY cues (color, shape — and by analogy a bare on/off flag)
+      largely FAIL / work only via explicit strategy (Woolley et al. 2015; Kim et al. 2021). Two mappings can
+      even be held with NO explicit cue via fast/slow timescales (Smith et al. 2006). → So DON'T append an
+      abstract "lens=1/0" bit (that's the color-cue failure mode). Model Taylor's actual cue: the "glasses"
+      NARROW AB's field of view (and/or a proprioceptive/postural signal) — an embodiment cue, the kind that
+      works. Taylor (1962) is NOT cited by the modern dual-adaptation lineage; Kravitz & Yaffe (1972, tone
+      cue) is the historical bridge — and notably they used an arbitrary tone (the weaker kind).
+- [ ] Add an IN-VIEW GATE to the mismatch loss (train the eye only on states where the ball is in the camera
+      FOV / acted-upon) — technically fixes the head-frame out-of-view noise AND matches Taylor's response-
+      specificity. (Head-frame S1 @50K shows eye tracks direction +0.586 but signed bias −41.7° from out-of-view
+      contamination.)
+- [ ] Reframe **Stage 3 = Taylor's Experiment I**: intermittent wearing WITH the cue → perceive correctly with
+      AND without, no aftereffect. NOT "alternate blindly" (which is ill-posed without the cue).
+
+## Stage-3 PREREQUISITE (from David, 2026-07-12) — AB needs a CUE to tell lens-on from lens-off
+David's Q: "how does AB differentiate wearing the prism glasses vs not?" Current setup: NO cue — the
+lens just shifts the pixels; nothing flags lens state. This is CORRECT and human-faithful for S1/S2 +
+the basic after-miss (you don't need to know the lens is on; the after-miss IS the failure to instantly
+differentiate — the recalibration persisting into the no-lens world). BUT Stage 3 (hold BOTH mappings,
+alternating) is **dual adaptation**, which REQUIRES a reliable contextual cue signalling which mapping
+is active (feeling/seeing the glasses in humans); without one, AB can only average the two → blurs.
+→ Stage 3 is ill-posed until we give AB a differentiating cue (proprioceptive flag / visible lens edge /
+visual context). What the cue should be = a real design decision, model it on what humans actually use.
+Do NOT run S3 as "alternate with no cue" — that measures our setup's impossibility, not AB's ability.
+  SUCCESS: corr climbing above blind, R² > ~0.2, mismatch trending down, ablated < full → greenlight S1 full (1M).
+  FAIL: corr ~0 / R² flat → eye can't read 32px; fall back to AB_CAM_RES=64 or a distil pre-pass.
+        Blind scores = full → task not vision-necessary; harden (wider cone / shorter horizon) first.
+Decision: grounded eye built IN-PLACE during S1 (default); distil pre-pass is the fallback if it fails.
+
+---
+
 # Overnight run — 2026-07-08 → 07-09 (approved: "do #1-5 in order, keep running all night")
 
 Chain of the five FINDINGS next-steps. Sequential (single MPS device → no parallel training).
@@ -447,3 +626,139 @@ If TEST succeeds and CONTROL fails, perception enables reaching. Clean, decisive
   of raw torque (likely the biggest lever); (b) simpler body / fewer DOF for the reach
   primitive; (c) different algorithm or scripted/imitation bootstrap; (d) step back and
   question whether this body+sim is the right substrate at all.
+
+## 2026-07-13 (overnight) — reframed.docx assessment + prepared (NOT launched) 2nd-seed replication
+
+### Done this session (analysis only, no compute burned)
+- Assessed `documents/reframed.docx` at David's request. Verdict: direction right (already ours),
+  but premise overstates results, and the 3 mechanisms are established prior art
+  (SayCan/Grounded-Decoding, world-model-as-verifier, VLA/RT-2). Full memo:
+  `documents/reframed_assessment.md`.
+- theory-monitor: the doc's "theory is largely correct" CHALLENGES the record — true for proprio,
+  negative-to-narrow for vision (R²=0.08-0.14 direction decode; ablation peaks at ecc=0).
+- literature-scout: mechanisms are restatements; "weights as governor" doesn't type-check (fix =
+  affordance-as-scalar, per SayCan). Thesis = Harnad/Barsalou, empirically Xu et al. 2025 (Nat Hum
+  Behav). Folded citations into GROUNDING_LLMS.md appendix.
+- Flagged GROUNDING_LLMS.md §3 as STALE (2026-07-09 draft, pre-07-12 correction): 2 of 5 asset
+  pillars overstated (recalibration = mostly blind motor bias; "reference" = approach-red salience
+  reflex). Added a dated ASSET-AUDIT banner at §3 pointing to the memo. Did NOT rewrite §3 (David's call).
+
+### PREPARED, GATED — second Stage-2 seed (monitor's #1 next step). NOT launched (needs David greenlight).
+Why not launched autonomously: a multi-hour run + a real design fork are David's call. But the
+reproducibility blocker that gated this is now RESOLVED (2026-07-17, analysis only, no compute) —
+see PARAM-PIN below.
+
+## PARAM-PIN of the Stage-2 recipe (2026-07-17) — reproducibility gap closed on analysis alone
+Recovered from `stage2_adapt_s0` checkpoints + trainer source; no compute spent.
+- **PPO block, EXACT (read from the SB3 checkpoint `data` blob):** lr 3e-4, ent_coef 0.01,
+  n_steps 1024, batch 512, n_epochs 10, gamma 0.99, gae_lambda 0.95, vf_coef 0.5, max_grad_norm 0.5.
+- **Env, PINNED (obs-dim 6213 uniquely identifies it):** `mimo_crawler_pos_wide_prism.xml`,
+  --prism-offset 30, --decoy, --spawn-cone-deg 136, --spawn-radius 0.70 0.80, --max-steps 1000
+  (trainer defaults; match the surrounding runs). Confirm 6213 against the prism XML if paranoid.
+- **The `--mismatch-coef` that the todo flagged `<UNCONFIRMED>` is NEARLY A NON-PARAMETER.** The aux
+  optimizer is `torch.optim.Adam(fe.parameters(), lr=aux_lr)` and the loss enters as `coef * MSE` —
+  a constant scale on the loss fed through Adam. Adam's update = grad / sqrt(second-moment), so a
+  uniform `coef` multiplier cancels out of the step for any value above the eps floor. => for any sane
+  coef (~0.05-10) the trained eye is ESSENTIALLY IDENTICAL; the real plasticity knob is aux-lr (3e-4,
+  recovered). Only needed coef > 0 (signal on). Write coef=1.0 and document it; the value is immaterial.
+- **Built-in reproduction check (makes the coef question moot regardless):** when the same-base gate
+  runs, its Stage-1 eye readout should land near the validated Stage-1 numbers (mismatch/aux_loss
+  ~0.078, bearing circ_corr ~0.54). If it does, the recipe reproduced whatever the original coef was.
+
+## PLAN (Claude's rec, 2026-07-17; David corrected the seed logic — recorded below)
+Sequence: declare recipe (coef 1.0) -> cheap eval power-up -> same-base FAST-FAIL gate -> fresh chain
+-> 2-3 more fresh chains before anything builds on it.
+- **SEED LOGIC (David's correction, the governing reading):** the same-base fresh-PPO-seed run is a
+  FAST-FAIL GATE, not a green light. The eye is PART of the mechanism claim ("embodied vision produces
+  prism adaptation"), so two Stage-2 seeds off ONE base are correlated through the shared eye — NOT
+  independent N=2, and a reviewer would say so. Therefore: a PASS on the same-base gate tells you nothing
+  about generality; you proceed to the fresh chain REGARDLESS. A FAIL kills the result cheaply in one run
+  (adaptation isn't even robust on its own eye). Even the fresh chain is N=1 — budget 2-3 fresh chains
+  eventually to turn "replicated" into a distribution; do NOT let one fresh success re-become the thing
+  the LLM-grounding work builds on.
+- **Cheap eval power-up (no training, existing checkpoints):** re-run the 60° battery at ~400 eps/cell
+  + add a 45° dose-response point. Decides whether the CHOICE endpoint is genuinely flat or just
+  underpowered (07-13 needed ~8x eps for choice) -> sets which metric the seed gate is scored on.
+
+Reconstructed command (same-base fast-fail gate — NEW seed, identical recipe):
+  python crawler/train_head_search.py --init-model results/stage1_ground_smoke_s0_best/best_model.zip \
+    --xml crawler/mimo_crawler_pos_wide_prism.xml --prism-offset 30 --decoy \
+    --mismatch-coef 1.0 --aux-lr 3e-4 --spawn-cone-deg 136 --spawn-radius 0.70 0.80 \
+    --max-steps 1000 --ent-coef 0.01 --steps 300000 --seed 1 --run-tag stage2_adapt_s1
+Then eval at 60° with `eval_prism_decoy.py` (base vs stage2_s1 sighted vs stage2_s1 ablated), render,
+theory-monitor. Gate = ghost-fraction below chance under sighted + reverting to chance when ablated
+(the 07-13 s0 signature). Per David: PASS -> proceed to fresh chain anyway; FAIL -> result is fragile,
+stop and diagnose. STILL needs David's greenlight to spend compute.
+
+## PRE-COMPUTE PANEL — RAN 2026-07-17 (strategist + lit-scout + local-book, in parallel). Verdicts:
+- **experiment-strategist:** confirmed the gate command; THREE fixes — (1) pin `--n-envs 8` (default 8;
+  a silent bump to 16 changes rollout/minibatch = reproduction confound); (2) watch first log line for
+  `missing=0` (eye inherited) — `missing=6` means the eye did NOT load, kill the run; (3) coef=1.0 fine.
+  Fresh chain = fresh Stage-1 from `decoy_v2_ext_s0_best` (seed 2, offset 0, 250K; expect missing=6 =
+  correct fresh bearing head) -> Stage-1 gate (robust sign-concordance + vision-necessity, NOT circ_corr
+  0.30) -> fresh Stage-2 (seed 2, 300K). HEADING (`displayed_red_frac`) is the confirmatory endpoint,
+  CHOICE is exploratory/underpowered — PRE-REGISTER this. Ablated cell = internal chance ref (non-neg).
+  BIGGEST HOLE: even the "fresh chain" shares the `decoy_v2_ext_s0` LOCOMOTION base -> not fully
+  independent ("N=1 in disguise"); true independence needs a from-scratch base (`ext_s1`, big compute).
+  ~9-12h wall-clock for gate+fresh-chain, sequential single-MPS.
+- **literature-scout:** ML replication bar for this claim is ~8-20 independent seeds/arm with interval
+  stats (rliable IQM + bootstrap CIs; AdaStop for early-stop), NOT 2-3 (Colas 2018; Henderson 2018;
+  Agarwal 2021). Human-prism analogue is looser (~5-10 subjects) BUT only because within-subject design
+  is strong + effect large vs spread. Full stack (pixels->mismatch-grounded encoder->RL->aftereffect)
+  appears UNCLAIMED (novelty candidate; cite Feulner 2024 as emergence existence-proof; chase a
+  "rotated-camera robot prism" lead before claiming first). KEY UPGRADE > raw seeds: lens-OFF AFTEREFFECT
+  PROBE (field-standard positive endpoint) + ERROR-CLAMP (ghost offset independent of AB's aim, kills
+  "just found a better policy"). Adopt implicit/explicit vocabulary (Taylor-Krakauer-Ivry 2014).
+- **local-book-agent (Taylor):** tradition is N=1 WITHIN-subject dissociation, not between-subject
+  averaging; core recalibration is a robust invariant across engaged subjects, route/rate vary by
+  drive/training (= our winnability); the one failure case (71-day subject) was a READOUT artifact
+  (adapted behaviorally, not in report) -> audit a null's readout before calling it failure. Gives NO
+  quantitative seed number (that's the lit-scout's job).
+- **DECISION FORK for David (post-eval):** WIDEN (more independent seed-chains toward 5-20 + interval
+  stats) vs DEEPEN (build the lens-OFF aftereffect probe + error-clamp, run a couple independent chains
+  through THAT). Claude's lean: deepen-then-widen (one clean aftereffect harder to dismiss than seeds
+  3-through-20 of the lens-on test). DAVID CHOSE: "deepen then widen" (2026-07-17).
+
+## DEEPEN ATTEMPT — lens-off aftereffect on stage2_adapt_s0 (2026-07-17, autonomous, eval-only). OUTCOME: NOT ESTABLISHED.
+Ran the field-standard lens-off aftereffect probe two ways on the EXISTING adapted checkpoint (no training):
+- **Representation route (bearing readout): UNINTERPRETABLE.** eval_bearing_readout instrument fails its
+  own sanity check — validated base eye circ_corr +0.54 reads ~0 even after in-view filtering. Original
+  readout settings never saved (reproducibility gap). Built eval_aftereffect_inview.py (in-view filter)
+  but the base still doesn't reproduce -> instrument not trusted. Route abandoned.
+- **Behavioral route (via trusted eval_prism_decoy @ offset 0): correctly-signed but NOT significant.**
+  Full 2x2 {base,adapted}x{sighted,blind}, 300 eps, seed 0. Vision IS load-bearing (blinding swings net
+  heading 31.8-38.5deg, z~15 -> refutes Story-B motor-habit). BUT the aftereffect (diff-in-diff, motor-drift
+  controlled) = -6.7deg unpaired (z=-1.73, p=0.08) / -4.1deg PAIRED (z=-1.09, p=0.275). Paired = cleanest
+  test (300/300 spawn-aligned), did NOT reach significance. ~half the naive raw -13.7deg shift was
+  MOTOR-BIAS DRIFT between checkpoints, not vision.
+- **Video (render rule):** ae_adapted_off0_sighted.mp4. Gemini="ragdoll/incidental" (known under-read);
+  overridden by the z~15 ablation swing = vision-directed but crude belly-down gait.
+- **METHODS LESSON (new, load-bearing):** a raw sighted heading shift between a base and a fine-tuned
+  checkpoint CONFOUNDS visual recalibration with motor-bias drift from the extra training steps. The 2x2
+  (add both blind cells) + difference-in-differences is MANDATORY to isolate the visual component. The
+  raw number overstated the aftereffect ~2x.
+- **FINDINGS entry:** 2026-07-17 "Lens-off aftereffect, full 2x2 control" + ADDENDUM (paired result +
+  video + final verdict + cleaner-probe requirements). Theory-monitor verified 2x2 (no overclaim found).
+
+## DEEPEN cont. (2026-07-17) — single-target no-feedback reach probe: INVALID INSTRUMENT.
+Built crawler/eval_reach_aftereffect.py (single ball + early-window ballistic heading). Monitor caught +
+code-confirmed: R²(true bearing, early heading) ~0 in ALL cells incl. SIGHTED -> the window=40 heading does
+NOT measure vision-guided aim, it measures a target-independent initial crawl motion. My "+0.7deg = aims
+true" headline was a SYMMETRY ARTIFACT -> RETRACTED. Root cause: this creature has NO ballistic-aim phase
+(steers gradually over the approach; touch homes the contact) -> no early window to read an aftereffect from.
+NET: the lens-off aftereffect is UNMEASURABLE with current tools (bearing-readout broken; early-window R²~0;
+whole-episode homing-confounded), NOT shown absent. The decoy (-4.1, correctly-signed) and reach (+5.3,
+wrong-signed) estimates don't even agree in sign -> effect at/below both instruments' noise floor.
+FINDINGS entry: "2026-07-17 — Single-target no-feedback reach probe: INVALID INSTRUMENT".
+
+## NEXT DEEPEN STEP = INSTRUMENT-BUILDING (not a seed, not widen):
+Sweep the heading window; find a window where SIGHTED heading correlates with true bearing (R² high) AND
+BLIND does not (validate the instrument measures vision-guided aim FIRST). Only then measure the aftereffect
+(2x2 diff-in-diff, motor-drift controlled) in that VALIDATED window. Rule earned twice this session: never
+trust an aim/aftereffect metric that hasn't passed the R²(sighted-high / blind-low) sanity check — the
+bearing-readout and the early-window reach both failed exactly this.
+
+## WIDEN — HELD (not launched). Gate driver staged at scratchpad/samebase_gate.sh (recipe pinned, --n-envs 8,
+missing=0 guard). NOT launched: there is no VALID, significant aftereffect to replicate (both deepen
+instruments were invalid/confounded). Resume widen only after a VALIDATED instrument shows a real effect.
+All deepen work was eval-only; NO training compute spent this entire session.

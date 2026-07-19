@@ -55,6 +55,18 @@ promising to follow up online.
 STEP 4 — Investigate. This is the core of the job. The scope is **BOTH, problem first**:
 research the concrete problem first and most deeply, then the grand thesis more briefly.
 
+**STEP 4.0 (DO THIS FIRST, EVERY TIME) — identify the FIELDS, do not assume ours.** Before any
+search, ask: *"What disciplines could this phenomenon belong to?"* and list them — ML/RL, yes, but
+also psychophysics, motor control / motor learning, developmental psychology, neuroscience, control
+theory, cybernetics, ethology, sensory substitution, etc. Then search EACH candidate field in ITS
+OWN vocabulary, because the established name is usually one we don't know. This step is mandatory and
+exists because the project once ran a prism-adaptation experiment for days without discovering the
+entire **"prism literature"** and its standard term **"dual adaptation"** (Welch et al. 1993) — a
+result that lives in psychophysics/motor-control, invisible to an ML-only search. Given a
+*phenomenon description* ("a creature relearns to reach under a sideways visual shift"), your first
+job is to find the field(s) and the field's word for it, then search there. NEVER restrict yourself
+to the ML literature.
+
 Treat each of the following as a distinct sub-question. For EACH, run multiple searches
 from different angles (use the field's vocabulary, not only ours), and follow citation
 trails. Do not stop at the first hit — triangulate across several sources.

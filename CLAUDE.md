@@ -33,6 +33,44 @@ world-coupled. Keep that as the fixed target; everything else is means.
 
 ---
 
+## Perception lives in the GAZE frame — "what is offset relative to?" (governing frame, 2026-07-18)
+
+David's question — *"what is the prism offset relative to?"* — exposed a foundational apparatus bug
+and set the rule below. Read it before touching anything perceptual (prism, spawn, bearings, aim
+metrics). Full record: `PRISM_GAZE_RELATIVE_PROPOSAL.md`.
+
+**The rule: everything the agent perceives or is measured against must be defined in the AGENT'S
+GAZE / EYE frame — never the world origin, never the torso/body frame.** A real prism is fixed to the
+EYES: it displaces the retinal image by a CONSTANT angle no matter where the creature looks, moves, or
+turns its head. So the offset is relative to the line of sight, and it is continuous (every step), not
+a one-time world placement.
+
+Why this is not pedantic — the two frames are far apart here:
+- The eye is on a head reached **~0.42 m forward** of the torso and tilted **~18° down**, so
+  world-azimuth-from-origin is NOT what the eye sees. The OLD prism rotated the ball's azimuth about
+  the world origin: a "30° prism" actually delivered a **55° retinal shift that landed off-screen** —
+  a winnability violation (the creature couldn't even see the displaced target, so a failure to adapt
+  was OUR apparatus failing, not AB failing).
+- The **body/torso frame is ~90° MISALIGNED** from the functional forward: at one measured pose the
+  ball was +98° in the torso frame but +10° in the gaze frame, because the prone pitch twists the
+  torso's axes. So "body-frame bearing" is measured against an axis that does not point where the
+  creature looks or travels. This is very likely the root of the long-running head-vs-body-frame mess.
+
+Standing consequences:
+- **Verify vision through the AGENT'S EYE camera (`left_eye`), never the overhead.** The overhead is
+  world-frame and will make a ball that is dead-ahead of the gaze look "off to the side." (This is
+  what repeatedly confused us until we computed the eye-frame geometry.)
+- **Never trust an aim / bearing metric without the instrument check: sighted-R²(true bearing, heading)
+  HIGH and blind-R² LOW.** Two aftereffect instruments (a bearing-readout and an early-window reach)
+  both silently failed this — they measured a target-independent motor habit, not vision-driven aim.
+- **Implemented (2026-07-18):** gaze-relative prism `_update_prism_ghost()` (per-step, cyclopean eye)
+  and opt-in `gaze_spawn=True` (visible target placed within the gaze cone, on-platform, reachable) in
+  `mimo_crawler_env.py`; prism scripts pass `--gaze-spawn`. STILL OPEN: whether the recalibration
+  TARGET bearing should also move to the gaze frame — conflicts with the 2026-07-12 body-frame steering
+  result, so it is deferred to a matched experiment, not changed silently.
+
+---
+
 ## Conversation Capture (important — read this)
 
 The user wants to preserve our conversations. OBS screen recording does NOT work for this —

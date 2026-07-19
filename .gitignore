@@ -82,3 +82,6 @@ MUJOCO_LOG.TXT
 /subagent_video_script.md
 /split_bbp.py
 /Flashcards/flashcards convo
+
+# temp render/eval outputs (videos, logs)
+scratch_render/

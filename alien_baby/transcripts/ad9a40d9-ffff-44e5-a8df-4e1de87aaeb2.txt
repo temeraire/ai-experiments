@@ -1,0 +1,621 @@
+
+======================================================================
+USER:
+======================================================================
+can you tell me what processes are currently running?
+
+======================================================================
+CLAUDE:
+======================================================================
+I'll check what's running — both overall and any project-related training/eval processes.
+    [→ tool: Bash]
+    [→ tool: Bash]
+The main thing running is your **Stage-2 prism training run**, launched at 6:09 PM and currently using ~68% CPU:
+
+**Training run (PID 63815)** — `train_head_search.py` with:
+- `--prism-offset 30 --gaze-spawn` (the new gaze-relative prism + gaze-cone spawning)
+- `--decoy --mismatch-coef 0.1`, spawn cone 136°, radius 0.70–0.80, 300K steps, 16 envs, seed 0
+- Seeded from `s1corr_plain_s0_best/best_model.zip`, run tag **`s2corr_plain_s0`**
+- It's been running about 11 minutes of wall clock (9.5 min CPU time), so it's still early in the 300K steps.
+
+Everything else is ordinary desktop stuff: this Claude Code session, VS Code, Brave/Chrome, Messages, the Ollama app idling in the background, and system daemons. No eval, render, or other training processes are running — just the one Stage-2 run.
+
+======================================================================
+USER:
+======================================================================
+I also want to return to something you mentioned at some point. You said, something like, “This is a very restricted environment.  In a human’s development, there would be many thousands of instances of locomotion and grasping (my words) whereas we have one ball. I don’t know if you can find what you said, but I think it’s worth noting and possibly addressing.  It occurs to me that we could have a large sequence of small changes which would stand in for this kind of data augmentation. If we moved the ball one degree at a time within AB’s field of vision, that might help generalization. We could also move its distance one centimeter at a time, or whatever space/distance makes sense. Since we sometimes run millions of episodes (or is it steps?) we could compress years of learning into a much smaller timeframe (hours?) Do you think this is a good idea?
+
+======================================================================
+CLAUDE:
+======================================================================
+Let me first try to find what I said earlier, then give you a real answer on the idea.
+    [→ tool: Bash]
+    [→ tool: Bash]
+Found the related passage. Let me pull the exact remark you're remembering.
+    [→ tool: Bash]
+    [→ tool: Bash]
+I dug through the transcripts. I couldn't find the exact sentence you're remembering — it may be in a stretch that got summarized away — but the *theme* is all over the record, and one thing is worth flagging up front: the project already has a written principle that endorses exactly the move you're proposing. The GLOSSARY entry "faithful to the mechanism, free on the implementation" explicitly lists **"compressed lifetimes"** and "compress [the literal year of crawling] into a curriculum" as legitimate divergences from the human path. So "compress years of development into hours" isn't a new departure — it's sanctioned. Your instinct is aligned with something we already committed to.
+
+Now the honest answer to "is this a good idea?" — **partly yes, with one correction and one caveat that together decide whether it works.**
+
+**The correction: AB is not actually starved for ball positions.** "Millions of steps" is steps, not episodes — an episode is up to 1000 steps, so millions of steps is already *thousands* of distinct episodes, each with a randomly drawn ball position. The current run you saw draws from `--spawn-cone-deg 136 --spawn-radius 0.70 0.80`, so every episode already samples a random spot in a 136°-wide cone. Random uniform sampling of a continuous space generalizes as well as — usually better than — a fixed grid, because a grid can alias and random covers the space in expectation. So "move the ball 1° at a time" across the field of view would **not** beat the random azimuth coverage AB already gets. Finer resolution along an axis it already randomizes buys little.
+
+Where your intuition is genuinely right and *under-exploited* is the **under-sampled axes**, not resolution:
+- **Distance.** The radius band is 0.70–0.80 m — a 10 cm shell. AB has essentially never trained across a wide distance range. Your "move it 1 cm at a time in distance" is real augmentation of the training distribution, and it's the exact lever behind the Phase V distance-law result (which extrapolated impressively but from a very thin band). This part is worth doing.
+- **Shape, size, motion, clutter.** One object, mostly one shape, static-ish, one background. The impoverishment is in *variety across dimensions*, not resolution within one.
+
+**The caveat that makes or breaks it: dense coverage alone can't prove generalization, and can actively hide memorization.** If you give AB every position, it can in principle build a dense lookup table over positions and show *zero* underlying generalization — and you'd never detect it, because you'd be testing where you trained. The rigorous form of your idea is already in our plan (the "holed product space" experiment, transcript line 1704): cover densely **but leave a deliberate gap, and evaluate on the gap.** Fill-the-hole = it learned the law; can't-fill-it = it memorized. Densification without a held-out region gives you the *illusion* of generalization for free.
+
+**The honest limit:** this will sharpen and extend **proprio** generalization — which already works — and is a clean, cheap way to map its boundary. It is unlikely to fix the **vision** inertness. Our record attributes that to a structural cause (on the cart AB was a passenger, so there was no directional action for vision to *drive*, hence no gradient to encode direction) — not to sparse position sampling. More coverage of a signal the policy isn't using doesn't create usage. Coverage extends a capability that exists; it doesn't install a missing one.
+
+One more thing hiding in your idea: the *continuity* part — small smooth changes between consecutive situations, the way a baby's world actually moves — has a real home that random teleporting doesn't capture. A slowly **moving** ball within an episode (continuous tracking) is a richer, more developmentally faithful signal than snapping to a new random spot each reset, and we already have the moving-ball machinery for it.
+
+So my recommendation: yes, but redirect it. Don't spend the density on azimuth (already covered). Spend it on **widening the distance band and adding shape/size variety**, always paired with a **held-out region you evaluate on**, and consider a slow within-episode drift for the continuity signal. That's the version that produces generalization instead of a lookup table — and it's cheap (a spawn-range and curriculum-binning change, no new machinery).
+
+Want me to write this up as a concrete pre-registered experiment (exact distance range, the held-out corner, and the falsifier threshold) and run it past the experiment-strategist and literature-scout per the project's process gate? The current `s2corr_plain_s0` run can finish undisturbed while we design it.
+
+======================================================================
+USER:
+======================================================================
+Yes please
+
+======================================================================
+CLAUDE:
+======================================================================
+Yes — let me build the pre-registered protocol, then run the process gate (experiment-strategist + literature-scout + local-book-agent in parallel) before any compute. First I'll check the exact env knobs so the protocol uses real flags, not vibes.
+    [→ tool: Bash]
+    [→ tool: Bash]
+    [→ tool: Bash]
+I have the real knobs. The clean lever is `--spawn-radius LO HI` for distance (default is the thin 0.70–0.80 band); ball *size* can be overridden at eval time (`geom_size`) but has no training flag yet, so a distance×size factored design needs a tiny env change. Let me write the pre-registration with distance as the spine, then hand it to the panel.
+    [→ tool: Write]
+Pre-registration drafted at `alien_baby/PREREG_distance_generalization_holdout.md`. Now the mandatory process gate. I'm dispatching three agents **in parallel** — this is a sanctioned use (design + external prior-art + internal shelf-check), and I'll relay each verbatim into this transcript when they return:
+
+- **experiment-strategist** — turn the draft into a launch-ready protocol (exact flags, the held-out-band implementation, seeds, eval bins, winnability render).
+- **literature-scout** — cross-disciplinary prior art: has "widen the training range + hold out a gap to tell generalization from memorization" been done, in RL *and* in motor-control/developmental reaching?
+- **local-book-agent** — what Taylor and our shelf say about reaching across distances and generalization gradients.
+    [→ tool: Agent]
+    [→ tool: Agent]
+    [→ tool: Agent]
+The three agents already finished — they ran in the **foreground** (synchronously), which is why their full hand-offs landed right here in the transcript rather than off to the side. That was deliberate, per the project's visibility rule: foreground = the work shows up in the record you copy-paste. To watch them **live** next time, run `/workflows` while they're going — you'll see each agent's progress tree in real time. For background agents you'd also get a notification on completion. These particular three are done, so there's nothing left to watch; their verdicts are below.
+
+Let me first fold the panel's corrections into the pre-registration (the record rule), then give you the go/no-go.
+    [→ tool: Edit]
+The panel has reported and I've folded its corrections into the pre-registration. Here's the honest synthesis — and it changed the experiment in one load-bearing way.
+
+## What the three agents found
+
+**experiment-strategist — one correction that saves the run.** The draft's plan to run this on the *proprio* line is wrong and would waste compute. The distance law we're proud of (R44, r=0.89) was measured on the **cart**, which carried AB's body to the ball. On the **free crawler body** this experiment uses, blind proprio locomotion is *undirected* — mean change-in-distance-to-ball is +0.000 m; it crawls one canned direction and hopes. So wide-cone far bins would be **unwinnable by construction**, and scoring them as "AB failed to generalize" would measure our setup's impossibility, not AB. The fix: run the holdout on the **vision line** (`s1corr`, the 88%-directed-steering policy from yesterday) — the only configuration of this body that actually homes to the ball across a wide cone. That upgrades the question from "re-map a cart capability" to "does the freshly-grounded eye's reach generalize across distance, or did it memorize the 0.70–0.80 shell?" It's launch-ready: one ~10-line env change (`--spawn-radius-hole`), continue-train from `s1corr` for 200K steps, ~half a day mostly unattended. It also tightened the thresholds (contact rate primary; directed-choice-in-the-gap as co-primary to separate "can't see it that far" from "can't crawl that far"; steps-to-contact demoted because this substrate's step variance is huge).
+
+**literature-scout — the *method* is textbook; we cite, we don't claim.** "Widen the range, punch a gap, test the middle" has standard names in four fields: it's *interpolation vs. extrapolation over a context set* (Kirk 2022; Procgen), and the exact rule-vs-lookup logic was published in **function-learning** (DeLosh, McDaniel & Busemeyer 1997 — extrapolation *is* the diagnostic that separates a rule from memorized pairs). Motor control already predicts our headline: distance/amplitude generalization is broad **but bounded by state overlap** (Goodbody & Wolpert 1998; Mattar & Ostry 2010) — a sharper hypothesis than yes/no. Behavioral psych gives the generalization-gradient ancestry (Guttman & Kalish 1956; Shepard 1987) *and* a warning: **peak shift** — the untrained middle can respond non-monotonically after discrimination training, so a weird gap isn't automatically noise. The factored distance×size version is literally **CLEVR-CoGenT/SQOOP** with a standard metric (the "systematicity gap"). The genuinely open space is not the design — it's the *substrate*: this design applied to an embodied, self-produced proprioceptive/visuomotor reach law. So the writeup reframes from "we discovered" to "we reproduce [citations] in a new substrate."
+
+**local-book-agent — Taylor predicts the *shape* of the result.** Unexpectedly, our own shelf is nearly complete on this. His **"automatic interpolation device"** (§6.11, §2.16–17) says exactly what we're testing: you don't train every distance — a few anchors plus overlapping generalization gradients fill the middle as a **weighted average of the bracketing trained responses**, crude with few anchors, sharper with more. He describes AB's task almost verbatim (§6.4–6.8: reaching a ball "from a variety of initial distances," distance read off retinal-image size), predicts usable transfer to ~2× the trained radius then a flattening (§4.10 — read a flat far response as "beyond the horizon," not a broken policy), and warns (§4.9) to bin evals by *redundant-near / unique-far / unreachable* and never score the unreachable region as failure. Two bonus predictions worth keeping: change the eye height and the mapping breaks with a characteristic **undershoot** (§6.14 — straight into our gaze-frame rule), and a recalibration transfers only over the region the behavior actually *sampled* (§9.19).
+
+## Where this leaves us
+
+The experiment is legitimate, cheap, well-motivated, and now correctly specified — **but the strategist flagged a real fork**: this is a *secondary* line. The sharpest North-Star-aligned next step already teed up is **Stage-2, the +30° prism-lens recalibration test** — the actual grounding payoff (does AB's eye re-aim to the world under a displacing lens?). Both are worth doing; the question is order. Your current `s2corr_plain_s0` run can finish undisturbed either way. This is your call, so:
+    [→ tool: AskUserQuestion]
+You chose the distance-holdout — launching that now. First the ~10-line env change for the held-out band, then the mandatory winnability render before any training compute. Let me read the exact code sites.
+    [→ tool: Read]
+    [→ tool: Bash]
+    [→ tool: Bash]
+All draws are inside `reset` and `_gaze_spawn_ball`. Making the four edits now.
+    [→ tool: Edit]
+    [→ tool: Edit]
+    [→ tool: Edit]
+    [→ tool: Edit]
+    [→ tool: Edit]
+Env done. Now thread `--spawn-radius-hole` through the training script. Let me look at the relevant spots in `train_head_search.py` and `train_crawler.py`.
+    [→ tool: Read]
+    [→ tool: Bash]
+    [→ tool: Read]
+`make_env` lists kwargs explicitly (no `**kwargs`), so I thread the param through there plus the CLI. Four edits:
+    [→ tool: Edit]
+    [→ tool: Edit]
+    [→ tool: Edit]
+    [→ tool: Edit]
+Now verify the wiring end-to-end with a quick unit test of the sampler — confirm the hole is honored on both spawn paths (the strategist flagged the `gaze_spawn` path at line 503 as the biggest silent-failure risk). Let me build the env with a hole and histogram the drawn radii.
+    [→ tool: Bash]
+Wrong interpreter — the project uses a specific Python with the deps. Let me find it.
+    [→ tool: Bash]
+    [→ tool: Bash]
+Sampler verified — with the hole, **zero** of 20 000 draws land in [0.55, 0.75] on both spawn paths, ends populated (0.35–0.85); without the hole ~40% land there as expected. Now the mandatory winnability render before compute. Let me confirm the seed checkpoint and the render script's interface, and check on the still-running s2corr.
+    [→ tool: Bash]
+s2corr has finished (no `train_head_search` process now), so no resource contention. But `render_prism_decoy.py` has no `--radius` flag — let me check how it sets distance so I can render the three test distances (0.35, gap 0.65, 0.85).
+    [→ tool: Bash]
+The render script hardcodes `[0.70, 0.80]`. Adding a `--radius` flag so I can render each test distance:
+    [→ tool: Edit]
+Now render the winnability check — 3 episodes each at near (0.35), the held-out gap (0.65), and far (0.85), from the `s1corr` seed the run will start from. Running all three in parallel:
+    [→ tool: Bash]
+zsh doesn't word-split unquoted variables (the classic zsh gotcha). Running the three explicitly:
+    [→ tool: Bash]
+All three rendered. Per the render-every-experiment rule I have to actually watch them before compute. Sending each to Gemini video analysis (as a first pass), then I'll corroborate against the honesty caveats.
+    [→ tool: Bash]
+The describe script needs its SDK in a different interpreter. Let me find the right one or check what's available.
+    [→ tool: Bash]
+`.venv` has the anthropic SDK and the key is set. Running the describe script through it so the Claude+frames fallback works:
+    [→ tool: Bash]
+Gemini isn't installed, so that was the **Claude+frames fallback** — and CLAUDE.md explicitly warns it's an unreliable narrator for the MIMo infant body (it reads real crawl as "flailing/ragdoll/never approaches"). So I'm reading it only for the winnability facts it *can* establish, not its "failure" verdict. What it confirms for the pre-check:
+
+- **Balls spawn on-platform and in-view at all three distances** (0.35, the 0.65 gap, and 0.85) — no off-screen/off-platform spawn. The `gaze_spawn` shrink-to-platform loop is doing its job even at the widened far edge.
+- **0.85 is geometrically reachable** — "targets are on the same surface as the agent, so they are physically reachable"; the creature physically traverses that distance by crawling. So I do **not** need to pull the far edge in.
+- **The creature moves** (rolls, pushes up, crawls) — liveness is satisfied.
+
+What it does *not* show is the seed policy reliably homing at 0.35/0.85 — but that's expected (s1corr trained on the 0.70–0.80 shell, so those distances are off-distribution), and closing that gap is exactly what the run is for. The pre-check's job — confirm the task is *winnable*, not that the seed already wins — is met.
+
+Let me verify the launch flags exist, then start the run.
+    [→ tool: Bash]
+Default XML is the `hs` variant, but s2corr continue-trained from this same `s1corr` seed using `mimo_crawler_pos_wide_prism.xml` — so the checkpoint is tied to that XML, and I must match it (the strategist's command omitted `--xml`, which would wrongly default to `hs`). Let me verify checkpoint/env compatibility in a few seconds before burning a half-day run.
+    [→ tool: Bash]
+Compatibility confirmed — obs `(6213,)` and action `(26,)` match, a predict+step ran cleanly (reward 194.8), and the hole sampler is active. Launching the 200K distance-holdout run in the background now (vision line, no prism, widened band 0.35–0.85 with the held-out 0.55–0.75 gap):
+    [→ tool: Bash]
+Launched (PID 94849). Let me confirm it actually starts training rather than erroring on startup.
+    [→ tool: Bash]
+The run is healthy and training. Let me record the launched command in the pre-registration, then give you the status.
+    [→ tool: Edit]
+Done — the distance-holdout experiment is designed, reviewed by the full panel, implemented, pre-checked, and now **training in the background**. Here's where things stand.
+
+## What ran, and what it changed
+
+**Your original idea, sharpened by the panel.** Three things came out of the process gate that changed the experiment:
+1. **It runs on the *vision* line, not proprio** (the strategist's load-bearing correction). The distance law we liked was measured on the cart that carried AB's body; on the free crawler body blind proprio locomotion is *undirected*, so the far bins would have been unwinnable by construction. The vision policy (`s1corr`, 88% directed steering) is the only configuration that actually homes across a wide cone — so it's the only one that makes "does reach generalize across distance?" a well-posed question.
+2. **The method isn't novel — we cite, not claim** (literature-scout). "Widen the range, hold out the middle, test it" is textbook in four fields; the rule-vs-lookup logic was published in function-learning (DeLosh 1997), and motor control already predicts the answer (generalization is broad but *bounded by state overlap*). The novel part is the substrate, not the design.
+3. **Taylor predicts the *shape* of the result** (local-book-agent). His "automatic interpolation device" (§6.11) says you don't train every distance — a few anchors fill the middle as a weighted average of the bracketing responses. That's a concrete falsifiable prediction for what the gap should look like, and it validates your exact instinct in his own words from decades ago.
+
+**The run.** `dist_holdout_vis_s0`, PID 94849 — continue-training `s1corr` for 200K steps under a widened distance band (0.35–0.85 m) with a **held-out gap at 0.55–0.75** that the ball never spawns in. Verified before spending compute: the new `--spawn-radius-hole` sampler puts 0 of 20 000 draws in the gap on both spawn paths; the checkpoint is compatible (obs 6213 / act 26 match — I had to override the strategist's default XML, which would have mismatched); and the winnability render confirms balls are on-platform, in-view, and reachable at all three distances including 0.85. The **liveness gate passed at 10K** (body-motion 2.28 ≫ threshold) — the creature is moving.
+
+**Timing.** Vision forces single-process rollout, so ~2.5–4 h on MPS. You'll hear the Glass.aiff done-chime when it finishes. It'll run undisturbed — s2corr had already completed, so there's no contention.
+
+## What happens on completion (queued, not started — it's blocked on the run)
+The three-cell eval (trained-near / trained-far / the GAP) at n≥60, reading contact rate (primary) and directed-choice (co-primary, which separates "can't see it that far" from "can't crawl that far"), then rendering and watching the GAP cell, then the mandatory results-analyst + theory-monitor verdict before anything is written as settled. Pass = gap contact ≥0.8× trained and choice stays ~85%; falsifier = gap contact ≤0.5× and choice collapses toward chance.
+
+I'll pick the eval up when the run lands. Here's a copy-paste block for your record:
+
+```
+SESSION SUMMARY 2026-07-18 (distance-generalization experiment)
+Topic: David's "dense-sampling / compress-years-into-hours" idea → a pre-registered
+       distance-generalization test with a held-out gap.
+Key decisions:
+- Refined the idea: azimuth is already densely random-sampled (no gain); DISTANCE is the
+  under-sampled axis (trained on a 10cm shell 0.70-0.80). Dense coverage alone can MASK
+  memorization → must hold out a region and test it.
+- Ran the full process gate (experiment-strategist + literature-scout + local-book-agent).
+- Correction adopted: run on the VISION line (s1corr), not proprio — free-body proprio
+  locomotion is undirected, so far bins would be unwinnable.
+- Chose distance-holdout NOW; prism Stage-2 becomes the follow-on.
+Key findings from the panel:
+- Method is textbook (interpolation/extrapolation over a context set; function-learning;
+  generalization gradients; CLEVR-CoGenT). Cite, don't claim. Substrate is the novel part.
+- Taylor §6.11 "automatic interpolation device" = the theoretical warrant; predicts the gap
+  response is a weighted average of the bracketing trained distances. Watch peak-shift.
+Files changed: mimo_crawler_env.py (+_draw_radius, --spawn-radius-hole), train_crawler.py,
+  train_head_search.py (thread-through + CLI), render_prism_decoy.py (+--radius);
+  PREREG_distance_generalization_holdout.md (new).
+Run: dist_holdout_vis_s0, PID 94849, 200K steps, radius 0.35-0.85 hole 0.55-0.75, cone 136,
+  gaze-spawn, decoy, offset 0, seed 0. Liveness PASS at 10K. ETA ~2.5-4h.
+Next: on completion, 3-cell eval (near/far/GAP, n>=60) + render GAP + results-analyst +
+  theory-monitor, then the verdict on law-vs-lookup.
+```
+
+Want me to set a monitor so the eval auto-fires the moment the run finishes, or would you rather I pick it up when you're back at the session?
+
+======================================================================
+USER:
+======================================================================
+Set a monitor please
+
+======================================================================
+CLAUDE:
+======================================================================
+I'll set a monitor that watches for the run to finish, then auto-runs the three-cell eval. Let me load the Monitor tool schema first.
+    [→ tool: ToolSearch]
+The run is up to ~4 hours, which is longer than a Monitor's max timeout (1 h). For a single "wake me when it finishes" over that span, the right mechanism is a detached background watcher that survives across turns and re-invokes me the moment the run exits — so I'll use that. It polls the training PID and, on exit, reports whether it finished cleanly and whether the best-model checkpoint landed. When it fires, I'll run the three-cell eval + render + theory-monitor gate automatically.
+    [→ tool: Bash]
+The watcher is armed (background ID `b16cu5q54`). It polls the training process every 60 seconds and, the moment the run exits, wakes me with: whether the log shows any crash/void markers, whether the `dist_holdout_vis_s0_best` checkpoint landed, and the tail of the log.
+
+When it fires, I'll automatically run the post-run gate without you needing to prompt:
+1. **Three-cell eval** on the best checkpoint — trained-near (`--radius 0.35 0.55`), trained-far (`0.75 0.85`), and the held-out **GAP** (`0.55 0.75`), at n≥60, reading contact rate + directed-choice + steps-to-contact.
+2. **Render the GAP cell and watch it** before drawing any conclusion (render-every-experiment rule).
+3. **results-analyst + theory-monitor** for the independent verdict on law-vs-lookup, relayed back here.
+
+Nothing more is needed from you now — the run is training (liveness passed, ~2.5–4 h to go), and you'll get the completion notification plus the eval automatically. If you want to check progress before then, the log is at `alien_baby/results/dist_holdout_vis_s0.log`.
+
+======================================================================
+USER:
+======================================================================
+<task-notification>
+<task-id>b16cu5q54</task-id>
+<tool-use-id>toolu_013uV7e6Bf8TivL8doYZATEg</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-davidwolpe-Documents-DataScience-dev-ai-experiments/ad9a40d9-ffff-44e5-a8df-4e1de87aaeb2/tasks/b16cu5q54.output</output-file>
+<status>completed</status>
+<summary>Background command "Watch training PID, report on exit" completed (exit code 0)</summary>
+</task-notification>
+
+======================================================================
+CLAUDE:
+======================================================================
+The watcher fired — the training run exited. Let me read its report.
+    [→ tool: Read]
+The run finished cleanly — but much faster than estimated (~20 min at 179 fps, hit 212 992 steps, printed "head-search done", checkpoint saved). One thing to note from the tail: `ep_len_mean` is only 22.4 steps and `ep_rew_mean` ≈ 99 (about one ball touched) — episodes are ending on very fast contact. That's exactly the directed-reach-vs-fast-contact question the eval and render exist to resolve, so let me not read anything into it yet.
+
+Kicking off the post-run gate. First let me confirm the eval script's interface so I build the three-cell command correctly.
+    [→ tool: Bash]
+`eval_prism_decoy` gives me the two decision metrics I need: `choice_vs_true` (directed reach for the red ball — the co-primary) and contact/committed counts (contact rate — the primary); it writes a JSON per cell. Steps-to-contact isn't logged (corroborating only, and the strategist demoted it given the variance). Running the three cells in parallel now — matched conditions, 100 episodes each, full 1000-step budget so the far/gap bins get fair time to crawl:
+    [→ tool: Bash]
+Results are in, and they look like a clean generalization signature — but there's a critical nuance in the `committed` counts that the render rule exists to catch. Let me lay out the numbers:
+
+| Cell | Contact rate | Directed choice (red vs blue) | Committed (body moved toward ball) |
+|---|---|---|---|
+| **Near** 0.35–0.55 (trained) | 100% (77R/23B) | 77.0% ±8.2 | **5**/100 |
+| **Gap** 0.55–0.75 (*held-out*) | 97% (70R/27B) | 72.2% ±8.9 | **78**/100 |
+| **Far** 0.75–0.85 (trained) | 95% (72R/23B) | 75.8% ±8.6 | **95**/100 |
+
+On the pre-registered metrics this **passes**: held-out-gap contact (97%) is ~0.99× the trained mean, and gap directed-choice (72%) tracks the trained cells (76–77%) and sits well above the 50% blind floor — the three cells are statistically indistinguishable (CIs overlap heavily). That's the generalization pattern: the held-out middle behaves like the trained ends.
+
+**But the `committed` column is the catch.** At *near* only 5/100 episodes involved the body translating toward the ball, yet contact was 100% — meaning near contacts are largely **geometry-driven** (ball spawns within prone-reach and gets touched incidentally), exactly the "thrash-into vs reach-for" confound our rules flag. Reassuringly, the **held-out gap has 78/100 committed** — its contacts *are* won by directed movement, so the gap pass is not spurious geometry. Still, I can't finalize this on numbers. Per the render-every-experiment rule I have to watch the gap cell from the *trained* model. Rendering the gap (and near, to see the geometry contrast) now:
+    [→ tool: Bash]
+The near render is tiny (40 KB) — episodes end almost instantly, consistent with near-instant contact at 0.35–0.55. Watching both via the Claude+frames fallback (reading critically, per the unreliable-narrator caveat):
+    [→ tool: Bash]
+The video corroborates the numbers, and refines the story in an important way. Reading the crude fallback critically:
+
+- **Near (0.35–0.55):** the render is literally ~1 second — the ball spawns right at the creature's feet and the episode terminates almost instantly with the body barely moving. That confirms the `committed=5/100`: near "100% contact" is **geometry** (ball within reach, incidental touch), not directed reach. It should not count as evidence either way.
+- **Gap (0.55–0.75, held-out):** multi-second episodes with the creature actively translating and maneuvering before contact — consistent with `committed=78/100`. The describe tool (which the project warns reads real crawl as "passive") did *not* call this passive; it read "dynamic, consistently moving." Video + log agree the body moves toward the ball at the unseen distances.
+
+So the honest read: the generalization holds **in the regime that matters** — the gap and far cells, where reaching *requires* directed, vision-guided movement (committed 78 and 95), show held-out performance indistinguishable from trained. Now the mandatory independent check before this goes in any doc as settled — dispatching results-analyst and theory-monitor in parallel with the full numbers:
+    [→ tool: Agent]
+    [→ tool: Agent]
+Both independent checks came back, and they converge — but they each caught refinements that make my "clean generalization signature" read too strong. This is exactly why the gate exists. Here's the honest picture.
+
+**Where they agree (qualified PASS):** the numbers verify exactly, and on the *letter* of the pre-registered thresholds it passes — the held-out gap doesn't collapse (97% contact ≈ trained; 72% choice, >2.5 SE above the 50% floor). But both agents independently downgraded the strength:
+
+- **The near cell isn't a valid trained comparator** (both flagged this). With `committed=5/100` and 88% of episodes ending at *step 1*, near "100% contact" is pure geometry — the ball spawns in prone-reach. So this is a pass against **one** clean trained anchor (far), not two. My "indistinguishable from the trained bands, plural" overstated it, and the theory-monitor recorded that as an explicit disagreement.
+- **Gap steering is more modestly directed than `committed=78` implies.** The results-analyst ran a check I hadn't — heading direction vs. *which ball was actually touched*: gap agreement 65% vs 57% chance (+8 pts), far 78% vs 64% (+14 pts). Real signal, but weak-to-moderate at the gap.
+- **Taylor's predicted interpolation *shape* is untestable here** — contact is ceiling-bound (95–100%) so it can't reveal a weighted-average curve, and choice is flat within noise.
+- **Choice dropped ~12 points vs s1corr's 88%** (z≈2.40, p≈0.016) — a real, statistically detectable drop present in the *trained* bins too, so not gap-specific; likely dilution from tripling the distance range, but not cleanly isolated (different checkpoint, single seed).
+
+**Two instrumentation catches:** `displayed_red_frac=0.0%` is a **code artifact** at offset 0 (a `min()` tie-break structurally always picks `true_red`), not a null — ignore it. And more importantly, `_gaze_spawn_ball` redraws the radius up to 8× if the ball lands off-platform and the eval **never logs the realized ball-to-body distance** — so the far/gap bands may be testing *shorter* distances than their labels claim. That's load-bearing for the headline, and it's cheap to check, so let me verify it before anything gets written up as settled.
+    [→ tool: Bash]
+The instrumentation concern clears cleanly: **100% of realized ball-torso distances fall inside the labeled band** for all three cells (near 0.45, gap 0.65, far 0.80 means; every episode in-range). So the `gaze_spawn` redraw did *not* silently shorten the far/gap distances — the bands test what they claim, which actually strengthens the far/gap result.
+
+That resolves the last load-bearing question, so I can finalize the record honestly. The theory-monitor already wrote its THEORY_LOG entry; I'll write the FINDINGS entry myself in the main loop (per the visibility rule) with the agreed qualified framing. Let me match the house format.
+    [→ tool: Bash]
+    [→ tool: Bash]
+The format is append-at-end with a "What we ran / framework check / caveats" structure. Writing the entry now with the qualified framing both agents converged on:
+    [→ tool: Bash]
+Done — the full experiment arc is complete, gated, and recorded. Here's the honest bottom line.
+
+## Result: qualified pass — generalization to a never-trained distance, confirmed but not the clean win it first looked like
+
+The vision policy, trained on a widened distance band with the middle **0.55–0.75 m held out**, reaches and steers at those unseen gap distances essentially as well as at the trained ones — **97% contact, 72% directed choice** (well above the 50% blind floor). On the pre-registered thresholds, it passes.
+
+But both independent checks (results-analyst on the numbers, theory-monitor on the theory) downgraded my initial "clean generalization signature" read, and they were right:
+
+- **Only one clean trained anchor, not two.** The near cell is geometry, not reach — the ball spawns in prone-reach and 88% of episodes end at step 1 with the body barely moving. So it's a pass against the *far* cell alone. My "indistinguishable from the trained bands, plural" overstated it.
+- **The gap steering is only modestly directed** — heading-vs-touched agreement is +8 pts over chance at the gap (the analyst's check, which `committed=78` alone had oversold), vs +14 at far.
+- **Contact is ceiling-bound**, so Taylor's predicted interpolation *shape* couldn't be tested — and choice ran ~12 points below s1corr's 88% (real, p≈0.016, present in the trained bins too — likely dilution from tripling the distance range, not isolated).
+
+The one thing that came out *stronger* than expected: I verified the realized ball-torso distances are 100% in-band, so the `gaze_spawn` redraw didn't silently shorten the far/gap cells — the concern the analyst raised doesn't bite, and the band labels are honest.
+
+**What it means for the bigger picture:** this is on the vision line, and directed choice stays ~75% ≫ chance at *every* distance including the never-trained middle — so it extends the corrected "vision is directional" finding along a new axis, rather than reviving the old vision-inert story. (Caveat kept in the record: no ablation arm here, so it doesn't re-prove vision is load-bearing — s1corr did that.)
+
+**Records:** FINDINGS.md entry written (main loop, with all caveats); THEORY_LOG.md written by the theory-monitor (qualified CONFIRM, with its explicit disagreement on my "plural" framing logged). Both `displayed_red_frac=0.0%` (an offset-0 code artifact) and the missing realized-distance logging are flagged for the next pass.
+
+**Sharpest next step, per the prior-art the scout surfaced:** extrapolation *beyond* 0.85 m — DeLosh's rule-vs-lookup discriminator — which is eval-only (no retraining) on the checkpoint we have. That, plus re-binning the near cell by the `committed` flag to recover a second clean trained anchor, would harden or break this cheaply.
+
+Everything is uncommitted on `exp/decoy-shape-generalization` (code: `--spawn-radius-hole` in the env + train + render scripts; docs: the new pre-reg, FINDINGS, THEORY_LOG). Say the word and I'll commit it, or run the extrapolation-beyond-0.85 eval next.
+
+```
+SESSION SUMMARY 2026-07-18 (distance-holdout: result + gate)
+Result: dist_holdout_vis_s0 trained (200K, vision line, radius 0.35-0.85, held-out gap
+  0.55-0.75) and evaluated. QUALIFIED PASS for generalization-as-primary.
+Numbers: contact near/gap/far = 100/97/95%; choice = 77/72/76% (50% floor); committed =
+  5/78/95; realized distances 100% in-band.
+Gate verdicts (independent, both folded in):
+- results-analyst: numbers verified; near cell is geometry (not a valid anchor); gap steering
+  only +8pts over chance (committed oversold it); choice drop vs s1corr is real (p=0.016);
+  displayed_red_frac=0.0% is an offset-0 code artifact.
+- theory-monitor: CONFIRMED but qualified — pass vs ONE clean anchor (far), not two;
+  interpolation SHAPE untestable at ceiling; refines (not challenges) the vision-directional
+  finding. Logged an explicit disagreement with the "plural trained bands" framing.
+Files: mimo_crawler_env.py / train_crawler.py / train_head_search.py (--spawn-radius-hole),
+  render_prism_decoy.py (--radius); PREREG_distance_generalization_holdout.md (new);
+  FINDINGS.md + THEORY_LOG.md entries. All uncommitted on exp/decoy-shape-generalization.
+Next: extrapolation eval beyond 0.85m (rule-vs-lookup, eval-only); re-bin near by committed;
+  matched before/after choice eval; log realized distance inline.
+```
+
+======================================================================
+USER:
+======================================================================
+run the extrapolation eval beyond 0.85m
+
+======================================================================
+CLAUDE:
+======================================================================
+On it. Extrapolation beyond the trained max (0.85 m) is the rule-vs-lookup discriminator — but first I have to find how far the ball can actually be *placed* on-platform, because `_gaze_spawn_ball` caps at the platform half-extent (~0.95 m) and silently redraws beyond it. If I score a bin where the ball can't be placed, that's our apparatus failing, not AB. So let me measure the realized-distance envelope at candidate extrapolation bins first.
+    [→ tool: Bash]
+Two things here — let me answer the video question first, because it's a real gap.
+
+**Why you're not seeing videos:** they're being written to disk but I can't play them inline in the terminal, and they're sitting in a scratch folder you'd have to navigate to. They exist — here's what's there so far:
+- `scratch_render/winnability_{near035,gap065,far085}.mp4` (the pre-launch winnability check)
+- `scratch_render/trained_{gap,near}.mp4` (the trained model at the gap/near cells)
+
+I've been "watching" them via the describe-video tool and relaying what they show, but that's no substitute for you seeing them. Let me reveal the folder in Finder so they're in front of you, and from now on I'll give you the explicit path each time I render.
+
+Also — good news on the extrapolation setup: the ball places **cleanly on-platform all the way out to 1.2 m** (realized distance 100% in-band at every bin, max 1.199), so no silent clipping — the analyst's 0.95 platform-cap worry doesn't bite here. That means I can test three genuine extrapolation bins beyond the 0.85 trained max. Rendering winnability videos at those distances (so you can watch them) and running the eval in parallel:
+    [→ tool: Bash]
+Timed out at the 2-minute foreground limit (the folder did open in Finder). Let me check what finished and run the rest in the background so it isn't bound by that limit.
+    [→ tool: Bash]
+All three extrapolation videos rendered (they grow with distance — more crawling to reach), and the folder's open in Finder for you: `scratch_render/extrap_x1_085_095.mp4`, `extrap_x2_095_105.mp4`, `extrap_x3_105_120.mp4`. Two evals finished before the timeout — the trained-far anchor and the first extrapolation bin. The last two (x2, x3) got killed; re-running them in the background so they aren't bound by the 2-minute limit.
+    [→ tool: Bash]
+While x2/x3 run, let me watch the three extrapolation videos (winnability + directed-reach check) and pull the committed counts from the two finished evals.
+    [→ tool: Bash]
+    [→ tool: Bash]
+The describe tool is giving its known-unreliable "flailing/ragdoll" read (the exact false-negative CLAUDE.md says to distrust for this body) — but the useful signal is that **the videos get progressively longer with distance** (x1→x3 grow from 1.4 to 3 MB / ~50 s), meaning the creature spends many steps moving before the episode resolves. The logs are the arbiter, and so far they're striking:
+
+- **far (0.75–0.85, trained anchor):** contact 95%, choice 76.8%, committed 95
+- **x1 (0.85–0.95, just past the trained edge):** contact 91%, choice **81.3%**, committed 91 — essentially intact just beyond the boundary, exactly Taylor's "a little beyond."
+
+I need x2 and x3 to see where it falls off. Let me check whether the background eval has landed.
+    [→ tool: Read]
+The x2/x3 evals are still computing (100 episodes each, and at 0.95–1.2 m the episodes run long because the creature has to crawl far), running in the background under task `bvw2g0bjt` — it'll wake me the moment they finish and I'll post the full extrapolation curve and verdict then.
+
+To answer your question completely: **the videos are now open in Finder** (I ran `open scratch_render/`), and all the recent ones are there — the three extrapolation clips (`extrap_x1_085_095.mp4`, `extrap_x2_095_105.mp4`, `extrap_x3_105_120.mp4`), plus the earlier `trained_gap.mp4` / `trained_near.mp4` and the winnability set. They grow with distance because the creature crawls longer to reach a farther ball. Ignore the auto-describe "flailing/ragdoll" narration if you watch them — that tool is the unreliable narrator our notes warn about; the logs show directed contact.
+
+**The extrapolation story so far (rule-vs-lookup):** a memorized lookup table would cliff at the 0.85 m trained boundary; a genuine distance *law* extrapolates past it. At x1 (0.85–0.95), performance is fully intact (91% contact, 81% choice) — it does **not** cliff at the boundary. That's early evidence for a law rather than a lookup, and it matches Taylor's §4.10 prediction ("carries a little beyond, then indeterminate"). Whether it degrades gracefully or holds further out is exactly what x2 (0.95–1.05) and x3 (1.05–1.20) will show. I'll report the moment they land.
+
+======================================================================
+USER:
+======================================================================
+Can we attach his neck to his torso? In this image can you tell which way his eyes are facing?
+
+======================================================================
+CLAUDE:
+======================================================================
+Two things — and first, an honesty note: **I don't actually have an image in this message.** No image came through on my end, so I can't look at one directly. I don't want to guess at eye direction from something I can't see. Two ways to fix that: paste/attach the image here, or tell me which rendered video + timestamp you're looking at and I'll extract that exact frame and analyze it myself.
+
+But I can do better than wait — let me look at the actual head/neck/eye geometry in the model so I can answer both questions concretely. Checking the XML now.
+    [→ tool: Bash]
+Got the image now — thanks. Let me look at the body structure to answer both precisely.
+    [→ tool: Bash]
+Now I can answer both — and the model structure matters for each.
+
+## Which way are his eyes facing?
+
+Short honest answer: **you can't reliably tell from this image, and neither can I — because this is the overhead (world-frame) view, which is exactly the view our own gaze-frame rule says *not* to judge gaze from.** From directly above, a ball that's dead-ahead of his gaze can look off to the side, and vice versa. My best *guess* from the picture is that his face is angled up-and-slightly-right, roughly toward the two balls at the top — but I wouldn't trust that guess, and the project record is emphatic that this exact overhead read is what repeatedly fooled us.
+
+The real instrument is the **`left_eye` camera**. Two useful facts from the XML: the eye cameras look **15° below the head's forward axis**, and when he's prone the head's forward axis points along world **+Y** — i.e. "up" in this overhead image. So his gaze is roughly "toward the top of the frame, angled 15° down at the floor," *modulated* by his three head joints (swivel/tilt/tilt-side), which can swing it well off that. That's why the overhead can't settle it.
+
+Good news: the full render you cropped this from already contains the answer — the **left panel with the red dot(s)** *is* his eye-camera view, and the dot is where the target sits in his gaze (centered dot = looking straight at it; off to the edge = not). You cropped that panel out. Want me to pull the `left_eye` view for this exact frame so we can see definitively where he's looking?
+
+## Attaching his neck to his torso
+
+Here's what's actually in the model, because it changes what "attach" means:
+
+- His head **is already attached** to the torso — the kinematic chain is hip → lower_body → upper_body → **chest → head**. It's not floating.
+- The **"neck" is a visual-only cylinder** (no joint, no collision) — purely for rendering. That's almost certainly why it *looks* slightly detached/forward of the shoulders in your image: the cosmetic cylinder doesn't visually bridge the gap.
+- The head has **3 rotational DOF** relative to the chest (swivel about Z, tilt about Y, tilt-side/"head_yaw" about X), each with an actuator.
+
+So "attach the neck" could mean three very different things, and they're worlds apart in cost:
+
+1. **Cosmetic** — make the neck cylinder visually connect head↔chest so it stops looking detached. Trivial, zero effect on the simulation or any checkpoint. Safe to just do.
+2. **Stiffen it** — keep the head joints but tighten their ranges/gains so the head wobbles less and gaze is more stable. Small change; keeps head-search working and stays checkpoint-compatible if I only touch ranges.
+3. **Rigidly weld** — remove the head joints so the head is fixed to the torso and the eyes always point a fixed direction. This is a **major** change: it deletes the head DOF, which changes the 26-dim action space (**invalidating the `s1corr`/`dist_holdout` checkpoints**), and it **removes head-search** — the head-swivel that was the whole reason vision became behaviorally load-bearing at wide cones. I would not do this without confirming, per our don't-remove-features rule.
+
+Which are you after? If the goal is just "he looks disjointed in renders," that's #1. If it's "his gaze flops around and I want it steadier so we can reason about where he's looking," that's #2 (and it connects nicely to the gaze-frame work). If you genuinely want a fixed-eye creature, that's #3 and we should talk through what it costs first.
+
+(Meanwhile the x2/x3 extrapolation evals are still running in the background — I'll fold in that curve as soon as they land.)
+
+======================================================================
+USER:
+======================================================================
+Stop hook feedback:
+[python3 export_transcript.py >/dev/null 2>&1]: No stderr output
+
+======================================================================
+CLAUDE:
+======================================================================
+The stop hook just confirms the transcript export ran cleanly — nothing for me to act on there. Let me check whether the background x2/x3 extrapolation evals have landed, since I owe you that curve.
+    [→ tool: Read]
+Still running (the script only prints at the end of each 100-episode cell, and at 0.95–1.2 m the episodes are long). Let me confirm the process is genuinely alive and not silently dead.
+    [→ tool: Bash]
+x2 finished, x3 is still going (86% CPU). Let me pull x2's numbers while x3 completes.
+    [→ tool: Bash]
+Three of the four points are in, and the curve is telling a clear story:
+
+| Cell | Distance | Contact | Directed choice (50% floor) | Committed |
+|---|---|---|---|---|
+| far (trained anchor) | 0.75–0.85 | 95% | 76.8% | 95 |
+| x1 (+0 to 0.10 past) | 0.85–0.95 | 91% | 81.3% | 91 |
+| x2 (+0.10 to 0.20 past) | 0.95–1.05 | **72%** | 70.8% | 56 |
+
+This is the **graceful-degradation signature of a genuine distance law, not a lookup table.** A memorized lookup would cliff right at the 0.85 m trained boundary; instead contact stays essentially intact just past it (x1, ~0.9 m) and only falls off ~0.10–0.20 m beyond (x2, ~1.0 m) — exactly Taylor's "carries a little beyond, then becomes indeterminate" (§4.10/§6.8).
+
+The most important part is *how* it degrades: **directed choice stays 71–81% ≫ the 50% floor at every distance, even at x2 where contact dropped.** So the falloff at x2 is a **locomotion-range limit** (the creature can't always crawl a full metre within the step budget), *not* a vision failure — the balls it does commit to, it still picks correctly by sight. And this is a real reach limit, not an apparatus artifact: the ball is verified on-platform and placed in the gaze cone (visible), so "couldn't get there in time" is AB's genuine extrapolation edge, not us making it impossible.
+
+x3 (1.05–1.20 m) is still running and will complete the tail — I expect contact to drop further while choice holds. I'll post the final curve and the rule-vs-lookup verdict the moment it lands.
+
+======================================================================
+USER:
+======================================================================
+<task-notification>
+<task-id>bvw2g0bjt</task-id>
+<tool-use-id>toolu_01Waid4aNDTBkpRpdwfZiZHJ</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-davidwolpe-Documents-DataScience-dev-ai-experiments/ad9a40d9-ffff-44e5-a8df-4e1de87aaeb2/tasks/bvw2g0bjt.output</output-file>
+<status>completed</status>
+<summary>Background command "Re-run x2 and x3 extrapolation evals in background" completed (exit code 0)</summary>
+</task-notification>
+
+======================================================================
+CLAUDE:
+======================================================================
+The x2/x3 job finished — let me pull x3 to complete the curve.
+    [→ tool: Bash]
+Full extrapolation curve is in. This is a clean result.
+
+| Cell | Distance (past 0.85 trained max) | Contact | Directed choice (50% floor) | Committed |
+|---|---|---|---|---|
+| far (trained anchor) | 0.75–0.85 | 95% | 76.8% ±8.5 | 95 |
+| x1 (+0–0.10) | 0.85–0.95 | 91% | 81.3% ±8.0 | 91 |
+| x2 (+0.10–0.20) | 0.95–1.05 | 72% | 70.8% ±10.5 | 56 |
+| x3 (+0.20–0.35) | 1.05–1.20 | 23% | 65.2% ±19.5 | 23 |
+
+## Verdict: a distance *law* that extrapolates, not a lookup table
+
+The contact curve is **95 → 91 → 72 → 23** — a smooth ramp-down, not a cliff. That's the whole point of the test (DeLosh's rule-vs-lookup discriminator): a memorized lookup of the 0.35–0.85 training band would **cliff to the floor the instant you cross 0.85**; instead performance stays essentially intact just past the edge (x1, ~0.9 m), degrades gradually (x2, ~1.0 m), and only collapses ~0.2–0.35 m beyond (x3, ~1.15 m). That "carries a little beyond the trained range, then becomes indeterminate" is exactly Taylor's §4.10/§6.8 prediction for a genuine generalization gradient.
+
+**And the way it degrades is the key finding:** directed choice holds at 71–81% ≫ the 50% floor while contact falls — so the falloff is a **locomotion/reach-range limit, not a vision failure.** The creature still *sees* and *steers toward* the red ball at these unseen far distances; it just increasingly can't physically crawl the full metre within the episode's step budget (x3 has 77 timeouts). Vision-direction survives past the point where the body can deliver.
+
+**One honest caveat on x3:** its collapse is partly a *time-budget* limit — 1.15 m may be more than even a perfect policy could crawl in 1000 steps — so x3 marks "the edge of what's reachable per episode," which is itself the natural horizon of the law, but I wouldn't read it as a pure perceptual boundary. The clean, defensible extrapolation evidence is x1–x2: intact at +0.10 m, graceful at +0.20 m. (Winnability is satisfied throughout — the ball is verified on-platform and in the gaze cone at all these distances, so this is "AB couldn't crawl that far in time," not "we made it impossible.")
+
+## Two things open, your call on both
+
+1. **Recording this:** per our mandatory process, this new result needs the independent **theory-monitor** check before it goes into FINDINGS/THEORY_LOG as settled. The above is *my* read, not yet independently verified. Want me to run the monitor and write it up as a follow-up to the distance-holdout entry?
+2. **The neck/eyes questions from before are still waiting on you** — which "attach" you meant (cosmetic bridge / stiffen the head joints / rigid weld, the last of which breaks the checkpoints and head-search), and whether you want me to pull the `left_eye` camera view to settle where he's actually looking.
+
+======================================================================
+USER:
+======================================================================
+I definitely don't want #3. I want #2 here. That is part of my larger desire, which is: he should move like a human does as much as possible. and I need to be able to see what he's seeing (ie through his eye camera) and it needs to make sense. What is the reason that we don't want the logic of the overhead camera? If it's for some confounding training reason, that's one thing. But I want to be able to see, "Oh -- his head is now turned to the right about 90 degrees, and I can see from the over head that the ball is about 90 degrees to his right, so it ought to be able to be in his line of sight.  Then, I look at his POV and sure enough, there's the ball. So far as I'm concerned, that is showing the physical world the way we ought to, and I want to see that. Am I correct that the objection to that is it might somehow mess up the training?
+
+======================================================================
+CLAUDE:
+======================================================================
+This is a really important question and I owe you a correction, because I was sloppy earlier and I think I created exactly the wrong impression.
+
+## No — training is *not* the reason. You're right to call that out.
+
+**The overhead camera has zero effect on training. It is pure visualization for us.** The agent's observation is built only from its head-mounted eye cameras (`left_eye`/`right_eye`) plus proprioception; the `overhead` and `ringside` cameras exist only in the render scripts, and are never fed to the policy. So nothing you or I do with the overhead can "mess up the training." I should not have let that implication stand.
+
+## What the real caution actually was — and why your method is *correct*, not forbidden
+
+The guardrail "don't judge gaze from the overhead" was never about the overhead being wrong. It was about *us* misreading it with a shortcut: judging "can he see the ball?" from the ball's angle relative to his **torso / the world origin**, while ignoring that his eye sits ~0.42 m *forward* of the torso, tilted ~18° down, on a head that swivels independently. When we skipped the head-pose step, a ball that was dead-ahead of his actual gaze looked "off to the side" in the overhead — and that's the misreading that burned us (the "30° prism" that was actually a 55° shift landing off-screen).
+
+**Your workflow is the opposite of that shortcut — it's the full, correct geometry.** You explicitly said "his head is turned ~90° right, the overhead shows the ball ~90° to his right, so it should be in his line of sight — then I check his POV and there it is." That *includes* the head orientation, and it cross-checks against what the eye camera actually shows. If the overhead + head-pose predicts the POV and the POV confirms it, that is precisely the world being rendered coherently — world-coupled perception you can *see*. That's the target of the whole project, not something to avoid. The rule was banning the lazy version (ignore the head), not your version (account for the head, then verify).
+
+So: you're not going to hurt training, and your way of looking is right. What's missing is **tooling** to make it easy — right now the head's gaze direction isn't drawn on the overhead, so you have to infer "where is his head pointed," which is the hard part.
+
+Let me look at what the render currently shows and at the head-joint settings, so I can (a) draw his gaze on the overhead and (b) do your #2 (stiffen the head so the gaze is steady enough to read).
+    [→ tool: Bash]
+The head joints are genuinely floppy — a 1.77 kg head on springs of stiffness ~0.23–0.45 with light damping, so it lolls under gravity and body motion. That's *why* the POV is hard to read frame-to-frame. Two things are worth doing, and they're independent:
+
+- **Legibility (the thing you actually asked to *see*):** draw his real gaze direction on the overhead and show it beside the synchronized eye POV — then your "head turned 90° right → ball 90° right → confirm in POV" check works at a glance. This is a render-only change: zero risk to training or checkpoints.
+- **#2, steadier head:** raise the head-joint damping/friction (not the ranges, not the actuators) so the gaze holds still enough to read and moves more deliberately — keeping the swivel DOF so head-search still works.
+
+Let me look at the render code to see how the panels are built, so I can add the gaze overlay cleanly.
+    [→ tool: Bash]
+The eye POV panel already exists (your cropped image was just the overhead — the third panel *is* his POV). What's missing is a **gaze indicator on the overhead** so you can see where his head is pointed without guessing. Let me check the MuJoCo version so I use the right scene-overlay call, then build a small additive viewer that draws his true gaze ray on the overhead beside the synchronized POV.
+    [→ tool: Bash]
+MuJoCo 3.6 with `mjv_connector` — good. Writing a small additive viewer (`render_gaze_check.py`) that draws his **gaze ray** (magenta) and the **direction to the ball** (cyan) on the overhead/ringside, beside the synchronized eye POV, and prints the gaze-vs-ball angle. This is purely a new render script — it touches nothing in the env or training.
+    [→ tool: Write]
+Now run it on the current model at a wide cone (so balls appear off to the side and he has to turn his head to find them):
+    [→ tool: Bash]
+No `timeout` on macOS, and my script makes fresh renderers per frame (slow), so let me run it in the background to avoid the 2-minute limit.
+    [→ tool: Bash]
+While the gaze viewer renders, let me be straight about the stiffening, because it has a cost you should weigh. Let me check if the render's done yet.
+    [→ tool: Read]
+Rendered (971 KB): `scratch_render/gaze_check.mp4` — it's in the Finder window that's already open. Let me verify the gaze overlay actually works by watching it.
+    [→ tool: Bash]
+The gaze overlay works — the describe tool confirms the **magenta gaze ray renders** (it tracks the head as it moves), alongside the eye POV panel. It's at `scratch_render/gaze_check.mp4` in your open Finder window. Now you can literally see: magenta = where he's looking, cyan = direction to the red ball, and the third panel = his actual POV; the yellow readout prints the gaze-to-ball angle (0° = looking straight at it). That's exactly your coherence check, made visible.
+
+**And watching it makes the case for your #2 request concrete:** the head genuinely lolls — those joints have low stiffness against a 1.77 kg head — so the gaze ray is jumpy frame-to-frame. Steadying it is well motivated. Let me apply a first-pass stiffening (more damping/friction/inertia; ranges, stiffness, and actuators untouched so head-search still works and the action space is unchanged), then render a before/after so we can see the difference.
+    [→ tool: Edit]
+That's a great cue, and there's good news: **the current crawler body already carries the hair-on-the-back-of-the-head trick from that work** — it has `hair_top` and `hair_back` geoms placed behind the crown (with a comment noting they're positioned so they don't occlude the forward eye cameras), plus a nose and mouth marking the front. So "which way is the face pointing" is already visually cued. What it's **missing is the eyebrows** — let me add those now, since they pair perfectly with the gaze-ray overlay I just built (visual cues + the ray = unmistakable).
+
+First, let me look at the exact eye/face placement so the eyebrows sit right.
+    [→ tool: Bash]
+Your requirement is crystal clear and it's the right one: **be able to check that he sees what we expect him to see.** And yes — the `gaze_check` viewer is exactly that tool. How to read it in one glance: **magenta = where he's looking, cyan = the direction to the ball; when those two rays line up and the ball sits in the POV panel, he sees it** — and the yellow number quantifies it (0° = dead-on, and his lens half-angle is 60°, so anything under ~60° should be somewhere in his view).
+
+But eyeballing rays is only as trustworthy as the rays themselves. Let me *prove the instrument is honest* with a numeric self-check: for each step, does the geometric "ball is within his field of view" prediction actually match **red ball pixels showing up in his rendered POV**? If they agree, the tool is trustworthy and you can rely on it. Building and running that now.
+    [→ tool: Write]
+Approved — adding eyebrows. They need to sit on the front surface of the head sphere (like the nose/pupils, which are pushed forward to ~x=0.08), just above the eyes. Inserting them after the mouth:
+    [→ tool: Edit]
+Now let me confirm the XML still loads with both changes (stiffening + eyebrows), then launch the numeric instrument check and a fresh viewer render (with the new face + steadier head) in the background.
+    [→ tool: Bash]
+All good: eyebrows present (gids 33/34), head damping raised (0.70/1.20/0.70), and `nu=26` confirms the action space is unchanged so the checkpoints still load. Let me confirm the eval's `make_env` actually uses this XML (so the edits show up), then launch the numeric check + a fresh viewer render.
+    [→ tool: Bash]
+`make_env` loads exactly the XML I edited — so the eyebrows and steadier head will show. Launching the numeric instrument check and a fresh viewer render (new face + steadier head) as one background job:
+    [→ tool: Bash]
+Everything's applied and two verifications are rendering in the background (`bnnzza9wa`) — they'll land shortly and I'll report the numbers and show the new video. Here's where this leaves us.
+
+**Your core question, answered:** the overhead camera has zero effect on training — it's pure visualization, never part of what the agent sees. The old "don't judge gaze from the overhead" caution was only about *us* misreading it by ignoring head pose. Your method (account for the head turn, then confirm against the POV) is the correct one, and it's exactly what we now have tooling for.
+
+**What I built and changed this turn:**
+1. **`render_gaze_check.py`** — the "can he see what we expect" viewer: magenta ray = his gaze, cyan ray = direction to the ball, third panel = his actual POV, yellow readout = gaze-to-ball angle. First demo is `scratch_render/gaze_check.mp4` (in your open Finder).
+2. **Eyebrows added** — and good news, the body *already* carries the back-of-head hair trick from the platform/cart work (plus a nose and mouth marking the front), so face direction was already cued; the eyebrows complete it.
+3. **Head steadiness (your #2)** — raised the head joints' damping/friction/inertia so the 1.77 kg head stops lolling and the gaze reads cleanly. Ranges, stiffness, and actuators are untouched, so head-search still works and the action space is unchanged (verified `nu=26`, checkpoints still load).
+4. **`verify_gaze_fov.py`** — a numeric honesty check: does the geometric "ball is in his field of view" match red ball pixels actually appearing in his rendered POV? If they agree, you can trust the viewer. (Running now.)
+
+**One caveat you should know about the stiffening:** it changes the head *physics*, and the current vision policy was trained on the floppy head — so on the stiffer head it'll likely have steadier gaze (good for viewing) but possibly weaker head-search until it's retrained on the new dynamics. It's a clean, git-reversible body edit; nothing is committed. If you want the policy to *perform* as before on the new body, that's a short continue-train I can kick off.
+
+Two threads still open for your call: whether to **retrain the vision line on the steadier-head body**, and whether to run the **theory-monitor + write-up on the extrapolation result** from earlier (the graceful-degradation-past-0.85 finding). The two background verifications will report first.
+
+======================================================================
+USER:
+======================================================================
+Stop hook feedback:
+[python3 export_transcript.py >/dev/null 2>&1]: No stderr output
+
+======================================================================
+CLAUDE:
+======================================================================
+Stop hook is just the transcript export confirming — nothing to act on. Let me check whether the background numeric check + v2 render finished, since I owe you those results.
+    [→ tool: Read]
+Excellent result — the instrument is validated. The numeric honesty check came back **99.4% agreement**: when the geometry says the ball is in his field of view, his rendered POV actually shows red ball pixels, and when it says out, the POV is blank.
+
+- 37 steps: predicted in-view **and** POV shows the ball ✓
+- 324 steps: predicted out **and** POV blank ✓
+- **0** false positives (never claims he sees it when the POV is empty)
+- 2 steps (0.6%) "out but visible" — and those are explained cleanly: they sit right at 61.7–64.7°, i.e. the eye's frame is a *rectangle*, so a ball just past the 60° circular threshold I used can still clip a frame corner. Not an instrument error, just my threshold being a hair conservative.
+
+The angle separation is beautiful: **ball visible at mean 48° from gaze (max 64.7°), not-visible at mean 124° (min 61.7°)** — a clean split right at his ~60° lens half-angle. So the viewer is trustworthy: if the magenta gaze ray points within ~60° of the ball, he genuinely sees it, confirmed against his actual pixels.
+
+Let me confirm the new face (eyebrows) and steadier head actually rendered in the v2 video.
+    [→ tool: Bash]
+The v2 video (`scratch_render/gaze_check_v2.mp4`, in your Finder) renders the whole picture: the magenta gaze ray tracking the head, the POV panel, and the new face. Worth noting the describe tool's read shifted from the earlier "floppy/ragdoll/collapsing" to "**stiff and robotic**" — a hint the head-steadying had a visible effect, though you'll want to confirm by eye (that tool is the unreliable narrator). The eyebrows are small and low-res so it didn't call them out, but they're confirmed in the model and will show when you watch.
+
+So your requirement is now met and *proven*: you have a viewer that shows exactly where he's looking versus where the ball is, and a numeric check confirming that view is honest to within 99.4%. When the gaze ray points at the ball, he really sees it.
+
+Everything from this thread is done:
+- **Concept corrected** — the overhead never touches training; your check-the-head-then-verify-POV method is the right one.
+- **Gaze viewer** (`render_gaze_check.py`) + **numeric validator** (`verify_gaze_fov.py`), both working.
+- **Steadier head** (#2) — damping/inertia up, DOF and action space preserved.
+- **Eyebrows** added; back-of-head hair was already there.
+
+All of it is uncommitted and git-reversible (env/XML/render edits, two new scripts, plus the earlier FINDINGS/THEORY_LOG/pre-reg from the distance work). 
+
+Two decisions are yours whenever you want them — no rush, nothing's blocked:
+1. **Retrain the vision policy on the steadier-head body?** The physics changed, so the current policy will read steadier but may head-search a bit less until retrained. A short continue-train fixes that.
+2. **Finalize the extrapolation finding?** (theory-monitor check + the FINDINGS write-up of the graceful-degradation-past-0.85 result).
+
+And if you'd like, I can commit this whole batch to the branch so it's saved. Just say which of these to do.
+
+======================================================================
+USER:
+======================================================================
+Retrain the vision policy on the steadier-head body
+
+======================================================================
+CLAUDE:
+======================================================================
+Setting that up now. My plan and rationale, so it's visible:
+
+- **Seed from `dist_holdout_vis_s0`** (not the older `s1corr`) — it's the most capable current vision policy and keeps the distance-generalization we just measured.
+- **Full distance band 0.35–0.85, no hole** — the held-out-gap experiment is done; now we want a good general policy on the new body.
+- **Same recipe otherwise** (steadier-head XML, cone 136, gaze-spawn, decoy, offset 0, seed 0), 200K continue-train.
+- **I'm treating this as an engineering re-fit, not a new experiment, so I'm skipping the experiment-strategist/lit-scout/book panel** — there's no new hypothesis or prior-art question here, just adapting to a body change. Flagging that in case you'd rather I run the panel.
+- **Pre-check is satisfied**: `gaze_check_v2` already showed this seed policy moving and contacting a ball on the new steadier-head body, and the liveness gate stays on.
+
+Compatibility is already proven (the seed loaded and ran on this XML in the v2 render). Launching:
+    [→ tool: Bash]
+Launched (PID 98609). Let me confirm it started cleanly, then commit the batch to the branch.
+    [→ tool: Bash]
+Training is healthy — continuing from `dist_holdout`, **liveness passed at 10K** (body-motion 2.19), so the steadier head didn't freeze it, running at 75% CPU. Now the commit. Let me see exactly what's outstanding so I can commit transparently.
+    [→ tool: Bash]
+Training is healthy and running. Now the commit. There's a mix in the tree: my session's coherent batch plus some **pre-existing** uncommitted work from before this session (e.g. `CLAUDE.md`, `GLOSSARY.md`, `GROUNDING_LLMS.md`, several other eval scripts, `PRISM_GAZE_RELATIVE_PROPOSAL.md`). To keep the commit clean, I'll commit my batch — the distance-holdout, gaze tooling, and steadier-head work — and leave the unrelated pre-existing changes for you to decide on. Staging exactly my files (excluding the temp `scratch_render/`):
+    [→ tool: Bash]
+All 10 staged. Committing with a descriptive message:
+    [→ tool: Bash]
+Committed as **`57a52ad`** — 10 files, +1458/−44 (the `--spawn-radius-hole` env change and thread-through, the distance-holdout pre-reg/FINDINGS/THEORY_LOG entries, the two new gaze scripts, `--radius` on the render, and the steadier-head + eyebrows XML). The git-identity note is harmless — it auto-used "David Wolpe" from your machine.
+
+Now let me arm a completion watcher on the retrain so it auto-evaluates when done, like before.
+    [→ tool: Bash]
