@@ -227,13 +227,10 @@
                     material="head_mat" pos="0.01 0 0.0735"/>
               <site name="vestibular" type="sphere" size="0.01" pos="0.01 0 0.0735"/>
 
-              <!-- Head-side neck: SHORT stub only. The long version rigidly attached to the head
-                   jutted out like a nose when the head tilted (head-local -Z points forward when
-                   prone). The real bridging neck lives on the CHEST body (neck_base) so it doesn't
-                   swing with the head. Visual only. -->
-              <geom name="neck" type="cylinder" material="neck_mat"
-                    size=".026 .014" pos="0 0 -.016" mass="0.001"
-                    contype="0" conaffinity="0"/>
+              <!-- Head-side neck stub removed (David 2026-07-18): it poked out as a knob on the
+                   back of the head when tilted. The neck is now entirely CHEST-anchored (neck_base),
+                   so the head needs no stub. -->
+
 
               <!-- Eye whites (sclera) — visible spheres in render -->
               <geom name="geom:left_eye"  type="sphere" material="eye_mat" size=".015"
