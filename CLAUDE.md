@@ -82,6 +82,36 @@ Standing consequences:
 
 ---
 
+## The "prism-on" cue is REQUIRED — AB must be told when he is wearing the lens (governing rule, 2026-07-19)
+
+**Whenever ghost objects appear in AB's visual field that do NOT respond to touch (i.e. the prism/lens
+is displacing what he sees), AB MUST receive a persistent signal that he is wearing the prism.** This
+is non-optional apparatus fairness, the same class of rule as winnability: a real creature always knows
+the glasses are on, so AB must too.
+
+Why (Taylor, in plain English): Taylor found that the "glasses-are-on" state is always accompanied by a
+constant extra sensation — the frames on the nose, the narrowed field — which he modeled as a simple
+on/off afferent signal (an Ashby "parameter"). That cue is what lets a person hold BOTH calibrations at
+once (lens-on and lens-off) and switch instantly — dual adaptation. WITHOUT the cue, the old calibration
+gets overwritten and you get an after-effect on removal; WITH it, no after-effect and instant switching.
+Leaving AB with no cue forces him to guess whether HE is wearing a lens or the WORLD moved — an unfair,
+impoverished setup. So the cue is something we OWE AB, not an experimental luxury.
+
+Concrete form (implement this): a single **binary "prism-on" flag appended to the proprioceptive
+observation — 1 every step the lens/ghosts are active, 0 otherwise.** Binary, not the offset angle:
+Taylor's cue signals only THAT the lens is on, not how much it shifts; handing AB the exact degrees
+would be telling him the answer instead of making him learn the correction. (A richer future option is
+a persistent VISUAL cue — a faint tint/border when the lens is on — closer to Taylor's "narrowed field";
+start with the proprioceptive flag.)
+
+Consequence for experiments: with the cue present, expect/aim for dual adaptation (hold both, no
+after-effect). If a run instead wants to demonstrate the classic single-overwrite + after-effect, that
+is done by WITHHOLDING the cue deliberately and saying so — never by forgetting to provide it. Plain
+English in every writeup: say whether AB "knew the lens was on" this run, and what Taylor predicts as a
+result.
+
+---
+
 ## Conversation Capture (important — read this)
 
 The user wants to preserve our conversations. OBS screen recording does NOT work for this —
