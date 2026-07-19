@@ -566,3 +566,18 @@ MuJoCo = the simulator, the MIMo-derived XML = the creature. It CAN build comple
 (heightfields), arbitrary shapes (mesh imports), many objects/obstacles, multiple creatures, even
 deformables (cloth/cable/soft bodies in v3). The real limit is compute, not capability: richer scenes
 simulate slower, which trades against the many-fast-parallel-environments that RL training wants.
+
+**Greek room.** David's design (2026-07-19) for a richer world built entirely from MuJoCo primitives
+(columns = stacked cylinders with capitals, checkered floor plane, boxes, spheres; extendable with
+cones, pyramids, tori and composites). Purpose, and why it matters technically: (1) OCCLUSION — you
+can't see some objects until you move around a column, which creates genuine PRESSURE to move (the
+thing motion parallax needs) and adds accretion-deletion (a depth cue where texture appears/disappears
+at edges as you move); it also makes vision load-bearing in a way a bare platform can't — you can't
+proprio-grope your way to a thing you can't see. (2) PERSPECTIVE — a long colonnade's parallel columns
+converge to a point, and the checkered floor is a texture gradient: the classic pictorial + linear-
+perspective depth cues (Taylor's §6.11 floor-texture example), the substrate for FAR-distance
+perception the near-field platform lacks. (3) A philosophical layer David attaches: partial visibility
+= DOUBT / uncertainty about what's there, and the "atomization of meaning" — the creature sees obscured
+parts that must be integrated (over movement/time) into whole objects and, eventually, meanings, the
+way language assembles meaning from parts. So the room is a vehicle for depth perception, movement-
+driven adaptation, object variety, AND perceptual inference (assembling a whole from glimpses).
