@@ -104,6 +104,8 @@ class MimoCrawlerEnv(gym.Env):
                  random_start_orientation=False,
                  memory_obs=False,
                  stereo=True,
+                 frame_stack=1,
+                 frame_stride=1,
                  action_mode="torque",
                  step_cost=STEP_COST,
                  xml_path=None,
@@ -164,6 +166,14 @@ class MimoCrawlerEnv(gym.Env):
         self.random_start_orientation = random_start_orientation
         self.memory_obs = memory_obs
         self.stereo = stereo
+        # frame_stack: emit the current pixel frame plus (frame_stack-1) PAST frames spaced
+        # frame_stride steps apart, so the vision network can see self-motion (motion parallax).
+        # One crawl step moves the viewpoint <1px at 32x32, so adjacent frames show no motion —
+        # the stride spaces them far enough apart to accumulate a supra-pixel image shift.
+        # frame_stack=1 (default) is bit-identical to the single-frame past behaviour.
+        self.frame_stack = int(frame_stack)
+        self.frame_stride = max(1, int(frame_stride))
+        self._frame_buf = None
         # Crawl-ready default pose (2026-07-02, minimal-change track). crawl_pose is a
         # dict {actuator_index: center_angle_rad}: the position-offset ranges for those
         # actuators are re-centred on the angle (offsets around a locomotion-adjacent
@@ -224,7 +234,7 @@ class MimoCrawlerEnv(gym.Env):
 
         memory_dim = 2 if memory_obs else 0
         if vision:
-            vis_dim = VISION_DIM_STEREO if stereo else VISION_DIM_MONO
+            vis_dim = (VISION_DIM_STEREO if stereo else VISION_DIM_MONO) * int(frame_stack)
         else:
             vis_dim = 0
         target_dim = 3 if target_obs else 0
@@ -323,6 +333,7 @@ class MimoCrawlerEnv(gym.Env):
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
         mujoco.mj_resetData(self.model, self.data)
+        self._frame_buf = None   # frame-stack buffer refills from the first frame this episode
 
         # Place MIMo prone (face down) on platform.
         # Default _PRONE_QUAT puts spine along world +Y. If random_start_orientation,
@@ -747,21 +758,33 @@ class MimoCrawlerEnv(gym.Env):
             return proprio
 
         _vopt = self._headcam_vopt   # hides the real ball (group 3) in prism mode; None otherwise
-        if _vopt is not None:
-            self._cam_renderer.update_scene(self.data, camera="left_eye", scene_option=_vopt)
-        else:
-            self._cam_renderer.update_scene(self.data, camera="left_eye")
-        left_img = self._cam_renderer.render().copy().astype(np.float32) / 255.0
 
-        if not self.stereo:
-            return np.concatenate([proprio, left_img.ravel()])
+        def _render(cam):
+            if _vopt is not None:
+                self._cam_renderer.update_scene(self.data, camera=cam, scene_option=_vopt)
+            else:
+                self._cam_renderer.update_scene(self.data, camera=cam)
+            return self._cam_renderer.render().copy().astype(np.float32).ravel() / 255.0
 
-        if _vopt is not None:
-            self._cam_renderer.update_scene(self.data, camera="right_eye", scene_option=_vopt)
+        cur = _render("left_eye")
+        if self.stereo:
+            cur = np.concatenate([cur, _render("right_eye")])
+
+        if self.frame_stack <= 1:
+            return np.concatenate([proprio, cur])
+
+        # Strided frame stack: emit [current, current-stride, current-2*stride, ...] so the
+        # network sees self-motion. Buffer is (re)initialised to copies of the first frame on
+        # reset (self._frame_buf set to None there), so early steps have valid frames.
+        maxlen = (self.frame_stack - 1) * self.frame_stride + 1
+        if self._frame_buf is None:
+            self._frame_buf = [cur.copy() for _ in range(maxlen)]
         else:
-            self._cam_renderer.update_scene(self.data, camera="right_eye")
-        right_img = self._cam_renderer.render().copy().astype(np.float32) / 255.0
-        return np.concatenate([proprio, left_img.ravel(), right_img.ravel()])
+            self._frame_buf.append(cur)
+            if len(self._frame_buf) > maxlen:
+                self._frame_buf = self._frame_buf[-maxlen:]
+        frames = [self._frame_buf[-1 - k * self.frame_stride] for k in range(self.frame_stack)]
+        return np.concatenate([proprio] + frames)
 
     # ------------------------------------------------------------------
     def render(self):

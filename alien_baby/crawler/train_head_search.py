@@ -180,6 +180,7 @@ def build_envs(args):
         velocity_bonus_scale=0.0, action_mode="position_offset",
         spawn_radius=tuple(args.spawn_radius),
         spawn_radius_hole=tuple(args.spawn_radius_hole) if args.spawn_radius_hole else None,
+        frame_stack=args.frame_stack, frame_stride=args.frame_stride,
         step_cost=0.0, xml_path=args.xml,
         prism_offset_deg=args.prism_offset,
         crawl_pose=CRAWL_POSES["arms_fwd"], terminate_tilt_deg=50.0, tip_penalty=-5.0,
@@ -219,6 +220,11 @@ def main():
     p.add_argument("--spawn-radius-hole", type=float, nargs=2, default=None,
                    help="held-out (lo hi) distance gap the ball never spawns in "
                         "(train the ends, eval the middle — generalization test)")
+    p.add_argument("--frame-stack", type=int, default=1,
+                   help="stack this many pixel frames (spaced --frame-stride apart) so the eye "
+                        "can see self-motion = motion parallax. 1 = single frame (default).")
+    p.add_argument("--frame-stride", type=int, default=1,
+                   help="steps between stacked frames (spacing so the viewpoint moves >1px).")
     p.add_argument("--lr", type=float, default=3e-4)
     p.add_argument("--n-steps", type=int, default=1024)
     p.add_argument("--batch-size", type=int, default=512)
@@ -286,7 +292,33 @@ def main():
             ),
         )
 
-    if args.mismatch_coef > 0 and args.init_model:
+    if args.init_model and args.frame_stack > 1:
+        # Frame-stack warm start: the first conv now takes frame_stack x more input channels
+        # than the single-frame checkpoint, so a normal load can't fit it. Build fresh, load
+        # every OTHER weight non-strict, then TILE the old conv0 across the frame-copies (scaled
+        # 1/frame_stack) so the stacked net STARTS as the single-frame policy and only has to
+        # learn to use the motion between frames.
+        import torch as _torch
+        from stable_baselines3.common.save_util import load_from_zip_file
+        model = _fresh_ppo()
+        _, params, _ = load_from_zip_file(args.init_model, device=args.device)
+        # SB3 keeps 3 aliased copies of the extractor (features_/pi_/vf_), so drop ALL resized
+        # conv0 weights and tile into each.
+        old_conv0 = params["policy"].get("features_extractor.cnn.0.weight")
+        sd = {k: v for k, v in params["policy"].items() if not k.endswith("cnn.0.weight")}
+        res = model.policy.load_state_dict(sd, strict=False)
+        if old_conv0 is not None:
+            tiled = old_conv0.repeat(1, args.frame_stack, 1, 1) / float(args.frame_stack)
+            with _torch.no_grad():
+                for attr in ("features_extractor", "pi_features_extractor", "vf_features_extractor"):
+                    fe = getattr(model.policy, attr, None)
+                    if fe is not None and fe.cnn[0].weight.shape == tiled.shape:
+                        fe.cnn[0].weight.copy_(tiled.to(fe.cnn[0].weight.device))
+        print(f"[frame-stack] init from {args.init_model}: tiled conv0 "
+              f"{tuple(old_conv0.shape) if old_conv0 is not None else None} x{args.frame_stack} "
+              f"warm-start; other layers non-strict missing={len(res.missing_keys)} "
+              f"unexpected={len(res.unexpected_keys)}")
+    elif args.mismatch_coef > 0 and args.init_model:
         # The new bearing_head means the policy has params the old checkpoint lacks, so a
         # strict PPO.load would fail: build fresh and load matching weights non-strict
         # (bearing_head stays freshly initialized; everything else = the init model).

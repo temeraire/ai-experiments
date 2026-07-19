@@ -34,25 +34,23 @@ class StereoCrawlerCNN(BaseFeaturesExtractor):
         self.cam_h = CAM_H
         self.cam_w = CAM_W
 
-        # Decide mono (3-channel) vs stereo (6-channel) and whether memory flags
-        # are present, based on obs shape relative to proprio_dim.
-        pixel_dim = observation_space.shape[0] - proprio_dim
-        if pixel_dim == 2 + CAM_H * CAM_W * 3:
-            self.in_channels = 3
-            self.memory_dim = 2
-        elif pixel_dim == 2 + CAM_H * CAM_W * 3 * 2:
-            self.in_channels = 6
-            self.memory_dim = 2
-        elif pixel_dim == CAM_H * CAM_W * 3:
-            self.in_channels = 3
-            self.memory_dim = 0
-        elif pixel_dim == CAM_H * CAM_W * 3 * 2:
-            self.in_channels = 6
-            self.memory_dim = 0
-        else:
+        # Infer memory flags + number of (H,W,3) sub-images from the obs shape. Each sub-image
+        # becomes 3 conv input channels, so in_channels = n_sub*3 handles mono(n_sub=1),
+        # stereo(2), and FRAME-STACKED (frame_stack*eyes) uniformly — the conv sees every frame
+        # and eye as channels, so it can read both disparity (L vs R) and motion (t vs t-stride).
+        # Byte-identical to the old mono/stereo branches for existing checkpoints.
+        one = CAM_H * CAM_W * 3
+        self.memory_dim = None
+        for mem in (2, 0):
+            pd = observation_space.shape[0] - proprio_dim - mem
+            if pd > 0 and pd % one == 0:
+                self.memory_dim = mem
+                self.in_channels = (pd // one) * 3
+                break
+        if self.memory_dim is None:
             raise ValueError(
-                f"Cannot infer mono/stereo from obs dim {observation_space.shape[0]} "
-                f"with proprio_dim={proprio_dim}; pixel_dim={pixel_dim}"
+                f"Cannot infer pixel channels from obs dim {observation_space.shape[0]} "
+                f"with proprio_dim={proprio_dim}, CAM {CAM_H}x{CAM_W}"
             )
         self.proprio_total = proprio_dim + self.memory_dim
         feature_dim = self.proprio_total + pixel_latent_dim
@@ -107,14 +105,12 @@ class StereoCrawlerCNN(BaseFeaturesExtractor):
             nn.init.zeros_(self.gain_mlp[-1].bias)
 
     def _pixel_latent(self, observations: torch.Tensor) -> torch.Tensor:
+        # Split the pixel block into n_sub (H,W,3) images (frames x eyes) and stack them all as
+        # conv channels. n_sub=1 (mono) / 2 (stereo) reproduce the old reshape byte-for-byte.
         pixels_flat = observations[:, self.proprio_total :]
-        if self.in_channels == 3:
-            img = pixels_flat.view(-1, self.cam_h, self.cam_w, 3).permute(0, 3, 1, 2)
-        else:
-            half = self.cam_h * self.cam_w * 3
-            left  = pixels_flat[:, :half].view(-1, self.cam_h, self.cam_w, 3).permute(0, 3, 1, 2)
-            right = pixels_flat[:, half:].view(-1, self.cam_h, self.cam_w, 3).permute(0, 3, 1, 2)
-            img = torch.cat([left, right], dim=1)
+        n_sub = self.in_channels // 3
+        subs = pixels_flat.view(-1, n_sub, self.cam_h, self.cam_w, 3)
+        img = subs.permute(0, 1, 4, 2, 3).reshape(-1, self.in_channels, self.cam_h, self.cam_w)
         return self.proj(self.cnn(img))
 
     def bearing_pred(self, observations: torch.Tensor) -> torch.Tensor:
