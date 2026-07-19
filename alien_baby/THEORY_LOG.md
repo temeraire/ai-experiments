@@ -1692,3 +1692,141 @@ The visual-object-agnosticism cue was pinned down by a zero-shot recolor sweep (
 **Salience-vs-spatial fork: LEANS SALIENCE.** This is the same fork the prism-displacement entry left open. "Approach the reddest region in view" is a chromatic phototropism, not an abstract target-bearing computation. So the two 2026-07-08 results combine to: the decoy visual channel is a **red-channel-keyed directional attractor** — directional (displacement degrades choice → not pure arousal), object-agnostic (shape-invariant), FOV-limited, and salience-flavored rather than a spatial map. A true bearing/spatial-map account is now the less-supported branch, though not excluded (a phototropism can still carry usable bearing information at short range).
 
 ---
+
+## 2026-07-18 — GAZE-frame apparatus fix validated end-to-end: the interpenetration chain reproduces on corrected geometry, cleanest instrument yet
+
+**Context.** The 2026-07-18 governing-frame correction (CLAUDE.md: "Perception lives in the GAZE
+frame") diagnosed that every prior bearing-readout instrument (2026-07-17 x2, both R²≈0 even sighted)
+was likely broken by a world/torso-frame vs gaze-frame mismatch, not by an absent signal. This entry is
+the first trained-policy test of the fix: gaze-relative prism ghost + gaze-cone spawn, plain body-frame
+readout vs `--gain-field` (FiLM head-pose composition), offset 0, 250K each, gate eval 200 eps/cell.
+
+**Result: the fix works, and the interpenetration signature reproduces cleanly for the first time on
+this apparatus.** Sighted heading tracks true bearing (R²=0.524 plain / 0.400 gain-field, both clearing
+the pre-registered ≥0.30 gate) while blind is flat (R²=0.014 / 0.000, clearing ≤0.10) — and blind still
+touches balls MORE often (93.0%/90.5% vs 86.5%/88.0% sighted), ruling out the standing "low-touch
+artifact" concern independently via a second metric (choice_vs_true: blind 49.5%/51.4% sits on the 50%
+chance floor). Two structurally different instruments (continuous R², binary choice) now agree, on the
+first bearing readout that has ever cleared its own validity gate in this project.
+
+**What this confirms.** The **interpenetration thesis** (vision genuinely sets a directional/choice
+signal touch/proprio structurally cannot supply, established via the decoy-discrimination →
+prism-displacement chain of 2026-07-06/07-08) reproduces on the corrected gaze-frame geometry, with the
+cleanest instrument margin the project has produced. It also confirms the causal diagnosis in the
+2026-07-18 GAZE-frame governing-frame note itself: the world/gaze-frame mismatch, not an absent visual
+signal, was the reason every earlier readout returned R²≈0. Fixing the frame — not adding a new
+mechanism — was sufficient.
+
+**What this does NOT confirm.** Offset 0 has no lens displacement to correct, so this result is silent
+on the actual north-star question (does the gain-field help genuine recalibration under the lens?) and
+silent on the generalization-as-primary framework (no size/shape/distance sweep here). Both arms are
+committed to Stage 2 specifically because Stage 1 cannot discriminate them — see FINDINGS.md 2026-07-18
+entry for the full A/B and independent Theory Monitor verification.
+
+**The most important thing we don't know yet:** whether the gain-field's head-pose composition earns
+its complexity under the one condition it was designed for (the +30° lens) — untestable at offset 0 by
+construction.
+
+---
+
+## 2026-07-18 — Distance-holdout gap generalization on the vision line: interpolation supported, but qualify the "indistinguishable" claim (independent Theory Monitor read)
+
+**What was tested.** `dist_holdout_vis_s0`: the vision-line (`s1corr`) checkpoint continue-trained 200K
+steps on a widened ball-distance band 0.35–0.85 m with a held-out gap at 0.55–0.75 m (never sampled during
+training). Evaluated in three cells, 100 eps each, offset 0, gaze-spawn, cone 136°: near (0.35–0.55,
+trained), GAP (0.55–0.75, held-out), far (0.75–0.85, trained). Per PREREG_distance_generalization_holdout.md,
+contact rate is primary, directed choice_vs_true (red vs blue, 50% floor) is co-primary, steps-to-contact is
+corroborating-only (too noisy on this substrate), and `committed` (body actually translated toward a ball,
+vs. contact by proximity alone) is the confound check the panel added specifically because of the earlier
+cart-sweep-delivery problem on this project's proprio line.
+
+**1) Does gap ≈ trained bands confirm generalization-as-primary, or is the case weaker than it looks?**
+It is real evidence for the reach-as-law reading, but weaker than the headline framing suggests, for one
+concrete reason: **the near cell is not an admissible "trained" comparator.** committed = 5/100 at near
+means 95% of near contacts happened without the body translating toward a ball — geometry (prone-reach),
+not reach. So "gap is indistinguishable from the trained bands" is really only tested against the *far*
+cell, the only other clean (committed-heavy) bin: far contact 95%/committed 95, GAP contact 97%/committed
+78. Against that single clean anchor, the pre-registered pass condition (gap contact ≥ 0.8× trained, gap
+choice near trained) is met with room to spare, and the falsifier (gap contact ≤ 0.5× trained, choice
+collapsing to 50%) is nowhere close. That is a genuine pass — but it is a pass against one clean bracket,
+not two, and the paper's own framing ("indistinguishable from the trained bands," plural) overstates what
+the near cell actually licenses. Additionally, n=100/cell gives choice-accuracy CIs of ±8–9 points; overlap
+at that width rules out a large gap-specific deficit but cannot rule out a modest one (e.g. a genuine 10-pt
+dip would likely not separate from noise here). **Verdict: CONFIRMS the reach-generalizes-across-distance
+reading on the vision line, on the one clean comparison available, with the caveat that the claim currently
+rests on n=100/cell and a single clean trained anchor, not two.**
+
+**2) Taylor's interpolation prediction (gap sits between the bracketing trained distances) — does it hold,
+and does the near confound undermine it?** Only partially testable, for the reason above: Taylor's §6.11
+"automatic interpolation device" predicts the untrained middle should sit as a smooth *weighted average*
+between the two trained brackets. Contact rate can't show this — it's ceiling-bound (95–100%) across all
+three cells, so there's no gradient to read a weighted-average shape off of. Directed choice is the metric
+with headroom, and there the numbers do **not** show a clean monotonic in-between shape: near 77.0%, GAP
+72.2%, far 75.8% — GAP is numerically the *lowest* of the three, not sandwiched between two clean brackets,
+though well within the ±8-9-point noise band of both. This is consistent with "uniformly good across the
+whole range" more than with the specific graded-interpolation shape Taylor's account names, but the data
+cannot distinguish the two at this n. Yes, the near-cell geometry confound directly undermines using near
+as one of the two brackets Taylor's account requires — only GAP and far are demonstrated to be genuine-reach
+cells, so the "between two brackets" test is currently running on one real bracket plus one confounded one,
+not two real ones.
+
+**3) Does this bear on the long-running "vision inert / non-directional" finding — challenge or refine?**
+Refines, and in the confirming direction — it does not resurrect or contradict the old Phase XIII (R43/R44,
+2026-05-30) finding, because that finding was already attributed to an apparatus defect (world/torso-frame
+vs. gaze-frame mismatch), not to a fact about AB, and was superseded by the 2026-07-18 GAZE-frame fix
+entry immediately above this one. What this run adds to the corrected picture: directed choice stays
+reliably above the 50% chance floor (72.2–77.0%, all three cells) not just at the single offset-0/fixed-
+distance condition the Stage-1 gate-eval tested (87.9%/86.9%), but across a distance range from 0.35 m to
+0.85 m *including a never-trained middle band*. That is a genuine extension of "vision is directional" along
+a new axis (distance) that the 07-18 entry did not test. One honest wrinkle worth flagging, not smoothing
+over: choice accuracy here (72–77% across all three cells, including the *trained* near and far bins) sits
+noticeably below the Stage-1 gate-eval's 86.9–87.9% on the same lineage. Two candidate explanations, neither
+yet distinguished: (a) 200K more steps of continued training on a substantially harder, wider task diluted
+peak discrimination accuracy somewhat; (b) the wider spawn cone (136° here vs. whatever the Stage-1 gate
+used) makes the discrimination itself harder everywhere, independent of distance. Either way, the drop is
+present in the trained bins too, so it is not gap-specific and does not threaten the interpolation reading —
+but it should be tracked, not left unexplained.
+
+**4) Single sharpest follow-up.** Per the field's own function-learning framework (DeLosh, McDaniel &
+Busemeyer 1997, cited in the pre-reg): interpolation success is the *weaker* of the two rule-vs-lookup
+tests; **extrapolation beyond the trained range is the sharp discriminator**, because a sufficiently dense
+lookup/averaging table can pass an interpolation test but cannot pass an honest extrapolation test without
+an actual metric law. The single sharpest, cheapest next measurement is therefore an eval cell beyond 0.85 m
+(no new training — same checkpoint, one more eval bin, winnability-checked first per the standing rule) to
+see whether contact/committed/choice hold up, degrade gracefully (Taylor §4.10/6.6's "bounded extrapolation,
+carries a little beyond, then flattens"), or collapse. A second, genuinely free diagnostic that should
+happen first because it costs nothing: re-bin the *already-collected* near-cell episodes by the `committed`
+flag (or by sub-radius near the 0.55 edge vs. the 0.35 edge) and check whether the ~5 genuinely-committed
+near episodes' choice accuracy resembles GAP/far or differs — this would repair the "one clean bracket"
+problem in §1/§2 using data already on disk, before spending any new compute.
+
+**Disagreement with the framing in the dispatch, for the record.** The dispatch's question 1 asks whether
+gap-indistinguishable-from-trained-bands confirms the framework "or is the case weaker than it looks" — my
+read is the latter, specifically: it is a real, qualified CONFIRM (per §1), not the clean unqualified
+confirm the phrase "indistinguishable from the trained bands" (plural) implies, because one of those two
+bands (near) is not a valid comparator for reach-generalization. This should be recorded as a qualification
+of the headline, not a rejection of it — the GAP-vs-far comparison, which IS clean, passes clearly.
+
+### Theory Monitor Note — 2026-07-18 (Distance-holdout gap, vision line)
+
+**Generalization-as-primary / reach-as-law framework: CONFIRMED, qualified** — GAP performance (97%
+contact, 78% committed, 72.2% directed choice) matches the one clean trained anchor available (far: 95%
+contact, 95% committed, 75.8% choice) on a never-trained middle distance band; the near cell cannot serve
+as a second clean anchor because only 5/100 of its contacts involved genuine directed movement.
+
+**Interpenetration / vision-is-directional framework: CONFIRMED and extended** — directed choice stays
+well above the 50% floor at all three distances including the held-out gap, extending the 2026-07-18
+GAZE-frame result (directional at a single distance) to a range of distances; this refines rather than
+challenges the corrected picture, and does not revive the superseded Phase XIII "non-directional" finding.
+
+**The most important thing we don't know yet:** whether AB's reach law genuinely extrapolates beyond the
+trained 0.35–0.85 m range (the sharp rule-vs-lookup test) or only interpolates within it — untested by
+this run by design.
+
+**Recommended diagnostic** (not a training run — just measurements, in priority order): (1) free re-bin
+of the already-collected near-cell episodes by the `committed` flag / sub-radius to get a second genuinely
+clean trained anchor before trusting the "gap ≈ trained bands, plural" framing; (2) one new eval cell
+beyond 0.85 m, winnability-checked first, to test extrapolation rather than interpolation — the sharper
+discriminator per the pre-reg's own cited function-learning literature.
+
+---

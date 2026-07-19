@@ -204,12 +204,16 @@
 
             <!-- HEAD: eye joints removed, fixed stereo cameras instead -->
             <body name="head" pos="0 0 .135">
+              <!-- Head-steadiness pass (2026-07-18): damping/frictionloss/armature raised to stop the
+                   1.77 kg head lolling under gravity/body-motion, so gaze is legible frame-to-frame and
+                   moves deliberately. Ranges, stiffness, and actuators are UNCHANGED (head-search DOF and
+                   the 26-dim action space are preserved). First pass — tune against render_gaze_check. -->
               <joint name="robot:head_swivel"    type="hinge" pos="0 0 0"      axis="0 0 1"
-                     range="-111 111" stiffness=".23" damping=".29" frictionloss=".018" armature="0.005"/>
+                     range="-111 111" stiffness=".23" damping=".70" frictionloss=".035" armature="0.015"/>
               <joint name="robot:head_tilt"      type="hinge" pos="0 0 0.0123" axis="0 1 0"
-                     range="-70 81"  stiffness=".45" damping=".53" frictionloss=".018" armature="0.005"/>
+                     range="-70 81"  stiffness=".45" damping="1.20" frictionloss=".035" armature="0.015"/>
               <joint name="robot:head_tilt_side" type="hinge" pos="0 0 0.0245" axis="1 0 0"
-                     range="-70 70"  stiffness=".37" damping=".29" frictionloss=".018" armature="0.005"/>
+                     range="-70 70"  stiffness=".37" damping=".70" frictionloss=".035" armature="0.015"/>
               <geom name="head_geom" type="sphere" size=".0735" mass="1.7748"
                     material="head_mat" pos="0.01 0 0.0735"/>
               <site name="vestibular" type="sphere" size="0.01" pos="0.01 0 0.0735"/>
@@ -244,6 +248,15 @@
               <!-- Mouth: small reddish horizontal bar below the nose. -->
               <geom name="mouth" type="box" material="lip_mat" size=".012 .002 .003"
                     mass=".0005" pos=".076 .0 .035" contype="0" conaffinity="0"/>
+
+              <!-- Eyebrows: small dark bars on the face surface just above each eye. Cosmetic
+                   (no contact, no mass to speak of); together with the back-of-head hair and nose
+                   they make face/gaze direction obvious at a glance. Placed at x~.078 to sit on the
+                   sphere surface, behind the camera lens plane (x=.07) so they don't occlude the POV. -->
+              <geom name="eyebrow_left"  type="box" material="hair_mat" size=".012 .004 .0035"
+                    mass=".0002" pos=".078 .026 .082" euler="0 8 0" contype="0" conaffinity="0"/>
+              <geom name="eyebrow_right" type="box" material="hair_mat" size=".012 .004 .0035"
+                    mass=".0002" pos=".078 -.026 .082" euler="0 8 0" contype="0" conaffinity="0"/>
 
               <!-- Hair: positioned on the back-top of the head so it does not
                    occlude the forward-facing eye cameras. -->

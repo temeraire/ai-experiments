@@ -35,30 +35,46 @@ def _ghost_geom_ids(env):
 
 
 def _legend(img, offset):
-    # Experimenter-eye annotation: solid ball = REAL/collidable, translucent = GHOST (seen).
+    # Experimenter-eye annotation: solid SPHERE = REAL/collidable, translucent CUBE = GHOST (seen).
     from PIL import Image, ImageDraw
     im = Image.fromarray(img)
     if offset != 0.0:
         d = ImageDraw.Draw(im, "RGBA")
-        d.text((6, 4), "solid = REAL (collidable/scored)", fill=(255, 255, 255, 255))
-        d.text((6, 16), "translucent = GHOST (what AB sees, non-physical)", fill=(255, 255, 255, 255))
+        d.text((6, 4), "SOLID SPHERE = REAL ball (collidable/scored)", fill=(255, 255, 255, 255))
+        d.text((6, 16), "TRANSLUCENT CUBE = GHOST (what AB sees, non-physical)", fill=(255, 255, 255, 255))
     return np.asarray(im)
 
 
+# Experimenter-display styling for the ghost: render it as a translucent CUBE (vs the solid
+# SPHERE of the real ball) on the overhead/ringside cameras, keeping its red/blue colour so
+# identity is still readable. A different SHAPE is unmistakable at a glance where alpha+size
+# contrast alone was too subtle (David 2026-07-18). MuJoCo has no per-geom wireframe, so we swap
+# geom TYPE (sphere->box) + reduce alpha, and restore before the agent's eye renders.
+_GHOST_ALPHA = 0.45
+_GHOST_BOX_HALF = 0.045
+
+
 def panel(env, eye_rgb, ghost_ids, offset):
-    # Dim the ghost ONLY for the experimenter cameras (overhead/ringside), then restore —
-    # the agent's eye (eye_rgb) renders separately at full opacity, so the policy's
-    # observation is never touched by this display change.
-    saved = {g: env.model.geom_rgba[g].copy() for g in ghost_ids}
+    # Restyle the ghost ONLY for the experimenter cameras (overhead/ringside), then restore —
+    # the agent's eye (eye_rgb) renders separately at full opacity as a NORMAL sphere, so the
+    # policy's observation is never touched by this display change (a real prism displaces a
+    # normal-looking object; marking it in the agent's pixels would leak "this is the fake one").
+    saved_rgba = {g: env.model.geom_rgba[g].copy() for g in ghost_ids}
+    saved_size = {g: env.model.geom_size[g].copy() for g in ghost_ids}
+    saved_type = {g: int(env.model.geom_type[g]) for g in ghost_ids}
     for g in ghost_ids:
-        env.model.geom_rgba[g][3] = 0.30
+        env.model.geom_rgba[g][3] = _GHOST_ALPHA
+        env.model.geom_type[g] = int(mujoco.mjtGeom.mjGEOM_BOX)   # cube => ghost
+        env.model.geom_size[g] = [_GHOST_BOX_HALF] * 3
     frames = []
     for cam, res in CAMS:
         r = mujoco.Renderer(env.model, res[0], res[1])
         r.update_scene(env.data, camera=cam)
         frames.append(r.render()); r.close()
     for g in ghost_ids:
-        env.model.geom_rgba[g] = saved[g]
+        env.model.geom_rgba[g] = saved_rgba[g]
+        env.model.geom_size[g] = saved_size[g]
+        env.model.geom_type[g] = saved_type[g]
     frames.append(_up(eye_rgb, res[0]))
     return _legend(np.concatenate(frames, axis=1), offset)
 
@@ -77,10 +93,16 @@ def main():
     p.add_argument("--episodes", type=int, default=4)
     p.add_argument("--max-steps", type=int, default=400)
     p.add_argument("--fps", type=int, default=30)
+    p.add_argument("--cone-deg", type=float, default=136.0)
+    p.add_argument("--radius", type=float, nargs=2, default=[0.70, 0.80],
+                   help="spawn-radius band for the render (use a tight band to fix distance)")
+    p.add_argument("--gaze-spawn", action="store_true",
+                   help="corrected prism: place the visible target in the gaze cone")
     p.add_argument("--out", required=True)
     args = p.parse_args()
 
-    env = make_env(args.prism_offset, 136.0, [0.70, 0.80], args.max_steps, 7)
+    env = make_env(args.prism_offset, args.cone_deg, list(args.radius), args.max_steps, 7,
+                   gaze_spawn=args.gaze_spawn)
     ghost_ids = _ghost_geom_ids(env)
     model = PPO.load(args.model, device="cpu")
     writer = imageio.get_writer(args.out, fps=args.fps, macro_block_size=None)
