@@ -30,6 +30,17 @@ world-coupled. Keep that as the fixed target; everything else is means.
 - When corrected, state the correction back in one plain sentence and carry it
   into the NEXT sub-problem, not just the current one. Reverting to the old frame
   after acknowledging the new one is the specific failure this block exists to stop.
+- ALWAYS express every result in non-technical, plain English (David's standing
+  request, 2026-07-19). The technical version can be included alongside, but a
+  plain-English rendering is required, not optional — for the metric, the finding,
+  and what it means. Where relevant, tie it to Taylor's predictions, ALSO stated
+  in plain English (e.g. "Taylor expected the after-effect because we gave AB no
+  'glasses-are-on' cue," not just a section citation). Never leave a result sitting
+  in jargon (choice_vs_true, aux loss, R², dissociation, inverted) without the
+  plain translation right next to it.
+- Do NOT use the word "honest" / "honestly" as filler. David finds the repetition
+  distracting. Being truthful is assumed; just say the thing plainly without
+  announcing that it is honest.
 
 ---
 
