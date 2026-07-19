@@ -106,7 +106,7 @@ def main():
     for gname in ("ghost_geom", "ghost2_geom"):
         gid = _id(env.model, mujoco.mjtObj.mjOBJ_GEOM, gname)
         if gid >= 0:
-            env.model.geom_rgba[gid][3] = 0.3
+            env.model.geom_rgba[gid][3] = 0.15
     eye_id = _id(env.model, mujoco.mjtObj.mjOBJ_CAMERA, "left_eye")
     ball_id = _id(env.model, mujoco.mjtObj.mjOBJ_BODY, "target")   # red target body
     model = PPO.load(args.model, device="cpu")

@@ -113,6 +113,12 @@
                    range="-18 18" stiffness="1.45" damping="0.29" frictionloss=".018" armature="0.01"/>
             <geom name="ub3" type="capsule" size=".041 .047" mass="0.7217"
                   material="green_top" pos="0 0 0" euler="90 0 0"/>
+            <!-- Neck bridge, CHEST-anchored (David 2026-07-18): a cylinder up the spine (body +Z)
+                 from the shoulders to the head base. Anchored to the torso so it always reads as a
+                 neck coming out of the collar toward the head, instead of a rod that swings with the
+                 head. Visual only (no contact). Spans chest-z ~.01 to ~.14 (head base at .135). -->
+            <geom name="neck_base" type="cylinder" material="neck_mat" size=".025 .064"
+                  pos="0 0 .074" mass=".001" contype="0" conaffinity="0"/>
 
             <!-- RIGHT ARM -->
             <body name="right_upper_arm" pos="-.005 -0.105 .003" euler="170 0 0">
@@ -221,11 +227,12 @@
                     material="head_mat" pos="0.01 0 0.0735"/>
               <site name="vestibular" type="sphere" size="0.01" pos="0.01 0 0.0735"/>
 
-              <!-- Visible neck: cylinder bridging the head base down to the chest so the head no
-                   longer looks detached (David 2026-07-18). Visual only (no contact). Lengthened to
-                   reach the chest capsule (~.041 above chest origin, i.e. head-relative z~-.094). -->
+              <!-- Head-side neck: SHORT stub only. The long version rigidly attached to the head
+                   jutted out like a nose when the head tilted (head-local -Z points forward when
+                   prone). The real bridging neck lives on the CHEST body (neck_base) so it doesn't
+                   swing with the head. Visual only. -->
               <geom name="neck" type="cylinder" material="neck_mat"
-                    size=".022 .060" pos="0 0 -.048" mass="0.001"
+                    size=".026 .014" pos="0 0 -.016" mass="0.001"
                     contype="0" conaffinity="0"/>
 
               <!-- Eye whites (sclera) — visible spheres in render -->
@@ -244,11 +251,13 @@
               <geom name="pupil_right" type="sphere" material="pupil_mat" size=".0045"
                     mass=".0001" pos=".081 -.025 .067" contype="0" conaffinity="0"/>
 
-              <!-- Nose: bright-gold protrusion at the front of the face. Recolored + enlarged
-                   (David 2026-07-18) so the FRONT of the head is an unmistakable bright marker from
-                   any angle, including straight overhead — pairs with the brown hair on the BACK. -->
-              <geom name="nose" type="sphere" material="nose_mat" size=".016"
-                    mass=".001" pos=".083 .0 .058" contype="0" conaffinity="0"/>
+              <!-- Front marker: bright-gold patch on the top-FRONT of the head (David 2026-07-18).
+                   Moved up onto the crown-front so it's visible from straight OVERHEAD (the old
+                   face-level nose pointed down/away when prone and couldn't be seen). Pairs with the
+                   brown hair on the back-top: gold = FRONT, brown = BACK, obvious from above. Sits
+                   above/behind the eye-camera look axis, so it stays out of AB's POV. -->
+              <geom name="nose" type="sphere" material="nose_mat" size=".019"
+                    mass=".001" pos=".071 .0 .113" contype="0" conaffinity="0"/>
 
               <!-- Mouth: small reddish horizontal bar below the nose. -->
               <geom name="mouth" type="box" material="lip_mat" size=".012 .002 .003"
