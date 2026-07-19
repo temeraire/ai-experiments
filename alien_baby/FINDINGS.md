@@ -3443,3 +3443,81 @@ identical radius band to isolate the 12-pt choice drop. (4) Log realized ball-to
 --seed 0 --n-envs 16`. Eval: `eval_prism_decoy --model results/dist_holdout_vis_s0_best/best_model.zip
 --gaze-spawn --prism-offset 0 --cone-deg 136 --eval-eps 100 --max-steps 1000 --radius <lo> <hi>` for
 each cell. Full pre-reg + panel prior-art: `PREREG_distance_generalization_holdout.md`.
+
+---
+
+## Stage-2 prism recalibration (s2v2, +30° matched train/read) — DID NOT PASS; setup/instrument failure (2026-07-19)
+
+**What we ran.** Seeded `mildhead_vis_s0` (the grounded, vision-steering, steadier-head policy) and
+trained it under the +30° gaze-relative lens with the cross-modal mismatch aux loss (`--mismatch-coef
+0.1`), 4 arms (plain/gain-field × seed 0/1), 300K steps each, READ at matched +30° (fixing the prior
+train-30/read-60 mismatch). Overnight chain `run_stage2_overnight.sh`; log `stage2_overnight.log`.
+Question: did the eye RE-AIM to the real ball under the lens, with a negative AFTER-EFFECT off it?
+
+**Result: the north-star test did not pass, and the honest status is "we could not measure it AND the
+one clean metric shows no recalibration."** Verified independently by results-analyst + theory-monitor.
+
+- **Recalibration (choice-follows-real-ball @ +30, the one artifact-free metric):** adapted-sighted
+  ≤ base-sighted in ALL four arms — base 67.6%; plain_s0 66.8, plain_s1 61.5, gainfield_s0 44.4,
+  gainfield_s1 56.8. No arm improved. Dissociation gap (sighted−ablated): plain +16/+12.6 (vision
+  still does something), but **gain-field INVERTED** (s0 −7.6, sighted below its own ablated AND below
+  chance) — reproducible across both seeds, directly contradicting the gain-field's pre-registered
+  prediction that its head-pose modulation would HELP recalibration.
+- **Training signal never engaged:** the mismatch `aux_loss` did NOT converge in any arm — it hit a
+  floor (~0.03–0.10) within the first eval window and stayed flat over all 300K steps. So the error
+  signal meant to drive re-aiming never actually pressured the eye. This is the load-bearing setup
+  failure: per the North Star frame, if we never delivered the training signal, we never gave AB what
+  recalibration requires — a diagnosis of our setup, not AB's limit.
+- **After-effect is unmeasurable right now — both instruments compromised:** `eval_aftereffect_inview`
+  fails its OWN printed sanity check for the 2nd time (base cc_inview −0.257, needs ~+0.5; base signed
+  bias −109° at offset 0 — nonsensical); its +47…+74° "after-effects" are artifacts, discard them.
+  `eval_reach_aftereffect` (ballistic no-feedback, the psychophysics convention) is a NULL (DiD
+  −3.0/−7.5/+1.3/−1.8°, all |z|<1.4, inconsistent sign) — BUT it was shown to carry zero aim signal
+  on 2026-07-17 and was reused tonight WITHOUT re-validation (no sighted-R²/blind-R² check), so it is
+  an unvalidated null, not a certified negative.
+
+**Two verdicts, recorded per the disagreement rule:**
+- **results-analyst:** burden of evidence points to "recalibration did not happen" — the clean choice
+  metric shows no improvement in any arm, the aux loss didn't decrease (removing the "internal-learning
+  -but-not-behavioral" fallback), and gain-field actively inverted. Not a *certified* falsifier only
+  because the reach instrument's validity is unconfirmed.
+- **theory-monitor:** INFORMATIVE NULL — "we still cannot measure whether AB recalibrated." The
+  non-converging aux loss is a concrete, fixable setup problem; both after-effect instruments are
+  compromised; so this says little about AB's capacity. North-star claim status: unmeasured, not refuted.
+- Both AGREE on every fact (choice null, aux flat, gain-field inverted+reproducible, instruments
+  broken); they differ only on how much the flat aux loss shifts the burden.
+
+**Blocking next step (both agree):** FIX/RE-VALIDATE the after-effect instrument first — it's free
+(data already on disk, no training) and it's the dependency for interpreting anything. Then diagnose
+why the mismatch aux loss won't converge (the error signal is the engine; if it never turns, nothing
+downstream can). Only after both are repaired is a stronger-error-signal rerun worth compute. Taylor's
+contextual-cue point (a persistent "lens-on" signal) and a stronger/implicit mismatch term are
+candidate fixes for the engine. Videos: `scratch_render/s2v2_*_off30.mp4` (watched plain_s0 — thrashing
+crawl, not clean steering to the real ball; consistent with the null).
+
+---
+
+## Prior art: embodied-agent prism adaptation is UNCLAIMED GROUND (lit-scout deep dive, 2026-07-19)
+
+Deep cross-field search (RL/arXiv, robotics CoRL/RSS/ICRA/IROS, developmental robotics
+iCub/Triesch/Lanillos, sensorimotor-contingency, motor-control neuroscience). Verdict, plain:
+- The HUMAN phenomenon + how to measure it are fully SETTLED (60+ yrs) — cite, don't claim.
+- Doing it in an EMBODIED pixel-driven LEARNING AGENT, verified by a measured negative
+  AFTER-EFFECT on removal and/or cue-switched DUAL ADAPTATION, appears genuinely UNCLAIMED
+  (moderate-to-high confidence; negatives can't be proven). Prior art splits into two camps that
+  each miss half: abstract models reproduce the after-effect but drive a cursor from coordinates
+  (no body/pixels); embodied robots (iCub self-calibration/Triesch; active-inference/Lanillos)
+  handle the perturbation but never measure the after-effect on removal. Closest = Lanillos
+  active-inference iCub rubber-hand drift, but measured WHILE the conflict is on, not after.
+HOW-TO recipe the literature DOES give us (actionable):
+  1. Drive adaptation with a CROSS-SENSORY see-vs-feel error signal, NOT reward (Cameron 2013);
+     reward-only gives weak/no after-effect, error-based gives a robust one.
+  2. Dual adaptation needs a PREDICTIVE contextual cue available BEFORE the movement (active, not
+     a passive correlate) — refines our "prism-on cue" requirement.
+  3. Ramp the lens in GRADUALLY for a clean implicit after-effect (abrupt onset recruits explicit
+     strategy).
+WARNING the scout flagged: our earlier "strong after-effect under pure RL reward" is exactly what
+the literature says should be WEAK → either genuinely novel or the global-motor-habit confound the
+theory-monitor already warned about. Fix the broken after-effect ruler before claiming either.
+To cite/reuse: Cameron 2013 (cross-sensory error); Lanillos active-inference iCub (closest embodied
+prior art); Triesch active efficient coding; dual-adaptation cue protocol (PLoS ONE 2021).

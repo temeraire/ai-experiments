@@ -558,3 +558,11 @@ ball is and where it actually turned out to be (confirmed by touching it). Train
 the eye learns. Under a prism lens, minimizing it forces the eye to subtract the lens offset =
 recalibration. In the failed Stage-2 run it never dropped (flat), meaning the teaching signal never
 engaged — a key reason that run couldn't show recalibration.
+
+**MuJoCo (Multi-Joint dynamics with Contact).** The physics engine our simulation runs on (v3.6):
+fast rigid-body dynamics with contacts, joints, actuators, sensors, and rendering — the standard
+tool for robotics/locomotion RL. Distinct from MIMo (the infant BODY model we run inside it):
+MuJoCo = the simulator, the MIMo-derived XML = the creature. It CAN build complex scenes — terrain
+(heightfields), arbitrary shapes (mesh imports), many objects/obstacles, multiple creatures, even
+deformables (cloth/cable/soft bodies in v3). The real limit is compute, not capability: richer scenes
+simulate slower, which trades against the many-fast-parallel-environments that RL training wants.
