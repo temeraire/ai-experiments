@@ -59,10 +59,16 @@ class AntGaitEnv(gym.Env):
         up_z = (R.T @ np.array([0, 0, 1.0]))[2]
         vx_body = (R.T @ v[0:3])[0]
         yaw_rate = v[5]
+        vy_body = (R.T @ v[0:3])[1]
         r_v = np.exp(-4.0 * (vx_body - self.cmd[0]) ** 2)
-        r_y = np.exp(-4.0 * (yaw_rate - self.cmd[1]) ** 2)
+        r_y = np.exp(-5.0 * (yaw_rate - self.cmd[1]) ** 2)
         ctrl_cost = 0.005 * np.sum(np.square(action))
-        reward = 0.5 + r_v + 0.5 * r_y - ctrl_cost           # 0.5 alive bonus
+        drift_cost = 0.1 * vy_body ** 2                      # mild sideways-slide penalty
+        fwd = 0.6 * np.clip(min(vx_body, self.cmd[0]), 0, None)   # DIRECT reward for walking (up to cmd)
+        reward = 0.4 + fwd + r_v + 1.0 * r_y - ctrl_cost - drift_cost
+        # resample the command within the episode so BOTH turn directions get practised
+        if self.t % 120 == 0:
+            self.cmd = np.array([self.rng.uniform(0.0, 0.6), self.rng.uniform(-0.8, 0.8)], np.float32)
         fell = q[2] < 0.28 or up_z < 0.4
         term = bool(fell)
         trunc = self.t >= self.max_steps
