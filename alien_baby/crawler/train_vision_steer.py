@@ -56,7 +56,10 @@ class VisionSteerEnv(gym.Env):
         super().reset(seed=seed)
         mujoco.mj_resetData(self.model, self.data)
         self.data.qpos[:15] = STAND + self.rng.uniform(-0.02, 0.02, 15)
-        r = self.rng.uniform(0.4, 0.9); a = self.rng.uniform(-0.6, 0.6)   # ball in front cone
+        # WIDE spawn cone (+-80 deg): balls far off to the side can only be reached by SEEING them
+        # and turning -- a blind forward-walk misses them, so vision becomes load-bearing (the crawler
+        # head-search lesson). Eyes see +-60 deg, so side balls need a turn to centre then approach.
+        r = self.rng.uniform(0.5, 1.1); a = self.rng.uniform(-1.4, 1.4)
         self.data.qpos[15:22] = [r * np.cos(a), r * np.sin(a), 0.1, 1, 0, 0, 0]
         mujoco.mj_forward(self.model, self.data)
         self.t = 0; self.prev = self._dist()
