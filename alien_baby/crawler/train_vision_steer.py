@@ -59,12 +59,15 @@ class VisionSteerEnv(gym.Env):
         super().reset(seed=seed)
         mujoco.mj_resetData(self.model, self.data)
         self.data.qpos[:15] = STAND + self.rng.uniform(-0.02, 0.02, 15)
-        # RED target + BLUE decoy, both in the wide cone, separated so ONLY colour vision picks red.
-        # A blind policy can't tell them apart -> goes for whichever's on its path -> eats the blue
-        # penalty ~half the time; seeing the colour is the only way to reliably reach red.
-        rr = self.rng.uniform(0.5, 1.1); ar = self.rng.uniform(-1.4, 1.4)
-        rb = self.rng.uniform(0.5, 1.1)
-        ab = ar + self.rng.choice([-1.0, 1.0]) * self.rng.uniform(0.5, 1.0)
+        # Two positions from the SAME distribution, then RANDOMLY labelled red/blue, so position
+        # gives NO clue which is the target -- only COLOUR does. (In vsteer_s2 red spawned centred and
+        # blue offset, so a blind forward-walk hit the more-central red 73% by position, not vision.)
+        a1 = self.rng.uniform(-1.4, 1.4)
+        a2 = float(np.clip(a1 + self.rng.choice([-1.0, 1.0]) * self.rng.uniform(0.5, 1.0), -1.4, 1.4))
+        r1, r2 = self.rng.uniform(0.5, 1.1), self.rng.uniform(0.5, 1.1)
+        pos = [(r1, a1), (r2, a2)]
+        ri = int(self.rng.integers(2))                    # random which position is the red target
+        (rr, ar), (rb, ab) = pos[ri], pos[1 - ri]
         self.data.qpos[15:22] = [rr * np.cos(ar), rr * np.sin(ar), 0.1, 1, 0, 0, 0]
         self.data.qpos[22:29] = [rb * np.cos(ab), rb * np.sin(ab), 0.1, 1, 0, 0, 0]
         mujoco.mj_forward(self.model, self.data)
