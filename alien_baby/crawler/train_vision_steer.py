@@ -49,18 +49,24 @@ class VisionSteerEnv(gym.Env):
         self.rend.update_scene(self.data, camera="right_eye"); Rr = self.rend.render().astype(np.float32).ravel() / 255.0
         return np.concatenate([prop, L, Rr])
 
-    def _dist(self):
+    def _dist(self):        # to RED target
         return float(np.linalg.norm(self.data.qpos[15:17] - self.data.qpos[0:2]))
+
+    def _dist_blue(self):   # to BLUE decoy
+        return float(np.linalg.norm(self.data.qpos[22:24] - self.data.qpos[0:2]))
 
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
         mujoco.mj_resetData(self.model, self.data)
         self.data.qpos[:15] = STAND + self.rng.uniform(-0.02, 0.02, 15)
-        # WIDE spawn cone (+-80 deg): balls far off to the side can only be reached by SEEING them
-        # and turning -- a blind forward-walk misses them, so vision becomes load-bearing (the crawler
-        # head-search lesson). Eyes see +-60 deg, so side balls need a turn to centre then approach.
-        r = self.rng.uniform(0.5, 1.1); a = self.rng.uniform(-1.4, 1.4)
-        self.data.qpos[15:22] = [r * np.cos(a), r * np.sin(a), 0.1, 1, 0, 0, 0]
+        # RED target + BLUE decoy, both in the wide cone, separated so ONLY colour vision picks red.
+        # A blind policy can't tell them apart -> goes for whichever's on its path -> eats the blue
+        # penalty ~half the time; seeing the colour is the only way to reliably reach red.
+        rr = self.rng.uniform(0.5, 1.1); ar = self.rng.uniform(-1.4, 1.4)
+        rb = self.rng.uniform(0.5, 1.1)
+        ab = ar + self.rng.choice([-1.0, 1.0]) * self.rng.uniform(0.5, 1.0)
+        self.data.qpos[15:22] = [rr * np.cos(ar), rr * np.sin(ar), 0.1, 1, 0, 0, 0]
+        self.data.qpos[22:29] = [rb * np.cos(ab), rb * np.sin(ab), 0.1, 1, 0, 0, 0]
         mujoco.mj_forward(self.model, self.data)
         self.t = 0; self.prev = self._dist()
         return self._obs(), {}
@@ -73,13 +79,17 @@ class VisionSteerEnv(gym.Env):
                 self.data.ctrl[:] = ga
                 mujoco.mj_step(self.model, self.data)
         self.t += 1
-        d = self._dist()
+        d = self._dist(); db = self._dist_blue()
         up_z = (self._R().T @ np.array([0, 0, 1.0]))[2]
-        reached = d < 0.55
+        reached_red = d < 0.55
+        reached_blue = db < 0.55
         fell = self.data.qpos[2] < 0.28 or up_z < 0.4
-        reward = 5.0 * (self.prev - d) + (10.0 if reached else 0.0) + 0.02 - (5.0 if fell else 0.0)
+        reward = 3.0 * (self.prev - d) + 0.02 - (5.0 if fell else 0.0)
+        if reached_red:  reward += 10.0
+        if reached_blue: reward -= 8.0        # decoy penalty: reaching blue is bad
         self.prev = d
-        return self._obs(), float(reward), bool(reached or fell), self.t >= self.max_steps, {}
+        term = bool(reached_red or reached_blue or fell)
+        return self._obs(), float(reward), term, self.t >= self.max_steps, {"red": reached_red, "blue": reached_blue}
 
 
 def _chime():

@@ -79,6 +79,10 @@
       <freejoint/>
       <geom name="target_geom" type="sphere" size="0.10" rgba="1 0.12 0.12 1" contype="1" conaffinity="1" density="200"/>
     </body>
+    <body name="target2" pos="0.9 0.5 0.1">
+      <freejoint/>
+      <geom name="target2_geom" type="sphere" size="0.10" rgba="0.12 0.30 1 1" contype="1" conaffinity="1" density="200"/>
+    </body>
     <camera name="side" pos="1.4 -2.4 1.5" mode="targetbody" target="torso"/>
   </worldbody>
   <actuator>
