@@ -49,6 +49,16 @@ class VisionSteerEnv(gym.Env):
         self.rend.update_scene(self.data, camera="right_eye"); Rr = self.rend.render().astype(np.float32).ravel() / 255.0
         return np.concatenate([prop, L, Rr])
 
+    def red_in_view(self):  # is the RED target currently visible in the (left) eye?
+        self.rend.update_scene(self.data, camera="left_eye")
+        im = self.rend.render()
+        R, G, B = im[..., 0].astype(int), im[..., 1].astype(int), im[..., 2].astype(int)
+        return int(np.sum((R > 150) & (G < 90) & (B < 90))) >= 2
+
+    def facing_deg(self):   # world yaw the creature is facing, degrees
+        M = np.zeros(9); mujoco.mju_quat2Mat(M, self.data.qpos[3:7]); M = M.reshape(3, 3)
+        return float(np.degrees(np.arctan2(M[1, 0], M[0, 0])))
+
     def _dist(self):        # to RED target
         return float(np.linalg.norm(self.data.qpos[15:17] - self.data.qpos[0:2]))
 
@@ -59,16 +69,17 @@ class VisionSteerEnv(gym.Env):
         super().reset(seed=seed)
         mujoco.mj_resetData(self.model, self.data)
         self.data.qpos[:15] = STAND + self.rng.uniform(-0.02, 0.02, 15)
-        # BOTH balls WITHIN the field of view at reset (creature faces +x, eyes ~+-60 deg), so it can
-        # always SEE both from the start and learn to steer to the RED one. Positions drawn from the
-        # SAME distribution then RANDOMLY labelled red/blue, so only COLOUR (not position) tells them
-        # apart. (Searching for OUT-of-view targets -- wide cone, Greek room -- comes LATER, once the
-        # basic see-and-steer works. Winnability: never spawn a target it cannot see.)
-        a1 = self.rng.uniform(-0.45, 0.45)                          # well inside the +-60deg FOV
+        # MEASURE the creature's ACTUAL forward (don't assume +x) and place BOTH balls in front of
+        # THAT, within +-30deg of where it truly looks, at a visible range -- so a target is NEVER
+        # spawned in a blind spot (winnability). Positions from the SAME distribution, RANDOMLY
+        # labelled red/blue, so only COLOUR distinguishes them. (Out-of-view search comes LATER.)
+        M = np.zeros(9); mujoco.mju_quat2Mat(M, self.data.qpos[3:7]); M = M.reshape(3, 3)
+        fwd = float(np.arctan2(M[1, 0], M[0, 0]))         # world yaw of the body's forward (+x) axis
+        a1 = self.rng.uniform(-0.45, 0.45)
         a2 = float(np.clip(a1 + self.rng.choice([-1.0, 1.0]) * self.rng.uniform(0.30, 0.50), -0.55, 0.55))
-        r1, r2 = self.rng.uniform(0.55, 0.85), self.rng.uniform(0.55, 0.85)   # near-mid = clearly visible
-        pos = [(r1, a1), (r2, a2)]
-        ri = int(self.rng.integers(2))                    # random which position is the red target
+        r1, r2 = self.rng.uniform(0.55, 0.85), self.rng.uniform(0.55, 0.85)
+        pos = [(r1, fwd + a1), (r2, fwd + a2)]
+        ri = int(self.rng.integers(2))                    # random which is the red target
         (rr, ar), (rb, ab) = pos[ri], pos[1 - ri]
         self.data.qpos[15:22] = [rr * np.cos(ar), rr * np.sin(ar), 0.1, 1, 0, 0, 0]
         self.data.qpos[22:29] = [rb * np.cos(ab), rb * np.sin(ab), 0.1, 1, 0, 0, 0]
