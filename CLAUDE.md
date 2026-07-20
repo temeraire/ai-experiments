@@ -173,6 +173,17 @@ this been researched? What were the results? Is this an already-solved problem?"
 field it could live in, not just ours.** This is not limited to candidate-novel methods; it runs
 for every experiment, proactively, the way the glossary rule fires.
 
+**REUSE-FIRST mandate (David's standing requirement, 2026-07-19 — read this before building
+anything).** Before we train/build a capability from scratch, the scout's job is explicitly to
+return, for that capability: (1) **what has already been done and HOW** (the technique/architecture,
+in plain terms); (2) **what we can DOWNLOAD that already works** — a specific pretrained
+model/checkpoint/repo, with the link, that we can drop in; (3) **if nothing is downloadable, the exact
+technique/recipe** to reproduce it, and roughly how hard. The point is to NEVER spend months (or even
+hours) re-deriving something an off-the-shelf model or a known recipe already gives us — and to never
+throw away work we've already done (e.g. a learned vision encoder) when it can be TRANSPLANTED instead
+of retrained. If the scout can't find a download, it says so plainly and hands us the recipe. Building
+from scratch is the LAST resort, chosen only after this reuse map comes back empty.
+
 **Why mandatory & cross-disciplinary (the cautionary tale — read this).** We ran a prism-adaptation
 experiment for days before discovering there is an entire established **"prism literature"** in
 psychophysics/motor-control, with a standard term — **"dual adaptation"** (Welch, Bridgeman, Anand &
