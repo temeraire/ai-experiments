@@ -59,12 +59,14 @@ class VisionSteerEnv(gym.Env):
         super().reset(seed=seed)
         mujoco.mj_resetData(self.model, self.data)
         self.data.qpos[:15] = STAND + self.rng.uniform(-0.02, 0.02, 15)
-        # Two positions from the SAME distribution, then RANDOMLY labelled red/blue, so position
-        # gives NO clue which is the target -- only COLOUR does. (In vsteer_s2 red spawned centred and
-        # blue offset, so a blind forward-walk hit the more-central red 73% by position, not vision.)
-        a1 = self.rng.uniform(-1.4, 1.4)
-        a2 = float(np.clip(a1 + self.rng.choice([-1.0, 1.0]) * self.rng.uniform(0.5, 1.0), -1.4, 1.4))
-        r1, r2 = self.rng.uniform(0.5, 1.1), self.rng.uniform(0.5, 1.1)
+        # BOTH balls WITHIN the field of view at reset (creature faces +x, eyes ~+-60 deg), so it can
+        # always SEE both from the start and learn to steer to the RED one. Positions drawn from the
+        # SAME distribution then RANDOMLY labelled red/blue, so only COLOUR (not position) tells them
+        # apart. (Searching for OUT-of-view targets -- wide cone, Greek room -- comes LATER, once the
+        # basic see-and-steer works. Winnability: never spawn a target it cannot see.)
+        a1 = self.rng.uniform(-0.45, 0.45)                          # well inside the +-60deg FOV
+        a2 = float(np.clip(a1 + self.rng.choice([-1.0, 1.0]) * self.rng.uniform(0.30, 0.50), -0.55, 0.55))
+        r1, r2 = self.rng.uniform(0.55, 0.85), self.rng.uniform(0.55, 0.85)   # near-mid = clearly visible
         pos = [(r1, a1), (r2, a2)]
         ri = int(self.rng.integers(2))                    # random which position is the red target
         (rr, ar), (rb, ab) = pos[ri], pos[1 - ri]
@@ -107,6 +109,10 @@ def main():
     p.add_argument("--run-tag", default="vsteer_s0")
     p.add_argument("--device", default="mps")
     p.add_argument("--seed", type=int, default=0)
+    p.add_argument("--init-vision", default=None,
+                   help="transplant a crawler vision encoder: load its conv trunk (which already "
+                        "learned to see our ball at 32x32) and FREEZE it; retrain only the steering "
+                        "head. Reuse, not re-derive.")
     args = p.parse_args()
     os.makedirs("alien_baby/results", exist_ok=True)
     venv = DummyVecEnv([(lambda i=i: VisionSteerEnv(seed=args.seed + i)) for i in range(args.n_envs)])
@@ -117,6 +123,23 @@ def main():
                                    features_extractor_kwargs=dict(proprio_dim=PROP),
                                    net_arch=[128, 128]),
                 verbose=1, seed=args.seed, device=args.device)
+    if args.init_vision:
+        import torch
+        from stable_baselines3.common.save_util import load_from_zip_file
+        _, params, _ = load_from_zip_file(args.init_vision, device=args.device)
+        # copy the pixel pathway (conv trunk + proj + bearing head) from the crawler encoder into all
+        # 3 aliased extractor copies; the conv trunk is body-agnostic (it sees pixels, not legs).
+        px = {k: v for k, v in params["policy"].items()
+              if any(s in k for s in ["cnn.", "proj.", "bearing_head."])}
+        res = model.policy.load_state_dict(px, strict=False)
+        frozen = 0
+        for attr in ("features_extractor", "pi_features_extractor", "vf_features_extractor"):
+            fe = getattr(model.policy, attr, None)
+            if fe is not None:
+                for p_ in fe.cnn.parameters():
+                    p_.requires_grad = False; frozen += 1
+        print(f"[init-vision] transplanted conv/proj/bearing from {args.init_vision} "
+              f"(loaded {len(px)} tensors), froze conv trunk ({frozen} params). Retraining head only.")
     ev = EvalCallback(evalenv, best_model_save_path=f"alien_baby/results/{args.run_tag}_best",
                       eval_freq=10000, n_eval_episodes=10, deterministic=True, verbose=1)
     cp = CheckpointCallback(save_freq=25000, save_path=f"alien_baby/results/{args.run_tag}_ckpt",
