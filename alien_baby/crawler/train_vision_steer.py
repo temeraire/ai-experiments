@@ -17,14 +17,15 @@ from stable_baselines3.common.callbacks import CheckpointCallback, EvalCallback
 from alien_baby.crawler.crawler_cnn_extractor import StereoCrawlerCNN
 
 XML = "alien_baby/crawler/quad_walker.xml"
-GAIT = "alien_baby/results/ant_gait_v3_best/best_model.zip"
+GAIT = "alien_baby/results/ant_gait_v10_best/best_model.zip"   # the first WORKING walker (v3-v9 broken;
+# v4-v8 were sabotaged by a 105kg ball spawned on the creature in the gait env -- fixed 2026-07-20)
 STAND = np.array([0, 0, 0.55, 1, 0, 0, 0, 0, 1.0, 0, -1.0, 0, -1.0, 0, 1.0])
 CAM = 32
 PROP = 9   # high-level proprio: torso up-vector(3) + lin vel body(3) + ang vel(3)
 
 
 class VisionSteerEnv(gym.Env):
-    def __init__(self, max_steps=120, k_sub=8, seed=0):
+    def __init__(self, max_steps=150, k_sub=8, seed=0):
         self.model = mujoco.MjModel.from_xml_path(XML)
         self.data = mujoco.MjData(self.model)
         self.gait = PPO.load(GAIT, device="cpu")
@@ -75,20 +76,31 @@ class VisionSteerEnv(gym.Env):
         # labelled red/blue, so only COLOUR distinguishes them. (Out-of-view search comes LATER.)
         M = np.zeros(9); mujoco.mju_quat2Mat(M, self.data.qpos[3:7]); M = M.reshape(3, 3)
         fwd = float(np.arctan2(M[1, 0], M[0, 0]))         # world yaw of the body's forward (+x) axis
-        a1 = self.rng.uniform(-0.45, 0.45)
-        a2 = float(np.clip(a1 + self.rng.choice([-1.0, 1.0]) * self.rng.uniform(0.30, 0.50), -0.55, 0.55))
-        r1, r2 = self.rng.uniform(0.55, 0.85), self.rng.uniform(0.55, 0.85)
-        pos = [(r1, fwd + a1), (r2, fwd + a2)]
+        # Creature is 1.44 m foot-to-foot (feet reach 0.72 m from center), so a target must sit
+        # 2-3 BODY-LENGTHS out to make reaching an actual walk-and-steer, not a one-step touch.
+        # Balls are body-sized (r=0.5) so they stay visible to ~6 m; z=0.5 = ball resting on floor.
+        # Sample until the two balls are >=1.2 m apart (radius sum is 1.0) -- else two light spheres
+        # spawn INTERPENETRATING and MuJoCo's overlap-resolution flings them across the map.
+        for _ in range(50):
+            a1 = self.rng.uniform(-0.45, 0.45)
+            a2 = float(np.clip(a1 + self.rng.choice([-1.0, 1.0]) * self.rng.uniform(0.35, 0.55), -0.55, 0.55))
+            r1, r2 = self.rng.uniform(2.5, 4.0), self.rng.uniform(2.5, 4.0)
+            p1 = np.array([r1 * np.cos(fwd + a1), r1 * np.sin(fwd + a1)])
+            p2 = np.array([r2 * np.cos(fwd + a2), r2 * np.sin(fwd + a2)])
+            if np.linalg.norm(p1 - p2) >= 1.2:
+                break
         ri = int(self.rng.integers(2))                    # random which is the red target
-        (rr, ar), (rb, ab) = pos[ri], pos[1 - ri]
-        self.data.qpos[15:22] = [rr * np.cos(ar), rr * np.sin(ar), 0.1, 1, 0, 0, 0]
-        self.data.qpos[22:29] = [rb * np.cos(ab), rb * np.sin(ab), 0.1, 1, 0, 0, 0]
+        rp, bp = (p1, p2) if ri == 0 else (p2, p1)
+        self.data.qpos[15:22] = [rp[0], rp[1], 0.5, 1, 0, 0, 0]
+        self.data.qpos[22:29] = [bp[0], bp[1], 0.5, 1, 0, 0, 0]
         mujoco.mj_forward(self.model, self.data)
         self.t = 0; self.prev = self._dist()
         return self._obs(), {}
 
     def step(self, action):
-        cmd = np.array([0.25 * (action[0] + 1.0), 0.8 * float(action[1])], np.float32)  # fwd 0..0.5, turn +-0.8
+        # map policy action to the gait's SWEET SPOT: v10 walks fastest at cmd 0.6 (0.23 m/s) and
+        # slows to 0.09 m/s at 0.8, so cap forward at 0.6, not 0.8. Turn +-0.6 matches training.
+        cmd = np.array([0.3 * (action[0] + 1.0), 0.6 * float(action[1])], np.float32)  # fwd 0..0.6, turn +-0.6
         for _ in range(self.k):                       # k gait-control decisions per high-level command
             ga, _ = self.gait.predict(self._gait_obs(cmd), deterministic=True)
             for _ in range(5):                        # gait was trained at n_sub=5 mj_steps/action
@@ -97,8 +109,8 @@ class VisionSteerEnv(gym.Env):
         self.t += 1
         d = self._dist(); db = self._dist_blue()
         up_z = (self._R().T @ np.array([0, 0, 1.0]))[2]
-        reached_red = d < 0.55
-        reached_blue = db < 0.55
+        reached_red = d < 1.0        # ball surface (r=0.5) is ~0.5 m in from center; creature reaches 0.72 m
+        reached_blue = db < 1.0
         fell = self.data.qpos[2] < 0.28 or up_z < 0.4
         reward = 3.0 * (self.prev - d) + 0.02 - (5.0 if fell else 0.0)
         if reached_red:  reward += 10.0

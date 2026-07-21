@@ -581,3 +581,29 @@ perception the near-field platform lacks. (3) A philosophical layer David attach
 parts that must be integrated (over movement/time) into whole objects and, eventually, meanings, the
 way language assembles meaning from parts. So the room is a vehicle for depth perception, movement-
 driven adaptation, object variety, AND perceptual inference (assembling a whole from glimpses).
+
+**cmd (the two-number command the vision policy sends the gait; forward speed + turn rate).**
+`cmd` is the two-number command the high-level vision policy sends down to the walking gait EVERY
+step. It is the ENTIRE interface between the two layers of the walker's brain — nothing else passes
+between them. `cmd = [forward_speed, turn_rate]` — literally a gas pedal and a steering wheel:
+- `cmd[0]` = how fast to walk FORWARD, in metres/second. In our setup it ranges 0 to 0.6.
+- `cmd[1]` = how fast to TURN, in radians/second; positive turns one way, negative the other. Range ±0.6.
+
+The design is a two-level hierarchy:
+- The HIGH-LEVEL vision policy (the "driver") looks through the eyes and decides WHERE TO GO — it
+  outputs `cmd`, e.g. "walk forward at 0.5, turn left a bit."
+- The FROZEN low-level gait (the "legs" — gait v10) receives that `cmd` and works out the eight
+  leg-joint motions that actually produce that forward speed and turn rate. It knows and cares
+  NOTHING about balls or vision; it just follows the command.
+
+Worked example (from when it went wrong): "the vision env drives the gait at cmd 0.8" meant the driver
+was flooring the gas to 0.8 m/s — which happened to be v10's WORST speed (v10 walks fastest at ~0.6
+m/s and slows to ~0.09 m/s at 0.8), so the creature barely moved. Fixing it = capping the driver's
+"full forward" at the 0.6 sweet spot.
+
+Why the split matters (the payoff): the vision layer only has to learn "steer toward the ball I see"
+in TWO numbers, not micromanage eight joints. That makes the learned steering BODY-AGNOSTIC — the same
+driver could later sit on top of a DIFFERENT body (a biped) that accepts the same two-number `cmd`;
+only the low-level gait is body-specific. In code the policy emits a 2D action in [-1,1] mapped to
+`cmd`: `cmd_fwd = 0.3*(a[0]+1)` (→ 0–0.6 m/s), `cmd_turn = 0.6*a[1]` (→ ±0.6 rad/s), and the mapping
+is chosen to match the gait's trained command range and its speed sweet spot.

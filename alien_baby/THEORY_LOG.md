@@ -1830,3 +1830,131 @@ beyond 0.85 m, winnability-checked first, to test extrapolation rather than inte
 discriminator per the pre-reg's own cited function-learning literature.
 
 ---
+
+## 2026-07-19 — Stage-2 overnight (mildhead_vis_s0, +30° gaze-relative lens, cross-modal mismatch): recalibration NOT demonstrated, and the aftereffect remains UNMEASURABLE — independent Theory Monitor verdict
+
+**What was run.** Four 300K-step arms (plain/gain-field × seed 0/1), warm-started from `mildhead_vis_s0`,
+trained under a sustained +30° gaze-relative lens with the cross-modal mismatch aux loss (coef 0.1,
+gate_contact=True, encoder frozen — only the eye/bearing heads train, 14–18 tensors). Read at matched +30°
+against an unadapted base. This is the first Stage-2 test built on the 2026-07-18 GAZE-frame-corrected
+apparatus (the offset-0 Stage-1 A/B that validated the fixed instrument).
+
+**Headline numbers (choice_vs_true @ +30°, sighted / ablated):**
+
+| arm | sighted | ablated | vs. base sighted (67.6%) |
+|---|---|---|---|
+| base (unadapted) | 67.6% ± 6.8 | 56.5% ± 7.1 | — |
+| plain_s0 | 66.8% ± 6.7 | 50.8% ± 7.3 | flat |
+| plain_s1 | 61.5% ± 7.1 | 48.9% ± 7.4 | worse |
+| gain-field_s0 | **44.4% ± 7.3** | 52.0% ± 7.3 | **worse, and BELOW its own ablated control** |
+| gain-field_s1 | 56.8% ± 7.1 | 51.3% ± 7.1 | worse |
+
+Aftereffect (lens off, offset 0): ballistic no-feedback diff-in-diff −3.0/−7.5/+1.3/−1.8° (all \|z\|<1.4);
+in-view whole-episode signed-bias shift +74.1/+66.4/+58.6/+46.9° but base cc_inview = **−0.257** against a
+validated ~+0.5 baseline (fails its own printed sanity check).
+
+### 1. Genuine challenge to AB, or setup/instrument failure? — MIXED, and the two halves fail for different reasons
+
+The **choice_vs_true metric is a real, trustworthy null, not a broken ruler.** Its blind-condition chance
+floor holds tightly in every cell tonight (56.5/50.8/52.0/48.9/51.3 — all pinned near 50%, exactly as
+designed), and it is the same instrument that passed its Stage-1 validity gate (offset 0, R²=0.52/0.40
+sighted vs ~0 blind). So "none of the four arms improved over the 67.6% unadapted baseline" is a real
+behavioral fact, not an artifact.
+
+But that does not make it a challenge to the North Star claim, because there is a concrete, upstream,
+fixable cause sitting directly under "did training teach anything": **the mismatch aux_loss never
+converges.** Across all four 300K-step runs it oscillates in a 0.03–0.10 band with no visible downward
+trend (e.g. plain_s0: 0.037→0.061→0.038→0.050→…→0.061, ending where it started). That is the literal
+training signal this experiment is betting recalibration on, and it shows no sign of doing its job — compounded by `gate_contact=True` (aux loss fires only on contact, so effective sample density is likely far
+sparser than n_samples=4096 implies) and a frozen encoder (only the head, 14–18 tensors, can move). This
+is exactly the shape of "our setup failed to present a learnable correction," per the North Star rule —
+not evidence that AB's vision cannot be recalibrated.
+
+**Verdict: INFORMATIVE NULL, setup-attributable.** The metric is valid and shows real non-improvement; the
+most likely cause (a training signal that never converges) is diagnosable and fixable before concluding
+anything about AB's capability.
+
+### 2. The gain-field arm breaking — signal or noise?
+
+**A real, reproducible finding, not an unstable run.** Gain-field underperforms plain in BOTH seeds (44.4
+vs 66.8 at seed 0; 56.8 vs 61.5 at seed 1) — same direction both times, directly contradicting the
+2026-07-18 pre-registration ("watch whether the same small plain-favoring edge re-appears under the lens
+— a gain-field that helps nowhere would be a real, if modest, strike against carrying its extra
+parameters"). Seed 0 is worse than "nowhere": sighted (44.4%) falls below its own ablated control (52.0%)
+and below the 50% chance floor — by the logic already established in the 2026-07-08 follow-the-ghost
+entry, a below-chance choice means something is actively steering AB toward the wrong ball more often than
+chance, not merely failing to help. Most likely mechanism: the FiLM head-pose composition adds parameters
+trained by the same weak, non-converging aux signal noted above — more capacity with no more signal is
+worse-conditioned than the simpler plain readout, not better. This is a real strike against the gain-field
+as currently trained; it is not proof the gain-field hypothesis is wrong in principle (untrained-signal
+starvation and architectural unsuitability are not yet distinguished).
+
+### 3. Status of the north-star claim — "AB did not recalibrate" or "we cannot measure it"?
+
+**Squarely the second: we still cannot measure whether AB recalibrated.** Two separate instruments, two
+separate failures, and one correction to how the dispatch framed them:
+
+- The **in-view instrument** fails its own printed sanity check outright (base cc_inview should be ≈+0.5;
+  it reads **−0.257**, wrong sign and magnitude). This is the **second** documented failure of this exact
+  instrument — the 2026-07-18 afternoon `stage2_adapt_s0` entry already flagged it as "UNINTERPRETABLE...
+  validated base eye circ_corr +0.54 reads ~0 in-view here." The +47–74° "aftereffect" numbers tonight are
+  not evidence of anything; they are outputs of a ruler that does not read zero correctly at its own
+  baseline.
+
+- The **ballistic no-feedback instrument** (the "psychophysics convention" one) was **already proven
+  invalid on 2026-07-17** — R²(true bearing, early heading) ≈ 0 in all four cells *including sighted*,
+  meaning this body has no ballistic-aim phase to measure; the early window captures a target-independent
+  stereotyped motion, not vision-guided aim. **No R² re-validation for this instrument appears anywhere in
+  tonight's log** — it was reused without being re-checked. Its "NULL (\|z\|<1.4)" result tonight should
+  therefore be downgraded from "null" to "uninterpretable," the same status as the in-view instrument —
+  this is a correction to the dispatch's framing, which treated the ballistic result as a corroborating
+  clean null against the in-view result's known-broken one. They are both broken, for different, already-
+  documented reasons.
+
+Both instruments used tonight are either freshly broken or previously-diagnosed-broken-and-not-refixed.
+Under those conditions "AB did not recalibrate" is not a licensed conclusion. The honest statement is that
+the sharpest test in the classical prism paradigm (the aftereffect) has not yet been run with a working
+ruler.
+
+### 4. Single most important next step
+
+**Fix/re-validate the in-view aftereffect instrument first, using data already on disk — not a training
+run.** Diagnose why base cc_inview reads −0.257 instead of the validated ~+0.5 (the likely suspect is the
+same class of frame bug the GAZE-frame fix already found once — check whether the in-view azimuth is
+being read in the correct frame relative to the corrected per-step gaze-relative prism), and confirm the
+fix reproduces +0.5 at the offset-0/no-lens baseline before trusting any signed-bias number from it. This
+is the cheapest, most directly blocking fix: no new training required, and until it passes, no future run
+— including a stronger-error-signal rerun — can be interpreted. Close second, not this pick: check whether
+the mismatch aux_loss can be made to converge at all (higher coef, ungated, or more of the encoder
+unfrozen) before spending another overnight on this exact recipe — a validated ruler applied to a training
+signal that never moved will just confirm "nothing to measure" a different way.
+
+### Theory Monitor Note — 2026-07-19 (Stage-2 overnight, +30° gaze-relative lens)
+
+**Recalibration-under-lens (choice_vs_true): INFORMATIVE NULL, setup-attributable** — the metric is
+instrument-valid (blind pinned at chance in every cell) and shows a real non-improvement in all four arms
+(66.8/61.5/44.4/56.8% vs. 67.6% base), but the mismatch aux_loss shows no convergence over 300K steps in
+any arm, which is the more likely explanation than an incapacity finding about AB.
+
+**Gain-field hypothesis: WEAKENED under this training recipe, not refuted in principle** — seed-consistent
+underperformance vs. plain in both seeds, with seed 0 falling below its own ablated control and the 50%
+chance floor (an active-harm signature, not mere non-help), directly against the 2026-07-18
+pre-registration's watch condition.
+
+**Aftereffect (the sharpest test): UNMEASURABLE, not "absent"** — the in-view instrument fails its own
+baseline sanity check for the second documented time; the ballistic instrument was already proven to carry
+no aim signal on 2026-07-17 and was not re-validated before reuse tonight. Neither instrument licenses "AB
+did not recalibrate."
+
+**The most important thing we don't know yet:** whether the mismatch aux_loss can be made to converge at
+all on this task (right now it doesn't, in any of four independent 300K-step runs) — this is prior to and
+separable from the instrument-validity question, and until both are resolved, no amount of Stage-2 seed
+replication will produce an interpretable result.
+
+**Recommended diagnostic** (not a training run — a measurement): re-derive the in-view instrument's
+azimuth computation against the corrected per-step gaze-relative prism frame and confirm it reproduces the
+validated ~+0.5 base cc_inview at offset 0 before trusting any signed-bias number from it; in parallel,
+plot aux_loss over the full 300K steps for at least one arm already in hand to confirm (or refute) that it
+is genuinely flat rather than slowly trending — both are free re-analyses of data already on disk.
+
+---

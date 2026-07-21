@@ -1671,3 +1671,9 @@ next state). As grounding architecture (e), the language layer must predict outc
 against the embodied forward model — so it is constrained by *causality* (what would actually
 happen), not just representational plausibility (what sounds consistent). First cheap step: test
 whether AB's grounded latent supports consequence-prediction from existing rollouts.
+
+**Q: In the walker's hierarchy, what is `cmd`?**
+A: The two-number command the high-level vision policy sends to the frozen low-level gait every step:
+`cmd = [forward_speed, turn_rate]` (gas pedal + steering wheel). The vision "driver" outputs it from
+what the eyes see; the gait "legs" turn it into eight joint motions. The split makes the learned
+steering body-agnostic — the same two-number command could drive a different body (e.g. a biped).

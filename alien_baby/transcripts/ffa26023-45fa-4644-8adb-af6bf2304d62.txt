@@ -3834,3 +3834,42 @@ This is a nuanced but genuinely interesting result — and read correctly, it ma
 So the gain-field arm shows the predicted recalibration and the plain arm doesn't — exactly what the panel forecast (the gain-field can compose the displacement with head-pose; the plain readout can't). **But it's small (~8°), underpowered (n=200), and other metrics are muddy** — I won't call it until it's properly powered and the full 2×2 controls for base motor drift too. Let me run the decisive version: full 2×2 (base/adapt × sighted/blind) per arm at higher n, with the difference-in-differences and significance.
     [→ tool: Write]
     [→ tool: Bash]
+The powered 2×2 recalibration eval is running (8 cells × 300 eps, ~25–30 min). It'll give the clean difference-in-differences per arm — the adapted policy's visual pull toward true vs the base's, controlling for motor drift between the checkpoints, with a z-score. That's the decisive test of:
+1. **Does the corrected apparatus produce recalibration at all?** (DiD < 0 = adapted eye compensates the displacement)
+2. **Does the gain-field enable it where the plain readout doesn't?** (the panel's core prediction)
+
+When it lands I'll report the powered verdict, then — if it holds — render + theory-monitor, and the natural final step is the seed-1 replication. If it's null or the plain arm also recalibrates, I'll report that honestly too. Nothing goes in the record as settled until the monitor verifies it. I'll report when the eval completes.
+
+======================================================================
+USER:
+======================================================================
+<task-notification>
+<task-id>buzfhgcdz</task-id>
+<tool-use-id>toolu_01SjjKZRZJG6ENCoeTPKbAes</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-davidwolpe-Documents-DataScience-dev-ai-experiments/ffa26023-45fa-4644-8adb-af6bf2304d62/tasks/buzfhgcdz.output</output-file>
+<status>completed</status>
+<summary>Background command "Run powered full 2x2 recalibration eval at offset 60 (both arms)" completed (exit code 0)</summary>
+</task-notification>
+
+======================================================================
+CLAUDE:
+======================================================================
+    [→ tool: Bash]
+The powered n=300 results **reverse the n=200 hint and expose that this readout is confounded** — so I'm not going to force a recalibration verdict from it. Here's the honest read:
+
+| arm | base sighted | base blind | adapt sighted | adapt blind | DiD (z) |
+|---|---|---|---|---|---|
+| plain | +31.9 | +31.8 | +26.4 | +18.5 | +7.8 (z=1.66) |
+| gain-field | +23.1 | **+51.0** | +26.2 | +35.9 | +18.1 (z=3.89) |
+
+Two things say the instrument is muddy, not the result:
+1. **The n=200 gain-field "recalibration" signal did not survive powering** — at n=300 both arms' DiD are *positive* (the wrong sign for recalibration), and the small n=200 effect flipped.
+2. **The base gain-field eye shows an implausible −27.9° "toward-true" visual pull** *before any lens adaptation* (base sighted +23.1 vs base blind +51.0). A grounded eye at 60° with no adaptation should follow the *ghost*, not aim toward true. That, plus the plain base doing nothing (+0.1) while the gain-field base does −27.9, means the metric is picking up an **arm-specific confound** (the gain-field's head-pose dependence interacting with the 60° gaze-relative geometry and the differing motor baselines / commit rates), not a real recalibration difference.
+
+So the honest verdict: **the behavioral signed-heading DiD at 60° is not a clean recalibration instrument under the gaze-relative prism** — the same "validate the instrument before trusting an aim metric" lesson that bit us twice before. I will not claim recalibration, and I will not claim a gain-field advantage, from a confounded readout.
+
+**What *is* solid and stands:** the Stage-1 result — the corrected apparatus produces a validated, vision-driven grounded eye (R²≈0.5 sighted / ~0 blind, choice 88% vs 50%), monitor-confirmed and in FINDINGS. That's the real win of the whole overhaul. Stage-2 adaptation *ran* (aux_loss fell, gain-field lower), but whether it *recalibrated* is not yet measurable with a trustworthy instrument.
+
+**Recommendation — don't spend the seed-2 replication yet.** The right next step is to build a *validated* recalibration instrument before claiming anything: measure the **eye's bearing readout signed bias directly** (base vs adapted at offset 60, in-view filtered — the eye, not the motor-confounded net heading), and validate *it* passes a sanity check before trusting its recalibration number. Replicating a confounded readout would just replicate the confound.
+
+I'd stop here for tonight rather than push a verdict a confounded metric can't support. When you're ready, the next move is the instrument, not more seeds. Want me to write this Stage-2 outcome into FINDINGS honestly (adaptation ran; recalibration readout confounded; instrument needed) and leave it there, or take a first pass at the direct eye-bias instrument now?

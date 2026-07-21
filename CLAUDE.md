@@ -44,6 +44,36 @@ world-coupled. Keep that as the fixed target; everything else is means.
 
 ---
 
+## Diagnosis is a HYPOTHESIS until a control confirms it (governing rule, 2026-07-19)
+
+David's standing, repeated frustration (raised as formal feedback 2026-07-19): a string of
+confident "the problem is X" claims, each stated as established fact and each quietly overturned
+by the next — false causality that feels like going in circles. Worked example from that day: I
+told him the walker "stops after one second" BECAUSE the balls were behind it and unseen; the
+trace then showed the opposite — the balls were too CLOSE, right under its feet. A guess had been
+reported as a finding.
+
+The failure mode, named: taking what ONE run or ONE trace shows (what happened once) and stating
+it as the CAUSE (why it happens), then acting on it — and, when a result comes back weak, reaching
+for "one more tweak" instead of the fix already known to be the real one.
+
+This is a GATE, not a sentiment (an exhortation to be careful was already in this file and did not
+hold; only a check that must fire does):
+1. **Before writing or acting on "the cause is X":** name the specific control that would tell X
+   apart from not-X, and RUN it. Until that check has run, it is a HYPOTHESIS — label it exactly
+   that ("hypothesis, unconfirmed"), never "the cause." A single trace is an existence proof of a
+   behavior, never a proof of its mechanism. (The winnability-by-measurement check is this rule's
+   worked example: measure first, THEN claim.)
+2. **Anti-circling:** if a line of work has taken several "one more tweak" iterations without a
+   clean result, STOP tweaking. Escalate to the fix already identified as the real one (e.g. the
+   lit-scout's proven aux-decode loss), or pause and ask David which way to go. Do NOT propose the
+   next incremental tweak as if it were new information.
+3. **Carry it forward:** this rule exists BECAUSE the correction kept being re-learned each session
+   instead of held. It is written here — the only memory that survives a session — so that it is
+   loaded next time. If you catch yourself stating a cause you have not controlled for, stop.
+
+---
+
 ## Perception lives in the GAZE frame — "what is offset relative to?" (governing frame, 2026-07-18)
 
 David's question — *"what is the prism offset relative to?"* — exposed a foundational apparatus bug

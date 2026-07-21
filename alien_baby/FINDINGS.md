@@ -3521,3 +3521,75 @@ the literature says should be WEAK → either genuinely novel or the global-moto
 theory-monitor already warned about. Fix the broken after-effect ruler before claiming either.
 To cite/reuse: Cameron 2013 (cross-sensory error); Lanillos active-inference iCub (closest embodied
 prior art); Triesch active efficient coding; dual-adaptation cue protocol (PLoS ONE 2021).
+
+## 2026-07-20 — WALKER can steer by sight: first clean vision-load-bearing result (color-choice), with a walking body finally in place
+
+**Plain-English headline.** Give the creature a body that can actually walk and eyes it can trust,
+and it uses its eyes to go to the thing it wants. On a task where a RED target and a BLUE decoy sit
+2.5–4 m in front of it, the walker walks up to and reaches the RED ball essentially every time —
+and it is genuinely *seeing* which ball is red, not guessing. This is the FIRST clean result in the
+project where vision demonstrably drives behavior.
+
+**What was actually built (the long detour behind this).** The creature this session is the quadruped
+WALKER (a MuJoCo Ant + stereo eye-cameras), driven by a two-level brain: a high-level VISION policy
+emits a two-number command `cmd = [forward speed, turn rate]` (see GLOSSARY), and a FROZEN low-level
+GAIT turns that into leg motions. Getting a working gait took most of the session and eight tries;
+the decisive lesson is an apparatus one, not a learning one:
+- Gait v3–v8 failed for what looked like reward-recipe reasons and I iterated the reward six times,
+  including porting the field-standard velocity-command recipe (Rudin 2022 / legged_gym) after a
+  reuse-first lit-scout check. All six failed.
+- **The real cause was an environment bug I introduced:** when the target balls were enlarged to
+  body-size (r=0.5) for the vision task, each became ~105 kg, and the gait's training env parked only
+  ONE of the two balls — so the creature spawned every episode with its foot inside a 105 kg ball and
+  was flung. No reward can learn to walk while being thrown on reset. Fixing it (park both balls) took
+  the gait reward from stuck-negative (−30 at 12M steps) to +864 at 320K. Gait v9/v10 then walk
+  upright, step for real, turn cleanly on command (v10 ~0.23 m/s, 0 falls). Lesson locked in: smoke-
+  test the ENVIRONMENT after any change to world geometry, before blaming the learner.
+
+**The result (vsteer_v10 driver, crawler's transplanted+frozen vision encoder, n=80 + control probe).**
+Task: two body-sized balls spawn 2.5–4 m ahead, both verified in view (100%), ≥1.2 m apart, which one
+is RED randomly assigned (so no position/distance/centeredness tell can beat ~50%). Reach red = good.
+
+|                                   | reaches a ball | picks **RED** |
+|-----------------------------------|:--------------:|:-------------:|
+| **With eyes (sighted)**           |     100%       |    **100%**   |
+| **Fair-blind (visual noise)**     |   12% (luck)   |  **50% = chance** |
+
+Video (4 sighted episodes) watched: the creature walks up to and faces the RED ball head-on; the blue
+decoy is left unchosen. A directed reach, not a thrash-into (render-every-experiment rule satisfied).
+
+**The blind control, done honestly (this is important).** The first blind test zeroed the pixels to
+hard black and gave 0% contact — but the independent theory-monitor flagged that hard-zero is an input
+the CNN never saw in training. Diagnostic confirmed the concern: hard-zero AND gray both collapse the
+policy to a FIXED action (turn-std = 0.00) — an out-of-distribution artifact, so "0%" was inflated by
+an unfair blinding method. The FAIR blind is visual NOISE (eyes see static, not an impossible blank):
+there the policy still acts variably (turn-std 0.73, genuinely searching) but has no information → 50%
+red = pure chance, 12% contact by luck. So the finding survives the fair control: sighted 100% vs
+chance 50% on choice, 100% vs 12% on reaching. Vision drives both.
+
+**Scope — what this IS and IS NOT (per theory-monitor, do not conflate).**
+- IS: the first clean demonstration that vision is load-bearing for a CATEGORICAL COLOR discrimination
+  ("which ball is red") steering the choice, on a walking body. Randomized labels + matched-episode
+  fair-blind control + video corroboration make it solid.
+- IS NOT: evidence that vision now encodes fine SPATIAL BEARING (target direction) — the capability
+  Phase V found vision failed at (ablation peaked at ecc=0, flat elsewhere). Color pop-out is the
+  easiest visual signal (a categorical flag); this result does not resolve the spatial-bearing question.
+  Do not read it as "vision drives steering in general."
+
+**Verdict (theory-monitor, quoted).** Behavioral Prediction Framework: **CONFIRMED, with scope** —
+"directed, colour-conditioned steering that a position/distance/memorization strategy could not produce
+at 100%." Pattern-Learning (graceful-degradation) framework: **untestable** from this all-or-nothing
+ablation. First clean vision-load-bearing result in the project; a DIFFERENT capability than the
+spatial-bearing encoding Phase V tested.
+
+**Reuse win.** This used the crawler's transplanted, frozen vision encoder (42 tensors, conv trunk
+frozen, only the steering head trained) — the learned eyes carried over to a new body via the abstract
+`cmd` interface, so no vision work was thrown away. The body-agnostic `cmd` design is what let the
+crawler's eyes drive the walker.
+
+**Open / next.** (1) Confirm with a second training seed (single seed, n=80 is a small sample for
+"always"). (2) The fair blind (noise) should replace hard-zero in `eval_vsteer_choice.py` as the
+standard control. (3) The real open question is unchanged: does vision encode SPATIAL bearing (steer to
+a SINGLE target by its direction), not just categorical color? That is the Phase V gap and the next
+test. (4) Then: the walker into the Greek room (occlusion forces move-to-see), and eventually the
+prism/grounding north star on the mobile body.
