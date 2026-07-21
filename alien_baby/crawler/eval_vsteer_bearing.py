@@ -65,10 +65,18 @@ def run(model, env, n, blind, seed0, blind_seed=1234):
     return np.array(rows, float)
 
 
+DEGENERATE_TURN_STD = 1e-3   # below this the policy is emitting a constant; R^2 is meaningless
+
+
 def r2_and_slope(x, y):
     """R^2 and slope of the least-squares fit y ~ a*x + b. The SLOPE SIGN matters: a high R^2 with
-    the wrong sign means the creature turns AWAY from the ball -- a bug, not a finding."""
-    if len(x) < 3 or x.std() < 1e-9:
+    the wrong sign means the creature turns AWAY from the ball -- a bug, not a finding.
+
+    Returns nan when the RESPONSE is degenerate (near-constant turn). Without this guard a policy
+    that always emits the same turn -- an untrained net, or one collapsed by an OOD blind -- yields
+    an R^2 fitted to float noise (measured: +0.22 on a turn-std of 0.001). That is not a weak
+    signal, it is no signal, and it must not be reported as a number."""
+    if len(x) < 3 or x.std() < 1e-9 or y.std() < DEGENERATE_TURN_STD:
         return float("nan"), float("nan")
     A = np.c_[x, np.ones(len(x))]
     coef, *_ = np.linalg.lstsq(A, y, rcond=None)
@@ -118,7 +126,10 @@ def main():
     p.add_argument("--run-tag", default="vbear")
     p.add_argument("--seed", type=int, default=4000)
     p.add_argument("--cone", type=float, default=0.9)
-    p.add_argument("--reach", type=float, default=0.75)
+    # reach=1.0, NOT 0.75. A perfect-vision oracle scores 0% at 0.75 (the light ball gets punted;
+    # closest approach floors at ~0.93 m) and 100% at 1.0 -- see make_bearing_env. Scoring at 0.75
+    # would report 0% contact for ANY policy and read as a catastrophic vision failure.
+    p.add_argument("--reach", type=float, default=1.0)
     p.add_argument("--no-render", action="store_true")
     args = p.parse_args()
     model = PPO.load(args.model, device="cpu")
@@ -132,6 +143,10 @@ def main():
     r2b, _ = report("BLIND", bl)
     print(f"\n  INSTRUMENT CHECK  sighted R2 {r2s:+.3f} (need >=0.30) | "
           f"blind R2 {r2b:+.3f} (need <=0.10) | gap {r2s - r2b:+.3f} | slope {sls:+.2f} (need >0)")
+    if np.isnan(r2s):
+        print("  !! SIGHTED turn is DEGENERATE (near-constant) -- the policy is not steering at all; "
+              "R^2 is undefined, not low. Treat as 'no steering behaviour to measure', not as a "
+              "vision null, and check the run actually trained.")
     ok = (r2s >= 0.30) and (r2b <= 0.10) and (r2s - r2b >= 0.20) and (sls > 0)
     print(f"  --> VISION SETS DIRECTION: {'YES' if ok else 'NO / not demonstrated'}")
     if not args.no_render:
