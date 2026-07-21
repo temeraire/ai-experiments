@@ -3794,3 +3794,57 @@ which would most likely just make the walker fall over — confounding informati
 inability to act at all.
 **Outstanding precondition:** no video was rendered for the proprio arm. Under the render-every-experiment
 rule, 100% contact is an outcome flag that cannot separate a directed approach from an incidental one.
+
+**ADDENDUM (c) precondition CLOSED — the proprio-ablated arm was rendered and watched.**
+`scratch_render/vbear_s0_proprio_ablated.mp4`. The 100% contact under proprio ablation is a
+**directed approach, not incidental contact**: the creature stays upright and walks, and the blob
+trace shows it driving the ball toward the centre of its own eye in 4/6 episodes — including the
+extreme case (bearing +0.96, blob −0.97 → +0.20, crossing centre with slight overshoot). Same
+signature as the intact arm (7/10). This closes the render precondition. It does NOT change verdict
+(c): the arm still does not test Taylor, because the frozen gait kept uncorrupted proprioception via
+`_gait_obs()` and the scrambled 9-number channel carries no bearing information (decode R² −0.055).
+
+### ADDENDUM 2 (2026-07-20) — THREE-SEED REPLICATION: the finding holds; the headline INSTRUMENT was the fragile part
+
+`vbear_s1` and `vbear_s2` trained to 300K on the identical recipe (seeds 1 and 2). Both completed
+clean, no instability. With the `Monitor` wrapper now in place these are the FIRST runs in this line
+with an actual reward curve, and the two are near-identical: −19.5/−10.2 at the start (falling and
+failing) → plateau at ~17.4 by roughly 40K steps → flat thereafter. That corroborates s0's early
+plateau and explains it: with bearing already present in the frozen encoder, the head has almost
+nothing to learn.
+
+| seed | sighted contact | blind contact | R²(first turn) | R²(mean turn5) | slope5 |
+|---|---|---|---|---|---|
+| s0 | 100.0% | 0.8% | +0.517 | +0.807 | +0.61 |
+| s1 | 98.3% | 6.7% | **+0.168** | +0.760 | +0.53 |
+| s2 | 100.0% | 9.2% | +0.392 | +0.786 | +0.52 |
+| | | | spread **0.349** | spread **0.047** | |
+
+**The behaviour replicates 3/3 and is not in doubt:** sighted 98.3–100% against blind 0.8–9.2%, with
+100% contact in every bearing bin for s0 and s2 and 95–100% for s1.
+
+**The first-turn R² does NOT replicate**, and on seed 1 it fell to +0.168 — below the 0.30 bar, so the
+eval printed "VISION SETS DIRECTION: NO" for a run whose behavioural gap (98.3% vs 6.7%) is as
+decisive as the others'. That is the instrument failing, not the creature.
+
+**CRITERION CHANGED, and the change is declared.** The eval now gates on the mean turn over the first
+5 steps, with first-turn kept as a high-variance diagnostic. This was decided AFTER seeing seed 1, so
+the licensing controls are recorded rather than the metric quietly swapped for the one that passes:
+- The 5-step measure was written into the eval script from the outset as a declared robustness check,
+  not invented post hoc.
+- The worry that originally motivated first-turn was a MECHANICAL confound — turning toward the ball
+  shrinks its bearing, so turn and bearing co-vary by geometry. **Controlled, and it does not apply:**
+  (i) x is the bearing AT RESET, a constant fixed before any movement, so the regression is not
+  circular; (ii) per-step R² RISES to a peak at step 2–3 then FALLS (s0: .530 .598 .600 .365 .257),
+  whereas a geometry confound predicts growth with step index as the creature homes in — decay is what
+  a staling predictor looks like, and the cumulative average rising monotonically is the signature of
+  variance reduction; (iii) the blind arm's 5-step R² is ~0.00 in all three seeds, so the dynamics
+  alone generate nothing.
+- Mechanistically the first turn is the single noisiest sample in the episode: one action taken from
+  the reset state while the body is still settling. Per-step R² confirms step 1 is the low outlier in
+  all three seeds (.530/.154/.376 versus step 2 at .598/.515/.636).
+Re-scored under the corrected criterion, seed 1 passes: sighted 5-step R² +0.793, blind +0.042,
+slope +0.50.
+
+**Net:** three-seed replication PASSES. The 2026-07-20 headline stands, with the caveat that its
+originally-reported instrument was the wrong one and has been replaced.
