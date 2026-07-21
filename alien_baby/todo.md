@@ -898,3 +898,49 @@ So realignment = signed bias moving from +theta toward 0. Track per band over tr
 Any result of the form "AB didn't adapt when it couldn't move" reproduces Held & Hein 1958, which has
 documented replication failures (Templeton 1966; Walk 1988; Zaadnoordijk 2020). It must be written as
 "we reproduce the contested side of a 60-year argument," NEVER as a discovery.
+
+### GATE RESULTS (2026-07-20 evening)
+- [x] **P1 OBSERVABILITY — PASS.** Measured the walker's actual rotation-axis repertoire over 12
+      episodes (221 samples, |w|>0.15 rad/s): singular-value spread 0.462/0.347/0.191, angle between
+      the 1st and 2nd principal rotation axes = 90.0 deg, mean |axis| components roll 0.34 / pitch
+      0.56 / yaw 0.59. So the walker genuinely rotates about multiple non-parallel axes and the
+      camera-to-body offset is FORMALLY RECOVERABLE. This could easily have failed — a creature that
+      only yawed would make the offset unobservable and the whole experiment void before it started.
+- [x] **P3 RULER BASELINE — PASS, cleanly.** Prism OFF, mildhead encoder (42/42 loaded), readout fit
+      on all bearings then signed bias measured per band on held-out frames:
+        LEFT  band (bearing > +0.15): signed bias **-0.17 deg**, median |err| 1.13 deg, n=344
+        RIGHT band (bearing < -0.15): signed bias **-0.04 deg**, median |err| 0.87 deg, n=345
+      Both essentially zero, so any post-prism bias is attributable to the prism. Median error ~1 deg
+      confirms the ruler is sharp enough to see a realignment of a few degrees.
+- [~] **P4 AUX LABEL — QUALIFIED FAIL. The label is contact-GATED but NOT contact-DERIVED.**
+      `MismatchAuxCallback` trains on `info["ball1_bearing"]`, and `_ball1_ego_bearing()` computes the
+      TRUE ego-bearing from the ball's `qpos`. Gating (`--gate-contact`) restricts learning to episodes
+      where the body actually touched the ball, which is the honesty argument in the docstring — but
+      the VALUE is oracle ground truth, supplied at EVERY frame of that episode, including frames long
+      before any contact occurred. The strategist's back-projection design (infer the ball's position
+      from eye pose + reach distance AT the contact moment, then back-project through egomotion to
+      label earlier frames) is NOT implemented.
+      **Consequence:** we may say the signal is contact-GATED. We may NOT say it is body-derived, and
+      we must not describe it as "the creature learns only what its own touching revealed." For the
+      REGIONAL DISSOCIATION question this is not fatal — the seen-only band receives no label under
+      either scheme, so the comparison stands — but it is a real caveat and goes in the writeup.
+- [ ] **P2 WINNABILITY — NOT RUN.** Requires the two-ball prism walker env, which does not exist yet
+      (`_update_prism_ghost()` lives in `mimo_crawler_env.py`, not the walker). Blocked on the build.
+
+### DESIGN FLAW FOUND WHILE RUNNING P4 — the two-ball design has a confound that would FAKE a confirmation
+If both balls are visible every episode and only ONE is ever the aux label, then the encoder is under
+direct pressure to IGNORE the other ball — the seen-only ball is a distractor that never predicts the
+target. "No realignment in the seen-only band" would then be **distractor suppression**, not Taylor's
+regional locality, and the two are indistinguishable in the planned measurement. This confound points
+the same way as the hypothesis, which is the dangerous kind.
+
+**REVISED DESIGN — one ball per episode, band determines whether contact can occur:**
+- ONE ball per episode (no distractor to suppress).
+- Episode type is drawn at random: ACTED (ball spawns in band L, contact enabled -> aux fires) or
+  SEEN-ONLY (ball spawns in band R, contact disabled -> no aux ever fires for that band).
+- **Exposure must be matched:** fixed-length episodes for both types, so band R is on the retina just
+  as long as band L. Verify the matched exposure by counting frames per band, do not assume it.
+- Probe post-training with SINGLE balls swept across all bearings; measure signed bias vs bearing.
+  Taylor predicts the bias collapses toward 0 in band L and stays near +theta in band R.
+- The "contact disabled" manipulation is artificial and must be stated plainly as the operationalisation
+  of "seen but not acted upon."
