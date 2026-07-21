@@ -2062,3 +2062,35 @@ UNCHANGED — it rests on the sighted-vs-blind behavioural gap and the bearing�
 which is touched by any of the above. What changed: the supporting preflight claim is weaker than
 written, Phase V is corroborated rather than merely un-overturned, and one of the two "missing controls"
 turns out not to have been run at all.
+
+### CORRECTION 2026-07-20 (David) — the two-stage learning story, and what the open question really is
+
+I had been logging the frozen transplant as a weakness ("only answers whether a policy can USE a map
+it is handed"). David corrected it: the crawler LEARNED that map. Recording the corrected frame
+because it changes what the project should ask next.
+
+**Both halves were learned, in different bodies, and joined by the transplant:** the crawler learned
+WHERE the ball is (mildhead, via the cross-modal seen-vs-contacted mismatch driving a bearing readout,
+in a body that could touch but not travel); the walker learned WHAT TO DO about it (turn proportional
+to the seen offset, in a body that can travel). That is the REUSE-FIRST design executing, not a
+shortcut around the hard part.
+
+**This session's controls independently establish that stage 1 was real.** On an architecture-matched
+probe, mildhead is the ONLY encoder above its random floor (0.997 vs 0.762); R43 is AT floor
+(0.828 vs 0.807–0.841) and BELOW it in the narrow cone; R49 (0.905) is below the no-network raw-pixel
+baseline (0.919). Most of this project's encoders failed to acquire visual direction. One succeeded.
+
+**Restated open question (supersedes "can reward grow a bearing representation from scratch?"):**
+WHICH SIGNAL grows visual direction? Cross-modal mismatch / bearing-readout → SUCCEEDED (mildhead).
+Task reward + MICOA → FAILED (R43, R49), and today measurably so, not merely un-recruited. This is a
+positive finding about the mechanism of grounding rather than a caveat about our setup, and it
+converges with the external literature's distil-then-RL hierarchy (Mirowski 2017 auxiliary-loss-beats-
+extra-input; Lee/Hwangbo 2020 and Chen 2019 privileged-teacher→student).
+
+**Taylor connection, in plain English.** Taylor's claim is that perceiving where something is IS being
+ready to make the movement that lands on it — perception grows out of contact-terminated action, not
+out of passive looking. mildhead's successful signal is exactly a contact signal: what the eye SAW
+versus what the body actually TOUCHED. The signal that failed (task reward) carries no such
+seen-versus-touched comparison. So the project's own two encoders constitute a small natural
+experiment in Taylor's favour, and that is worth stating as a prediction to test rather than a
+coincidence noticed after the fact.

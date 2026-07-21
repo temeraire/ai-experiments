@@ -394,3 +394,183 @@ Now the correction. The skeptic found my preflight headline was measured against
     [→ tool: Bash]
 Corrections pushed. Now waiting on the two replication seeds to finish so I can eval them:
     [→ tool: Bash]
+The workflow ran in `/workflows` and did exactly what it was built to do — the skeptics overturned one of the two controls, and in the process **invalidated a claim in my own writeup**. That's the headline here.
+
+## The correction I owe you
+
+My preflight number was measured against the wrong baseline. I reported the frozen eyes carrying direction at **R² = 0.996** and framed it as an enormous leap from Phase V's 0.010. The skeptic checked what that probe scores with *no network at all* — a hand-coded 32-number "redness per column" statistic reads the ball's bearing at **R² = 0.919**, and an untrained random trunk gets 0.762–0.841.
+
+In plain English: a big red ball on a 32×32 image announces its own position so plainly that almost any linear readout finds it. A high score on that probe is mostly evidence that the picture is easy, not that the encoder learned something. The claim survives — mildhead's 0.996 still clears the raw-pixel bar (0.003 error remaining versus 0.081, about 27× better) — but the honest bar was ~0.92, not ~0.0, and I presented it as far more dramatic than it was.
+
+## Phase V comes out corroborated, not overturned
+
+This is the opposite of what the theory-monitor's more attractive hypothesis predicted, and it's the cleaner answer. Running our gaze-frame probe on the old R43/R49 encoders — with tensor loading verified by name *and* shape, so the silent-`strict=False` trap I warned about was actually checked — R43 sits **at** its architecture-matched random floor in the wide cone (0.828 vs 0.807–0.841) and clearly **below** an untrained network in the narrow cone (0.846 vs 0.947). By the control's own pre-registered rule that means the representations genuinely differ: the transplanted crawler eyes did real work, and Phase V's original null stands. I've strengthened that sentence in FINDINGS from "does not cleanly overturn" to "corroborates."
+
+## The proprio arm didn't test Taylor at all
+
+The four-arm table looks like a clean result — scramble proprioception and steering is untouched (100% contact, R² +0.560 vs intact +0.521). It isn't, for two reasons the skeptic caught. The frozen gait reads proprioception straight from `qpos/qvel`, so it kept a full uncorrupted copy the whole time; only the steering head's 9-number copy was scrambled. And that channel provably contains no direction information anyway (decode R² = −0.055, at the shuffled-label baseline). Scrambling an empty channel and observing nothing change is arithmetic, not evidence. Taylor's claim could hold in full and the table would look identical, so it's recorded as **still untested** — and the apparatus may not be able to settle it, since corrupting the gait's proprioception would probably just topple the walker.
+
+**The headline result is unchanged.** It rests on the sighted-vs-blind behavioral gap and the bearing→turn slope, and nothing above touches either.
+
+Both seeds are still training (~150K of 300K), and the `Monitor` fix worked — `ep_rew_mean` is logging at 17.4 and 17.1, the first real reward curve in this line of runs. I'll report the three-seed replication when they land.
+
+======================================================================
+USER:
+======================================================================
+<task-notification>
+<task-id>brl9c7l1k</task-id>
+<tool-use-id>toolu_018EtEiqgGu7hHdHSwrScj1M</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-davidwolpe-Documents-DataScience-dev-ai-experiments/6abf9666-4fa9-4d69-aa58-6dbecdc06d82/tasks/brl9c7l1k.output</output-file>
+<status>completed</status>
+<summary>Background command "Wait for both replication seeds to finish" completed (exit code 0)</summary>
+</task-notification>
+
+======================================================================
+CLAUDE:
+======================================================================
+    [→ tool: Bash]
+Both seeds trained cleanly. Running the eval on each with the same instrument:
+    [→ tool: Bash]
+    [→ tool: Bash]
+While those run, let me look at something we've never had for this line of runs — an actual reward curve:
+    [→ tool: Bash]
+Both seeds show the identical learning shape: deeply negative at the start (−19.5, −10.2 — falling and failing), then a fast rise, then a hard plateau at ~17.4 by roughly 40K steps. That corroborates what `vbear_s0`'s eval scores hinted at and explains it mechanistically: with the bearing already sitting in the frozen encoder, the head only has to learn a near-linear map, so there's very little to learn and it's learned almost immediately.
+    [→ tool: Bash]
+    [→ tool: Read]
+The evals are still running. Meanwhile, let me close the one precondition the workflow flagged as outstanding — nobody rendered the proprio-ablated arm, so its 100% contact is an unwatched outcome flag:
+    [→ tool: Bash]
+    [→ tool: Bash]
+    [→ tool: Bash]
+    [→ tool: Bash]
+    [→ tool: Bash]
+    [→ tool: Read]
+    [→ tool: Read]
+The proprio-ablated arm is a **directed approach, not incidental contact** — the render precondition is now closed. The creature stays upright, walks, and the ball goes from centered-and-distant to large-and-adjacent; 4 of 6 episodes drive the blob toward eye-center, including the extreme case (−0.97 → +0.20, crossing center with slight overshoot). That's the same signature as the intact arm.
+    [→ tool: Bash]
+    [→ tool: Read]
+    [→ tool: Bash]
+Both seed evals are still running (240 episodes each — 120 sighted plus 120 blind), and a waiter will wake me when they land.
+
+**Where the three follow-ups stand:**
+
+The **replication** is most of the way there. Both seeds trained cleanly to 300K with no instability, and the reward curves — which this line of runs has never had before the `Monitor` fix — are near-identical: from −19.5 and −10.2 at the start up to a plateau at ~17.4 by roughly 40K steps, then flat. That consistency across two independent seeds is itself corroborating, and it explains `vbear_s0`'s early plateau: with bearing already present in the frozen encoder, the head has very little to learn. The eval numbers that actually settle replication are pending.
+
+The **isolating control against Phase V** is done and came back opposite to the attractive hypothesis. Phase V is corroborated, not overturned, and the probe I'd relied on turned out to be nearly saturated — both corrections are committed and pushed.
+
+The **proprio arm** is done and its precondition is now closed: I rendered it and it's a genuine directed approach, not thrashing into the ball. But the verdict stands that it doesn't test Taylor — the frozen gait kept real proprioception the whole time, and the channel we scrambled had no direction information in it to remove. That one needs a different apparatus, and possibly can't be settled with this body, since corrupting the gait's proprioception would likely just topple the walker.
+
+One thing worth flagging about how this session went: the two most important things I learned today both came from something checking my work rather than from the experiment itself. The oracle caught that a "harder" threshold was actually impossible, and the workflow's skeptics caught that my headline preflight number was measured against a floor of zero when the real floor was 0.92. Both were claims I'd already written down as findings. The pattern is that the errors weren't in the runs — they were in the rulers.
+
+======================================================================
+USER:
+======================================================================
+Stop hook feedback:
+[python3 export_transcript.py >/dev/null 2>&1]: No stderr output
+
+======================================================================
+CLAUDE:
+======================================================================
+Transcript export ran clean. Checking the pending seed evals:
+    [→ tool: Bash]
+    [→ tool: Bash]
+Something's off — the log files don't exist. Let me find out where they went:
+    [→ tool: Bash]
+My shell's working directory had drifted into `alien_baby/` from an earlier command, so I was looking in the wrong place. The evals are fine — seed 1 is complete, seed 2 just started:
+    [→ tool: Bash]
+Seed 1 is a genuinely mixed result, and it's about the **instrument**, not the creature. Let me get seed 2 before interpreting:
+    [→ tool: Bash]
+Seed 1 raises a real problem I need to flag before seed 2 lands, because it will shape how I read it.
+
+**The behavior replicates; the headline instrument does not.** Seed 1 reaches the ball 98.3% sighted versus 6.7% blind — a gap just as decisive as seed 0's. But the metric I put in the verdict line, R² on the *first* commanded turn, came in at **+0.168** against seed 0's +0.517, below the 0.30 bar, so the script printed "VISION SETS DIRECTION: NO."
+
+That is not the creature failing. It's the first-step readout being fragile: the 5-step version gives **+0.760 for seed 1 against +0.807 for seed 0** — nearly identical, well over threshold, correct slope. So the turn does track the ball's bearing; it just doesn't do so reliably within the single first command, presumably because the creature takes a step or two to commit.
+
+I want to be careful here, because there's an obvious trap: having seen the data, switching to whichever metric gives the answer I want is exactly how a result gets manufactured. Two things keep this legitimate, and I'll state both in the writeup. The 5-step measure was written into the eval script from the start as a declared robustness check, not invented after the fact. And I'd already logged instrument instability as a caveat before this run, when a 6-episode sample gave 0.349 against the 120-episode 0.517 — seed 1 is the second independent sighting of the same weakness, which makes it a real property of the instrument rather than a convenient excuse.
+
+The honest reading so far is that the *finding* survives replication and the *measurement* needs replacing. I'll confirm against seed 2, then correct the instrument's pass criterion in the eval script and the FINDINGS entry — flagging plainly that the criterion changed after seeing seed 1, and why.
+
+======================================================================
+USER:
+======================================================================
+<task-notification>
+<task-id>ba8hgjdvw</task-id>
+<tool-use-id>toolu_01AHEW67hoss2SYTph9wF19z</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-davidwolpe-Documents-DataScience-dev-ai-experiments/6abf9666-4fa9-4d69-aa58-6dbecdc06d82/tasks/ba8hgjdvw.output</output-file>
+<status>completed</status>
+<summary>Background command "Eval both replication seeds" completed (exit code 0)</summary>
+</task-notification>
+
+======================================================================
+CLAUDE:
+======================================================================
+    [→ tool: Bash]
+All three seeds are in. Before I touch the pass criterion, I need to run the control that licenses doing so — otherwise I'm just picking the metric that gives the answer I want.
+
+| seed | sighted | blind | R²(first turn) | R²(mean turn5) | slope5 |
+|---|---|---|---|---|---|
+| s0 | 100.0% | 0.8% | **+0.517** | +0.807 | +0.61 |
+| s1 | 98.3% | 6.7% | **+0.168** | +0.760 | +0.53 |
+| s2 | 100.0% | 9.2% | **+0.392** | +0.786 | +0.52 |
+
+The behavior replicates 3/3. The 5-step readout replicates tightly (spread 0.047). The first-step readout swings across a 0.349 range — it's the unreliable one. But the *reason* I chose first-step was to dodge a mechanical confound: turning toward the ball shrinks its bearing, so turn and bearing co-vary by geometry. If that confound is what's inflating the 5-step number, switching to it would be exactly wrong.
+    [→ tool: Bash]
+My own control statistic was buggy — "retains 195%" is nonsense produced by averaging ratios with near-zero denominators. The real numbers: mean |bearing| falls 0.557 → 0.376 over 5 steps and flips sign in ~22% of episodes. But thinking it through, that doesn't actually create the confound I feared, and I should check rather than assert:
+    [→ tool: Bash]
+That's the clean answer, and it licenses the change. **Per-step R² rises to a peak at step 2–3 then *falls* (s0: 0.530 → 0.598 → 0.600 → 0.365 → 0.257).** A geometry confound would do the opposite — grow with step index as the creature homes in. The decay is what you expect as the reset bearing becomes a staler predictor. Meanwhile the cumulative average climbs monotonically, which is the signature of pure variance reduction.
+
+And step 1 is the low outlier in all three seeds. It's the noisiest possible sample — one action taken from the reset state while the body is still settling.
+    [→ tool: Edit]
+    [→ tool: Edit]
+    [→ tool: Bash]
+Seed 1 now reads correctly. Writing the replication into the record:
+    [→ tool: Bash]
+    [→ tool: Bash]
+All three follow-ups are done and pushed to `exp/spatial-bearing-test`.
+
+## Three-seed replication passes — but the instrument was the fragile part
+
+The behavior replicates cleanly across all three seeds: reaching the ball 98.3–100% of the time with eyes, 0.8–9.2% with static. That gap is decisive in every seed.
+
+What didn't replicate was **my headline measurement**. The first-commanded-turn R² came in at 0.517, 0.168, 0.392 — a spread of 0.349. On seed 1 it dropped below the pass bar and the eval printed "VISION SETS DIRECTION: **NO**" for a run whose behavior (98.3% vs 6.7%) is every bit as strong as the others. Meanwhile the 5-step version was rock-steady: 0.807, 0.760, 0.786, a spread of 0.047.
+
+So I changed the pass criterion to the 5-step measure — and because I decided that *after* seeing seed 1, I ran the controls that license it rather than just asserting it, and wrote the whole reasoning into the docs. The original worry was a mechanical confound: turning toward the ball shrinks its bearing, so the two co-vary by geometry. It doesn't apply here, for three measured reasons. The regression is against the bearing *at reset* — a constant fixed before any movement — so it isn't circular. Per-step R² **rises to a peak at step 2–3 then falls** (.530, .598, .600, .365, .257), whereas a geometry confound predicts the opposite, growth as the creature homes in. And the blind arm's 5-step R² is ~0.00 in all three seeds, so the dynamics alone generate nothing. The first turn is simply the noisiest sample available — one action taken while the body is still settling — and it's the low outlier in every seed.
+
+## The through-line of the session
+
+Every significant thing I learned today came from checking a ruler, not from running an experiment. The oracle caught that a "harder" contact threshold was physically impossible. The workflow's skeptics caught that my 0.996 preflight number was measured against an implied floor of zero when raw pixels alone score 0.919. And seed 1 caught that the metric in my verdict line swings by 0.35 across seeds. In all three cases the underlying finding survived — vision really does set direction here, reactively — but the number I'd used to demonstrate it was wrong or fragile.
+
+Also worth noting: the `Monitor` fix means these are the first runs in this line with a real reward curve, and both seeds show the same shape — failing at the start, then a plateau at ~17.4 by roughly 40K steps. That confirms mechanistically what the preflight implied: with bearing already in the frozen encoder, the head has almost nothing to learn, which is exactly why this result is weaker evidence about *learning* than about *use*.
+
+The open question that survives all of it is still the one the theory-monitor named: our positive direction results have only ever come from handing the policy a pre-verified frozen map. Whether reward alone can grow one remains untested.
+
+======================================================================
+USER:
+======================================================================
+I mostly don't understand what's going on here. Where are the videos I can look at? <<with the bearing already sitting in the frozen encoder, the head only has to learn a near-linear map, so there's very little to learn and it's learned almost immediately.>> What we're saying here is that if you point it toward the target and say, "Go" that it goes straight to the target?
+
+======================================================================
+CLAUDE:
+======================================================================
+Fair — I've been burying you in jargon. Let me answer both plainly.
+    [→ tool: Bash]
+**The videos are in `/Users/davidwolpe/Documents/DataScience/dev/ai_experiments/scratch_render/`.** Today's is `vbear_s0_bearing.mp4` — but it's only ~4 seconds and honestly not very legible. Let me answer your question first, then build you one that actually shows the thing.
+
+**No — "point it at the target and say go" is not what happens, but your instinct that this is simpler than it sounds is right.**
+
+The ball is deliberately placed *off to the side* — up to 52° away from where the creature is facing. So it is not pointed at the target. It has to turn to find it. A creature that just walks forward without turning only wins 30% of the time; this one wins ~100%.
+
+What I meant by "near-linear map" is this. There are two separate abilities involved:
+
+1. **Seeing where the ball is in the picture** — "there's a red blob, it's over on the left."
+2. **Deciding what to do about it** — "so turn left, and turn about this much."
+
+Ability 1 was **not learned in this experiment.** It came pre-installed in the transplanted eyes, and my preflight measured that it was already there before any training started. Ability 2 is what the 300K steps actually taught, and it turns out to be a very simple rule: *turn in proportion to how far off-center the ball is.* Like steering a car toward something you can see. That's why the reward curve flattens after about 40K of 300K steps — there wasn't much to learn.
+
+So the honest summary: **the creature genuinely uses its eyes to decide which way to turn, and that's real.** Blind it and it fails almost completely. But the hard part — actually seeing where things are — was handed to it, and the part it learned is about as simple a rule as you can have. That's why I keep hedging: it's a real result about *using* vision, and a much weaker result about *learning* to see.
+
+Let me make you a video where this is actually visible:
+    [→ tool: Bash]
+    [→ tool: Bash]
+    [→ tool: Bash]
+    [→ tool: Read]
+    [→ tool: Read]

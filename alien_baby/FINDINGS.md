@@ -3848,3 +3848,37 @@ slope +0.50.
 
 **Net:** three-seed replication PASSES. The 2026-07-20 headline stands, with the caveat that its
 originally-reported instrument was the wrong one and has been replaced.
+
+### CORRECTION 2026-07-20 (David) — "the hard part was handed over" is the WRONG framing. Both halves were LEARNED.
+
+I repeatedly wrote that this result "answers 'can a policy USE a good map it is handed?' but not 'can
+the objective PRODUCE one?'", treating the frozen transplant as a deflating caveat. David corrected
+it, and the correction is right: **the earlier crawler LEARNED the bearing representation. We did not
+supply it.** The two-stage structure is the intended design (see the REUSE-FIRST mandate in CLAUDE.md:
+never discard a learned vision encoder that can be TRANSPLANTED instead of retrained), not a shortcut:
+
+  Stage 1 — the CRAWLER learned "where is the ball in my visual field"
+            (`mildhead_vis_s0`, trained with a bearing readout on the cross-modal seen-vs-contacted
+            mismatch signal — a body that could touch but barely locomote).
+  Stage 2 — the WALKER learned "what to DO about that"
+            (`vbear_s0/s1/s2`, turn in proportion to the seen offset — a body that can actually go).
+  The transplant is what joins them. Both halves were learned by a creature in this project.
+
+**And today's own controls show stage 1 was real and non-trivial**, which is the part that makes the
+framing matter. On the architecture-matched probe run this session, mildhead is the ONLY encoder above
+its random floor (0.997 vs 0.762). The encoders trained under reward+MICOA are NOT: R43 sits at its
+floor (0.828 vs 0.807–0.841) and below it in the narrow cone; R49 (0.905) sits below the no-network
+raw-pixel baseline (0.919). So most of this project's encoders tried to acquire visual direction and
+did not. mildhead did. That is a learning result, not a gift.
+
+**What the open question actually is, stated correctly.** Not "can anything here learn to see
+direction" — the crawler did. The sharper and more useful question is **WHICH LEARNING SIGNAL grows
+it**: the cross-modal mismatch / bearing-readout signal that produced mildhead SUCCEEDED, while
+task-reward-plus-MICOA (R43, R49) FAILED on the same capability. That is a finding about what makes
+vision grow, and it lines up with the field's distil-then-RL hierarchy (lit-scout, 2026-07-20:
+privileged-teacher→student distillation is more reliable than hoping reward discovers it). It also
+retro-explains Phase V: those encoders were not merely un-recruited, they were measurably empty of
+direction, and the signal they were trained under is the one that does not work.
+
+Supersedes the deflationary sentences in the 2026-07-20 entry and ADDENDUM. The narrow caveat that
+survives: reward alone has not been shown to grow this — the cross-modal signal is what did.
