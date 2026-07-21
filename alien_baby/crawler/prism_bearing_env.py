@@ -42,6 +42,8 @@ HONEST LIMITS, both recorded because they bound what may be claimed:
 import numpy as np, mujoco
 from alien_baby.crawler.train_vision_steer import VisionSteerEnv, CAM, PROP
 
+PROP_CUE = PROP + 1   # proprio block WITH the binary prism-on cue; pass this as proprio_dim
+
 
 class PrismBearingEnv(VisionSteerEnv):
     """VisionSteerEnv + gaze-relative prism + acted/seen-only bands + fixed-length episodes."""
@@ -94,7 +96,10 @@ class PrismBearingEnv(VisionSteerEnv):
     def _obs(self):
         o = super()._obs()
         if self.prism_cue:
-            o = np.concatenate([o, [1.0 if self._lens_on else 0.0]]).astype(np.float32)
+            # The cue MUST sit inside the proprio block (before the pixels), not at the end:
+            # StereoCrawlerCNN slices pixels as obs[:, proprio_total:], so a trailing element would
+            # be read as image data and corrupt the reshape. Consumers pass proprio_dim=PROP_CUE.
+            o = np.concatenate([o[:PROP], [1.0 if self._lens_on else 0.0], o[PROP:]]).astype(np.float32)
         return o
 
     # ---------------------------------------------------------------- episode
@@ -115,6 +120,7 @@ class PrismBearingEnv(VisionSteerEnv):
         mujoco.mj_forward(self.model, self.data)
         self.band = sign                                  # +1 left, -1 right
         self.actable = (sign == self.acted_band)          # contact ENABLED only in the acted band
+        self._touched_ep = False                          # LATCH: see step()
         self.t = 0; self.prev = self._dist()
         return self._obs(), {}
 
@@ -125,8 +131,14 @@ class PrismBearingEnv(VisionSteerEnv):
         # by construction. In the SEEN-ONLY band contact is disabled outright -- the ball is visible
         # for exactly as long, and simply cannot be acted upon.
         reached = bool(info["red"]) and self.actable
+        # LATCH the touch for the rest of the episode. Episodes are fixed-length, so contact happens
+        # mid-episode and the creature then walks on past; MismatchAuxCallback only inspects the flag
+        # on the TERMINAL step, so an unlatched flag reads False by then and the episode is silently
+        # discarded. That produced mismatch/n_samples = 0 -- the aux never fired at all, i.e. a VOID
+        # run that would have looked like "the eye did not realign." Caught in the smoke test.
+        self._touched_ep = self._touched_ep or reached
         info = {**info, "red": reached,
-                "touched_ball1": reached,
+                "touched_ball1": self._touched_ep,
                 "ball1_bearing": self.gaze_bearing_true(),
                 "band": self.band, "actable": self.actable, "lens_on": self._lens_on}
         term = False
