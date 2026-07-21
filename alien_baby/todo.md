@@ -778,8 +778,8 @@ carry the ball's DIRECTION, not just its color? Phase V said direction was the t
 - [ ] 5. New eval `eval_vsteer_bearing.py`: sighted vs FAIR blind (NOISE pixels, not zeros);
         contact%; INSTRUMENT CHECK R²(true bearing → turn/heading): sighted HIGH, blind LOW.
 - [x] 6. Fix known caveat: make NOISE the standard blind in eval_vsteer_choice.py.
-- [ ] 7. Render + WATCH episodes of the exact eval config (render-every-experiment rule).
-- [ ] 8. theory-monitor independent verdict, then FINDINGS.md + THEORY_LOG.md entries (plain
+- [x] 7. Render + WATCH episodes of the exact eval config (render-every-experiment rule).
+- [x] 8. theory-monitor independent verdict, then FINDINGS.md + THEORY_LOG.md entries (plain
         English, Taylor tie-in), glossary if new terms.
 Expected per Phase V: this may FAIL (vision non-directional). If so, the identified fix is the
 auxiliary "where's-the-ball" decode loss on the encoder — escalate to that, not to reward tweaks.

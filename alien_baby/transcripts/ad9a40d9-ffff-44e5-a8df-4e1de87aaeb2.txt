@@ -3453,3 +3453,61 @@ First, confirm nothing's mid-flight that would be lost:
     [→ tool: Bash]
 Nothing's running, all key models are on disk — clean to close. Now the handoff doc, which is the thing the new session will actually read to continue. Writing it with today's state plus a precise spec for the spatial-bearing test so the next session doesn't re-derive anything:
     [→ tool: Write]
+Handoff doc written. Now the direct answer to "what do you need from me":
+
+**Content-wise, almost nothing** — everything the next session needs is now on disk, which is the only thing that survives a session boundary:
+- `alien_baby/CHECKPOINT_2026_07_20.md` — today's state + a precise spec for the spatial-bearing test.
+- `FINDINGS.md` (2026-07-20 entry), `GLOSSARY.md` (`cmd`), `CLAUDE.md` (the new hypothesis-gate rule).
+- All frozen models (`ant_gait_v10_best`, `vsteer_v10_best`, the crawler eyes) are on disk and persist across sessions on this machine.
+
+**The one decision I actually need from you: should I commit this session's work to git?** There's a lot of uncommitted change on the branch (`exp/decoy-shape-generalization`), and my standing rule is to commit only when you ask. Committing now cleanly preserves the code + docs before you close; skipping it leaves the files on disk but uncommitted. I'd recommend committing.
+
+**Two things for you to do (both quick):**
+1. If you capture the conversation by copy-paste (per our setup), grab this transcript now — the session record isn't saved automatically.
+2. To start fresh: open a new Claude Code session in this repo and say — *"Continue AB — do the spatial-bearing test per alien_baby/CHECKPOINT_2026_07_20.md."* CLAUDE.md auto-loads, and that doc has the rest.
+
+Want me to commit the work to git before you close? If yes, I'll branch/commit with a descriptive message and report the hash.
+
+======================================================================
+USER:
+======================================================================
+Yes, please  commit. But what do you mean 'the session record isn't saved automatically?' It is. Also before I forget -- did we train the creature with the prism lens bit?
+
+======================================================================
+CLAUDE:
+======================================================================
+Two corrections/answers first, then I'll commit.
+
+**You're right — I was wrong about the session record.** It IS saved automatically; the transcript is captured (and you've got `export_transcript.py` + `transcripts/` set up now). My "copy-paste it or lose it" line was stale — it came from the older note in CLAUDE.md, which predates that tooling. Nothing for you to do there.
+
+**On the prism lens bit — no, we did not, and correctly so.** Today's work had no prism, no lens, no ghost objects anywhere — the creature was just walking to a real ball it actually sees (color choice). The "prism-on" bit is required *only* when the lens is displacing what AB sees (untouchable ghosts); with no lens active, there's nothing to signal, so it wasn't added and shouldn't have been. But the important forward-looking point: **the walker's `VisionSteerEnv` has no prism-on bit in its observation at all yet** — its obs is just proprioception + pixels. So when we bring the prism/grounding north-star work onto this walking body, adding that bit is a required setup step. I've noted it; it belongs in the prism-on-walker plan, not today's reach task.
+
+Now the commit — let me see the tree state first:
+    [→ tool: Bash]
+Clean and focused — today's files. Let me see the complete list (no truncation) to make sure I commit the right set:
+    [→ tool: Bash]
+That's exactly today's work — a clean set. Committing it on the current feature branch (not main) with a descriptive message:
+    [→ tool: Bash]
+Committed. You're set to close.
+
+- **Commit:** `9c3f4b2` on branch `exp/decoy-shape-generalization` — *"Working walker + first clean vision-load-bearing result (color choice)."*
+- **Working tree is clean** — everything from today (code, docs, checkpoint, glossary, the CLAUDE.md rule, transcripts) is saved.
+- **Local commit only** — I didn't push, since you asked to commit, not push. Say the word if you want it pushed to the remote.
+- Frozen models (`ant_gait_v10_best`, `vsteer_v10_best`) live in the gitignored `results/` and stay on disk across sessions.
+
+**To start the new session:** open a fresh Claude Code session in this repo and say —
+*"Continue AB — do the spatial-bearing test per alien_baby/CHECKPOINT_2026_07_20.md."*
+
+That doc has the full handoff: today's result, the key files/models, the known caveats (use the noise blind, not hard-zero), and the precise spec for the spatial-bearing test — including the instrument-validation requirement (sighted-R² high / blind-R² low on true-bearing vs heading), since reaching a single target alone can be a motor habit rather than vision-driven steering. It also carries the note that the walker's env has no prism-on bit yet, for whenever the prism work comes to this body.
+
+Good session — from "the creature can't even walk" to a verified, independently-checked result that its vision drives what it does.
+
+======================================================================
+USER:
+======================================================================
+Push it to the remote please!
+
+======================================================================
+CLAUDE:
+======================================================================
+    [→ tool: Bash]

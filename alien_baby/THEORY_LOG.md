@@ -1958,3 +1958,67 @@ plot aux_loss over the full 300K steps for at least one arm already in hand to c
 is genuinely flat rather than slowly trending — both are free re-analyses of data already on disk.
 
 ---
+
+---
+
+## 2026-07-20 — Spatial bearing PASSES, but it is reactive servoing and it does NOT overturn Phase V (independent Theory Monitor verdict)
+
+**Result under review:** `vbear_s0`. Walker + frozen gait + transplanted frozen crawler eyes, one ball
+at a random bearing ±0.9 rad. Sighted contact 100/120 bins-uniform vs blind 0.8%; R²(true gaze bearing
+→ first commanded turn) sighted +0.517 / blind +0.006, slope +0.58; R²(→mean turn over 5) +0.807.
+Preflight: frozen-trunk bearing probe R²=0.996; oracle ceiling 100%; motor-habit floor 30%.
+
+**Verdict: CONFIRMS an already-recorded hypothesis; does NOT constitute an independent overturn of the
+Phase V "vision is non-directional" finding.**
+
+The monitor's central objection, recorded because it is a correction to the main loop's initial framing:
+versus R43/Phase V, **two variables changed simultaneously** — the body became steerable AND the encoder
+is a different, transplanted, frozen one. Calling this "Phase V overturned" would be a causal claim
+without the control that isolates which variable did the work — the exact failure the project's
+hypothesis-gate rule exists to catch. What it DOES do is confirm the R49 hypothesis already on record
+(2026-06-16): vision inertness was a body/pressure problem — the cart substrate made direction
+behaviourally pointless because AB could not steer. Give it a body that can turn, and direction becomes
+load-bearing. The isolating control, if we want the overturn: run the SAME R43 encoder on a steerable
+body, or the crawler encoder on the cart.
+
+**On the R²=0.996 vs Phase-V lateral R²≈0.01 gap.** The monitor's reading is that this is plausibly in
+large part a MEASUREMENT-FRAME artifact rather than a purely representational difference: R43's decode
+was likely run in a torso/world frame, and per the 2026-07-18 finding the torso frame can sit ~90° from
+functional forward — a probe in the wrong frame reads R²≈0 even when the information is present in the
+gaze frame. Within this run the "any shortfall would be a policy failure, not a representation failure"
+claim IS licensed, because the probe was run in the same gaze frame the whole experiment uses, before
+the head was trained. But the frozen-and-already-competent trunk is a genuine confound on difficulty:
+300K steps only had to learn a map from a near-perfect linear feature to two numbers. **The open question
+this does not touch: can our RL objective ever PRODUCE a bearing representation from scratch, or do our
+positive direction results only ever come from handing the policy a pre-verified frozen map?**
+
+**Reactive vs predictive — resolved, and it constrains the claim.** The monitor named this as the most
+likely uncontrolled alternative to "100% at all bearings": a tight closed-loop visual servo would produce
+the same success, the same R², and the same image-centring, with zero forward prediction. Checked and
+settled two ways. (1) Architecturally: the driver is an `ActorCriticPolicy` with Conv2d/Linear/LayerNorm/
+ReLU/Tanh and **no recurrent state**, so it cannot hold an estimate across steps — servoing is not a
+rival hypothesis, it is the only thing the wiring permits. (2) Empirically, via the monitor's own
+recommended occlusion probe: R²(bearing→turn) = +0.741 at the last sighted step, **+0.000** across 6
+occluded steps, turn-std unchanged at 0.271. Steering is instantly untethered from the target.
+**Standing constraint on language: describe this as closed-loop visual servoing on current retinal
+bearing. No predictive or model-based vocabulary.**
+
+**On Taylor Ch.4 §4.6** ("he perceives his environment but not his own position in it" — vision alone
+never determines the steering action). The blind arm at 0.8% reads as vision being near-necessary, which
+looks like tension but is not: the driver's 9-dim proprio structurally carries no ball-position
+information, so for "which way do I turn" vision is the only channel that could inform it, while
+proprioception still does Taylor's work inside the frozen gait keeping the turn from becoming a fall.
+Taylor's claim is that multiple *informative* channels jointly determine action, not that every channel
+informs every decision. **Flagged as reconciled-but-untested: we have no proprio-ablation arm.**
+
+**Framework scoring.** Behavioral-Prediction: (A) consistency across conditions — weak-to-moderate
+support (100% across three bearing bins, 2.5–4.0 m). (B) recovery from the unexpected — now TESTED and
+NEGATIVE by construction (occlusion → immediate collapse); this is the framework's central want and the
+architecture cannot satisfy it. (C) speed/success correlation — untested. Pattern-Learning: the
+near-perfect LINEAR fit to a CONTINUOUS variable (sin bearing) is decent evidence for a graded,
+distributed code rather than a categorical trigger; robustness to small perturbations untested.
+
+**Carried forward as open:** (1) three-seed replication before this mechanism is trusted (R20→R22/R23
+precedent); (2) the isolating control against Phase V; (3) whether reward alone can grow a bearing
+representation without a transplanted frozen encoder; (4) a proprio-ablation arm for the Taylor claim;
+(5) instrument-tightness flag — a 6-episode run gave R² 0.349/slope +0.07 vs the n=120 run's 0.517/+0.58.

@@ -3593,3 +3593,132 @@ standard control. (3) The real open question is unchanged: does vision encode SP
 a SINGLE target by its direction), not just categorical color? That is the Phase V gap and the next
 test. (4) Then: the walker into the Greek room (occlusion forces move-to-see), and eventually the
 prism/grounding north star on the mobile body.
+
+---
+
+## 2026-07-20 — SPATIAL BEARING: the walker steers by WHERE it sees the ball, not just WHAT colour it is (vbear_s0)
+
+### In plain English, first
+Yesterday's win showed the creature could tell red from blue and go to the red one. That is knowing
+*what* a thing is. It does not show the creature knows *where* the thing is. This run tested the
+harder thing: put ONE ball somewhere off to the side, and see whether the creature turns the correct
+way to get it. There is no colour to go on — the only way to succeed is to see which direction the
+ball is in.
+
+**It worked, and it worked at every angle.** With its eyes open the creature reached the ball in
+120 out of 120 tries, including the widest angles we tested. With its eyes fed meaningless static it
+reached the ball once in 120. And the amount it turned tracked how far off to the side the ball
+actually was — turn a little for a ball slightly off-centre, turn a lot for one near the edge of
+vision. We watched it do this: in the most extreme case the ball started at the very edge of the
+creature's own eye view and it swung around until the ball sat dead centre.
+
+**What this is NOT.** The creature is not remembering the ball or predicting where it will be. Its
+brain has no memory between moments — it is wired as a pure "look now, turn now" loop. We confirmed
+this by covering its eyes mid-approach: the steering fell apart instantly and completely. So the
+right description is *it steers toward what it can see right now*, which is real seeing-for-action,
+but is not yet anything like holding a picture of the world in mind.
+
+### The setup
+Quadruped walker, frozen `ant_gait_v10` legs. High-level driver reads 9 proprio + stereo 32×32 eyes,
+outputs `[fwd, turn]`. ONE red ball at a random bearing in ±0.9 rad of MEASURED gaze-forward,
+2.5–4.0 m, ball in view at 100% of resets (measured, not assumed); blue decoy parked at [50,−50].
+Contact at 1.0 m. Vision = crawler `mildhead_vis_s0` encoder transplanted, conv trunk FROZEN, head
+only retrained. 300K PPO, single seed. Code: `train_vision_steer.py --single-ball`,
+`eval_vsteer_bearing.py`, `preflight_bearing.py`, `probe_occlusion.py`.
+
+### Preflight — three things measured BEFORE compute, two of which changed the experiment
+1. **The frozen eyes already carried direction: held-out R² = 0.996** (ridge, frozen conv-trunk
+   latent → sin(true gaze bearing), n=2000). The prior was pessimistic (a comparable crawler encoder
+   measured lateral R² = 0.010, chance). Consequence: a steering failure here would have been a
+   POLICY failure, not a REPRESENTATION failure — the fork resolved in advance.
+2. **reach = 0.75 m is UNWINNABLE.** A scripted perfect-vision oracle scores 0% there: the ball
+   (r=0.5, density 3 = light) gets punted, flooring closest approach at ~0.93 m. At 1.0 m the oracle
+   scores 100%. The proposed "make it harder" threshold was an impossibility in disguise (winnability
+   rule). Caught only because the oracle was run.
+3. **`cmd_turn = 0` is NOT "straight ahead":** the v10 gait drifts +77°..+112° left per episode. The
+   first floor measurement (0%) was therefore an artifact. The honest motor-habit floor is the best
+   FIXED turn = **30%**. Oracle ceiling 100%. So the detection window is 30% → 100%.
+
+### Result (n=120, sighted vs FAIR blind = uniform noise pixels, matched episode seeds)
+Durable log: `scratch_render/vbear_s0_eval_n120.log` (reproduced exactly on a second run).
+
+| | contact | R²(bearing→first turn) | slope | R²(→mean turn5) | turn-std |
+|---|---|---|---|---|---|
+| SIGHTED | **100.0%** | **+0.517** | +0.58 | +0.807 | 0.448 |
+| BLIND (noise) | **0.8%** | +0.006 | +0.03 | +0.002 | 0.202 |
+
+Contact 100% in every bearing bin (0–0.3 n=38; 0.3–0.6 n=42; 0.6–1.1 n=40). The instrument check the
+project requires — sighted R² high, blind R² low, correct slope sign — PASSES on all four conditions.
+
+Blind turn-std 0.202 confirms the FAIR blind worked: the policy keeps varying rather than collapsing
+to a fixed action, so this is a real chance floor and not the OOD artifact that zeroed pixels produce.
+Note blind contact (0.8%) sits BELOW the 30% motor-habit floor; that is not an anomaly — the blind
+policy produces noise-conditioned swinging rather than committing to the single best fixed turn.
+
+### Behaviour, watched (render rule)
+`describe_video.py` failed in this environment (both the Gemini and Claude fallbacks are missing SDKs),
+so it was NOT relied on. Instead: 12 frames read directly (upright standing quadruped, real gait, ball
+growing in the eye view — not a ragdoll), plus a quantitative trace of the red blob's horizontal
+position in the creature's OWN eye image. It drives the ball toward eye-centre in **7/10** episodes;
+most extreme case bearing +0.96 rad, blob −0.97 (image edge) → −0.06 (centre). The 3 non-centring
+episodes all occur AT CONTACT, where the ball is 1 m away and subtends a huge angle so the centroid is
+unstable — a proximity artifact, not a steering failure.
+
+### The occlusion probe — this is REACTIVE servoing, and the writeup says so
+The driver is an SB3 `ActorCriticPolicy`: Conv2d/Linear/LayerNorm/ReLU/Tanh, **no LSTM/GRU, no
+recurrent state**. It cannot hold an estimate across steps. Confirmed empirically (`probe_occlusion.py`,
+40 eps, vision replaced with noise for 6 steps once d<2.2 m):
+
+- last sighted step: R²(true bearing → turn) = **+0.741**
+- during occlusion:  R²(last-seen bearing → turn) = **+0.000**, turn-std unchanged at 0.271
+
+So the creature keeps moving but is instantly untethered from the target. **Claim accordingly: this is
+closed-loop visual servoing on current retinal bearing — genuinely vision-driven direction, with NO
+predictive or model-based component.**
+
+### CAVEATS — read before citing this
+- **Single seed, n=120.** Project precedent (R20→R22/R23) required three seeds before trusting a
+  mechanism this clean. Not yet done.
+- **This does NOT cleanly overturn Phase V's "vision is non-directional."** Two variables changed at
+  once versus R43: the body became steerable AND the encoder is a different, transplanted, frozen one.
+  Attributing the change to either alone is a causal claim without the isolating control — exactly what
+  the hypothesis-gate rule forbids. The honest framing: this CONFIRMS the already-recorded R49
+  hypothesis (2026-06-16) that vision inertness was a body/pressure problem, not proof that vision
+  cannot encode direction. To actually overturn Phase V, run the SAME R43 encoder on a steerable body.
+- **The trunk was frozen and already competent (R² 0.996).** The 300K steps only had to learn a map
+  from a near-perfect linear feature to two numbers. This answers "can a policy USE a good map it is
+  handed?" — it does NOT answer "can our RL objective ever PRODUCE one from scratch?", which is the
+  harder question Phase V was asking and which remains OPEN.
+- **Instrument stability:** a 6-episode render run gave sighted R² 0.349 / slope +0.07 against the
+  n=120 run's 0.517 / +0.58. Small-sample noise is the likely cause, but that is a large swing and is
+  logged as a mild flag on instrument tightness.
+- **No proprio-ablation arm.** We ablated vision but never proprioception, so Taylor's joint-determination
+  claim (below) is made plausible here, not tested.
+- **No `ep_rew_mean` was logged** for this run or for vsteer_v10 before it: `train_vision_steer.py`
+  builds its `DummyVecEnv` without SB3's `Monitor` wrapper, so episode returns are never recorded. Only
+  `EvalCallback` scores exist (16.50 @80K → 16.83 @160K best → 16.68 @240K, flat from 80K). Two-line
+  fix, pending.
+
+### Taylor, in plain English
+Taylor (Ch.6 §6.4) says getting to a seen thing is three separate learned responses, and the FIRST is
+"turn your body until the thing is in your line of advance." That is precisely what the blob-centring
+trace measures, and the creature does it. Ch.6 §6.7 adds an ordering prediction: direction is learned
+BEFORE distance, and distance is "virtually impossible" without it — which retro-frames Phase V, where
+we got a clean distance law while vision was non-directional, as having been built in the wrong order.
+
+The sharpest caveat is Ch.4 §4.6 — *"he perceives his environment but not his own position in it."*
+Taylor predicts vision ALONE can never determine a steering action; it is necessarily joint with
+proprioception. Our blind arm collapsing to 0.8% looks like vision is near-NECESSARY, which reads as
+tension. It is not, and the reconciliation matters: the driver's 9-dim proprio structurally carries NO
+ball-position information, so for the specific decision "which way do I turn," vision is the only
+channel that could inform it. Proprioception is still doing Taylor's job — it is what the frozen gait
+uses to keep the turn from becoming a fall. Testing that properly needs a proprio-ablation arm we have
+not run.
+
+### Independent verification
+theory-monitor and results-analyst both ran before this entry was written. results-analyst confirmed
+every log-checkable number, confirmed NO ball-position leak in the observation (obs = 9 proprio +
+pixels; ball qpos never enters), and found that `std` fell 0.998→0.825 with entropy tracking it while
+the eval score sat flat from 80K. theory-monitor's verdict is recorded in THEORY_LOG.md, and its two
+substantive challenges — the two-variables-at-once confound and the reactive-vs-predictive question —
+are carried into the caveats above; the occlusion probe was run at its recommendation.
