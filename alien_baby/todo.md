@@ -1014,3 +1014,41 @@ Do not write "fails in humans."
 realignment stay in the acted region), not NECESSITY. But it changes how the `clamp` arm reads: if
 clamp realigns, that is evidence about OUR creature, and must NOT be presented as "confirming the
 human literature that movement is unnecessary," because that literature does not cleanly say so.
+
+### RESULT: THE THREE-ARM PRISM RUN IS **VOID** (2026-07-20) — frame mismatch, my design error
+
+Raw eval output (do not cite these as findings):
+  prism_act_s0    ACTED -2.91 deg / SEEN-ONLY -3.76 deg   ("realigned 123%/130%")
+  prism_clamp_s0  ACTED -2.30 deg / SEEN-ONLY -0.11 deg   ("realigned 118%/101%")
+  prism_none_s0   ACTED -108.20 deg / SEEN-ONLY -77.73 deg
+
+**The `none` control is what exposed it, which is exactly what it was for.** With no aux the eye
+CANNOT change, so a sound instrument must read the full lens offset (+12.6 deg). It read -108 deg.
+When the control reports something impossible, the instrument is wrong, not the creature.
+
+**Diagnosis (measured, not guessed).** The UNTRAINED transplanted mildhead head, evaluated on the
+walker: est-minus-TRUE = **-85.0 deg**, est-minus-SEEN = **-95.3 deg**. It should read ~0 against SEEN
+if it spoke our frame. It does not, because **mildhead's bearing head was trained to output in the
+CRAWLER'S BODY/TORSO frame** (see `_ball1_ego_bearing`'s own docstring, and the 2026-07-12 matched-step
+result that chose the body frame deliberately), and the torso frame sits ~90 deg from functional
+forward — the precise hazard the CLAUDE.md GAZE section documents.
+
+**So what the arms actually learned was FRAME CONVERSION, not prism realignment.** The aux target is
+`gaze_bearing_true()`, so `act`/`clamp` spent the run dragging the readout ~90 deg from the torso frame
+into the eye frame. The 12.6 deg prism shift is a small perturbation riding on a ~90 deg correction and
+is entirely swamped. Their near-zero final biases mean "the head now speaks the eye frame", NOT "the
+eye realigned under the lens."
+
+**MY ERROR, stated plainly: gate P3 passed because it used a DIFFERENT INSTRUMENT than the eval.**
+P3 fitted a fresh ridge probe to the latent; a fitted probe absorbs any constant frame offset, so it
+read ~0.1 deg bias and looked clean. The eval reads the encoder's OWN bearing head, which carries the
+offset. I let a pass on one instrument license the other. **New standing rule: the baseline gate must
+use the IDENTICAL readout the result will be scored with — a probe-validated baseline does not license
+a bearing-head-scored result.**
+
+**THE FIX (next run):** add a LENS-OFF PRE-ADAPTATION phase. Train the bearing head to the gaze frame
+with the prism OFF until baseline bias is verified ~0 in BOTH bands *using the bearing head itself*.
+Only then switch the lens on and measure realignment. That also matches the real paradigm: an
+already-calibrated eye, then the glasses go on. Cost: one extra phase, ~15 min.
+Pre-registered gate for the re-run: **bearing-head bias must be within +-2 deg in BOTH bands with the
+lens off before the prism phase starts; if not, do not proceed.**
