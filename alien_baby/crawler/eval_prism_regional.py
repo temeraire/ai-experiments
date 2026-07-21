@@ -51,6 +51,17 @@ def main():
     p.add_argument("--acted-band", type=int, default=1)
     p.add_argument("--episodes", type=int, default=400)
     p.add_argument("--ckpt", default="best_model.zip")
+    # PER-BAND BASELINE SUBTRACTION (2026-07-20). The pre-adaptation phase brought the readout from
+    # ~-85 deg (crawler torso frame) to -2.34 / -3.19 deg, but plateaued there: the first 150K bought
+    # ~82 deg, the second only ~1 deg. That residual is an irreducible systematic bias, not slow
+    # convergence -- most likely because the eye is tilted ~35 deg down, so image-position -> horizontal
+    # bearing is not quite linear and a linear head cannot fully absorb it.
+    # So we report the CHANGE from each band's own lens-off baseline, not the raw bias. This is the
+    # same difference-in-differences discipline the 2026-07-17 aftereffect work required, where the
+    # raw number overstated the effect ~2x. The fallback was named BEFORE this result was seen.
+    # Defaults are the MEASURED baselines of prism_pre2_s0_final (n=161/139, lens off, bearing head).
+    p.add_argument("--baseline-acted", type=float, default=-2.34)
+    p.add_argument("--baseline-seen", type=float, default=-3.19)
     args = p.parse_args()
 
     print("=== PRISM REGIONAL DISSOCIATION ===")
@@ -66,11 +77,16 @@ def main():
         theta = np.median(r[:, 2])
         acted = r[r[:, 0] == args.acted_band]
         seen = r[r[:, 0] == -args.acted_band]
-        ab, sb = np.median(acted[:, 1]), np.median(seen[:, 1])
-        # realignment fraction: 1.0 = fully corrected, 0.0 = untouched
+        # Subtract each band's OWN lens-off baseline, so what is reported is the CHANGE the prism
+        # phase produced, not the residual frame error the pre-adaptation could not remove.
+        ab = np.median(acted[:, 1]) - args.baseline_acted
+        sb = np.median(seen[:, 1]) - args.baseline_seen
+        # Unrealigned => the eye still reports the GHOST, i.e. corrected bias ~ +theta.
+        # Fully realigned => reports the real ball, i.e. ~0.
         fa = 1.0 - ab / theta if abs(theta) > 1e-6 else float("nan")
         fs = 1.0 - sb / theta if abs(theta) > 1e-6 else float("nan")
-        print(f"{tag:18s} effective lens {theta:+5.1f} deg")
+        print(f"{tag:18s} effective lens {theta:+5.1f} deg   "
+              f"(baselines subtracted: acted {args.baseline_acted:+.2f}, seen {args.baseline_seen:+.2f})")
         print(f"    ACTED band     bias {ab:+6.2f} deg   realigned {100*fa:5.1f}%   n={len(acted)}")
         print(f"    SEEN-ONLY band bias {sb:+6.2f} deg   realigned {100*fs:5.1f}%   n={len(seen)}")
         gap = fa - fs
