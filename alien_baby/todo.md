@@ -944,3 +944,40 @@ the same way as the hypothesis, which is the dangerous kind.
   Taylor predicts the bias collapses toward 0 in band L and stays near +theta in band R.
 - The "contact disabled" manipulation is artificial and must be stated plainly as the operationalisation
   of "seen but not acted upon."
+
+### GATE P2 — FAILED FIRST, PASSES AFTER TWO FIXES (2026-07-20)
+Built the apparatus: ghost mocap body added to `quad_walker.xml` (visual-only, contype=0, so it can
+NEVER be touched -- contact always resolves against the real hidden ball, which IS the seen-vs-touched
+discrepancy) and `prism_bearing_env.py` (PrismBearingEnv: gaze-relative lens + acted/seen-only bands +
+fixed-length episodes + binary prism-on cue). Verified `qpos` is still 29, so gait and driver
+checkpoints load byte-identically (mocap bodies carry no qpos).
+
+**First run FAILED, two separate ways — this is why the gate exists:**
+1. **Winnability violation.** At band_hi=0.9 with a 20 deg lens, the ghost was in view in only **72%**
+   of episodes: the band reaches 52 deg and the lens pushes it past the FOV edge. We would have been
+   scoring episodes where the creature physically cannot see the target.
+2. **Sign inverted and magnitude off:** nominal +20 deg measured as **-16.71 deg**. The sign is because
+   camera-frame azimuth grows toward the camera's RIGHT while `gaze_bearing()` (our readout frame, and
+   the ruler's) is positive to the LEFT. The magnitude is because the ghost is placed by CAMERA-frame
+   azimuth while the readout measures in the horizontal plane, and the eye is tilted ~35 deg down --
+   the same frame subtlety the GAZE rule exists for. The manipulation is physically correct (a real
+   prism displaces the RETINAL image); the readout frame simply differs, so the effective offset must
+   be CALIBRATED and reported as measured, never assumed equal to the nominal.
+
+**Calibration (band_hi=0.6):** nominal 10/15/20/25/30 -> measured +8.4/+12.6/+16.7/+20.9/+25.1 deg,
+in-view 100/100/98/87/82%. **Chosen: nominal 15 deg = +12.6 deg effective (sd 0.35), in-view 100%.**
+That is ~12x the ruler's ~1 deg noise floor, so a realignment is comfortably resolvable while
+winnability stays strict.
+
+**P2 final result — PASS:**
+- ghost in view at reset: **100%**
+- ORACLE (steering on the TRUE bearing) reaches the ACTED-band ball: **95%** (n=19) -- a path exists.
+  Not 100%; one episode missed. Acceptable for winnability but worth watching.
+- SEEN-ONLY band ever contacted: **0%** (n=21) -- the manipulation does what it claims.
+- retinal exposure: **60 frames per episode in BOTH bands, matched by construction** (fixed_len). The
+  1140/1260 split is purely how many episodes landed in each band (19 vs 21 of 40), i.e. sampling
+  noise in band assignment, NOT a systematic exposure difference. Can be forced to alternate if wanted.
+
+### ALL FOUR GATES RESOLVED
+P1 PASS (offset formally observable) | P2 PASS after fixes | P3 PASS (baseline bias ~0.1 deg both
+bands) | P4 QUALIFIED (contact-GATED, not contact-DERIVED -- caveat, not a blocker).
