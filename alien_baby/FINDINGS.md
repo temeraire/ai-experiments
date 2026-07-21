@@ -3882,3 +3882,41 @@ direction, and the signal they were trained under is the one that does not work.
 
 Supersedes the deflationary sentences in the 2026-07-20 entry and ADDENDUM. The narrow caveat that
 survives: reward alone has not been shown to grow this — the cross-modal signal is what did.
+
+### CORRECTION 3 (2026-07-20) — the earlier MICOA probe used the WRONG CHECKPOINTS. Conclusion survives; the numbers do not.
+
+**The bug.** The `micoa_candidates` paths I handed the controls workflow (`followon_v8_micoa_*`)
+contain **ZERO** `vision_encoder` tensors — verified: `load_from_zip_file` finds 0 keys matching
+`actor.features_extractor.vision_encoder.`. The real Phase V checkpoints are
+`phase_v_R43_micoa_vision_static_randbox_best` and `phase_xvi_R49_micoa_vision_auxdecode_best`
+(42 tensors each). So the R43/R49 figures previously recorded (0.828 / 0.905) cannot be trusted, and
+the tell was visible in the data: R43 landed *exactly* on the random floor, which is what you get when
+you probe a randomly-initialised network. **This is precisely the silent-`strict=False` trap I briefed
+the workflow agents to avoid, and I walked into it myself by supplying bad paths.**
+
+**Re-run with verified loading (14/14 tensors matched, both encoders), on the new non-saturating
+ruler** (`ruler_check.py`; PCA-32 to equalise readout capacity, sample-starved sweep, median absolute
+angular error in degrees). Median error at n_train=50:
+
+| representation | n=25 | n=50 | n=100 | n=2000 |
+|---|---|---|---|---|
+| **mildhead** (LEARNED via seen-vs-touched) | **1.7°** | **1.4°** | **1.2°** | **1.1°** |
+| R43 mu_v (reward+MICOA) | 22.6° | 10.8° | 7.4° | 6.0° |
+| R49 mu_v (reward+MICOA+aux) | 7.6° | 9.7° | 6.1° | 4.9° |
+| RAW PIXELS, redness/column, NO network | 9.4° | 9.2° | 6.4° | 5.1° |
+| random crawler trunk (mean of 5) | 13.6° | 12.4° | 10.5° | 7.9° |
+| random MICOA trunk (mean of 5) | 16.3° | 12.3° | 10.2° | 8.1° |
+
+**Corrected conclusion — same direction, better evidence.** R43 and R49 ARE modestly better than
+randomly-initialised networks (10.8°/9.7° vs 12.3–12.4°), so the earlier "at or below the random
+floor" claim was too strong and is withdrawn. But they sit **level with the raw-pixel baseline**
+(9.2°): they preserve what the image gives away for free and add essentially nothing. mildhead is
+**6.5× better than the best floor**. Plain English: mildhead's eyes state where the ball is in a form
+readable off 50 examples with one straight line; the reward-trained encoders make you work for what
+the raw picture already told you. Phase V's null therefore stands **corroborated**, and the mechanism
+claim (a seen-vs-touched signal grows explicit direction; task reward does not) is strengthened, not
+weakened, by the corrected numbers.
+
+**Ruler verdict: USABLE.** Separation at n_train=50 is +7.8° (bar was ≥3.0°) and the gap WIDENS as
+samples shrink (5.5×→6.5× going from n=100 to n=50), which is the signature of measuring
+*explicitness* rather than mere preservation. The matched-pair experiment can be scored on this.
