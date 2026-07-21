@@ -808,3 +808,93 @@ fully BLIND agents hit ~95% PointNav, so a sighted agent has no pressure to enco
 field's fix hierarchy is distil-then-RL over aux-loss.
 - [x] 4. RUNNING: vbear_s0, 300K, transplanted+frozen eyes, frozen v10 gait.
 - [x] 5. eval_vsteer_bearing.py written (first-step turn R², fair noise blind, stratified contact).
+
+## 2026-07-20 (evening) — REFRAMED EXPERIMENT: regional dissociation of prism realignment
+
+### The question (reframed after David's Taylor challenge + lit-scout + local-book-agent)
+NOT "does adaptation need movement" — that question is (a) empirically answered NO in humans
+(Wallach/Kravitz/Lindauer 1963; Templeton/Howard/Lowman 1966; Ronchi 2011; Mostafa 2019;
+Morehead 2017 error-clamp), (b) for a PURE displacement provably a THEOREM not a finding (hand-eye
+calibration observability: a fixed camera-to-body offset is unobservable without relative motion,
+Tsai & Lenz 1989), and (c) something Taylor himself refused to score — on Ewert's headrest test he
+said an immobilised subject's results "can tell us virtually nothing." He'd call it a BROKEN
+experiment, not a null.
+
+**THE QUESTION WE CAN ACTUALLY ASK:** when a LEARNED visual encoder realigns under a prism, does the
+realignment stay CONFINED TO THE REGION OF THE VISUAL FIELD THE CREATURE ACTED IN, or does it
+generalise across the whole field?
+
+**Why this one is not a tautology.** Our architecture forces that SOME update happens wherever the
+aux signal exists — that part is our `if` statement. It does NOT force whether that update
+GENERALISES to regions where no aux signal ever fired. A conv trunk shares weights across the image
+and might well realign globally. Taylor predicts local. Both outcomes are genuinely possible, so the
+result is information either way.
+
+**Why it is worth doing at all (novelty, per lit-scout):** every prism study in the psychophysics
+literature assumes an ALREADY-COMPETENT visual system. Whether a *learned* encoder realigns under
+prisms — and how that realignment is distributed over the retina — is a question nobody is asking.
+
+### Taylor's own evidence for the prediction (local-book-agent, Ch.9 Exp II)
+Within a single subject in a single session: the narrow strip of ground he actually WALKED ON
+realigned correctly, while the rest of the visual field stayed wrong. Also the bookcase — he
+straightened the lower part and the top was still curved: "the distortion has to be ironed out bit
+by bit." This is a WITHIN-SUBJECT dissociation, which controls for everything a between-condition
+movement/no-movement comparison cannot.
+
+### Design
+- **Body/loop:** the WALKER, exercising the LOCOMOTION loop, not the reach loop. Redding & Wallace:
+  hall exposure (walking, never touching) realigns VISION; hand-pointing realigns PROPRIOCEPTION.
+  We want VISION to be the thing that moves, and the encoder is the only thing we can measure.
+- **Prism:** gaze-relative +theta (existing `_update_prism_ghost()` infrastructure, per the GAZE rule).
+- **Two balls visible EVERY episode, one per bearing band** (this is the key to the dissociation):
+    ACTED band   — this ball is the target; contact terminates and fires the aux signal.
+    SEEN-ONLY band — equally visible for the whole episode, never approached, never contacted.
+  Equal retinal exposure; only one band is ever acted in. This is the faithful translation of
+  Taylor's "saw the whole field, walked only on the strip."
+- **Training:** MismatchPPO + contact-gated aux (REUSE from train_head_search.py — already written:
+  encoder frozen inside PPO.train so reward can never reshape the eye; separate Adam driven by the
+  seen-vs-contacted loss; `--no-gate-contact` gives the ungated variant for free).
+- **Prism-on cue:** binary flag appended to proprio, per the standing CLAUDE.md rule. AB must know
+  the glasses are on. Taylor: without the cue you get overwrite + aftereffect; with it, dual adaptation.
+
+### Measurement (the ruler now exists and is validated)
+`ruler_check.py`'s probe, but reporting SIGNED bias, computed SEPARATELY per bearing band.
+Unadapted encoder under a +theta prism reads the ball at (true + theta). Fully realigned reads true.
+So realignment = signed bias moving from +theta toward 0. Track per band over training.
+- **Taylor's prediction:** ACTED band realigns; SEEN-ONLY band stays at +theta.
+- **Rival prediction (weight sharing):** both bands realign together.
+
+### Arms
+- A  ACT      : as above. The main run.
+- C  CLAMP    : aux target supplied NON-CONTINGENTLY (fixed angular offset regardless of what the
+                creature did) — Morehead et al. 2017. This is the ONLY design in the literature that
+                breaks the circularity, because "the error exists but movement didn't produce it" is
+                true by construction rather than by accident. If C realigns, the strong movement
+                requirement fails in AB the way it fails in humans.
+- B  YOKED    : identical visual stream replayed, no self-generated action. HELD IN RESERVE and
+                labelled honestly: in our architecture this arm CANNOT realign (no contact -> no aux
+                -> no gradient), so it is a tautology check on the plumbing, NOT evidence about Taylor.
+
+### Preflight gates (run BEFORE any compute — this morning's lesson)
+- [ ] P1. OBSERVABILITY (Tsai & Lenz): verify the creature's actual motion repertoire in this task
+      makes the offset observable (>=2 motions with non-parallel rotation axes). If it does not, the
+      run is unwinnable in the FORMAL sense and must not be scored.
+- [ ] P2. WINNABILITY: oracle reaches the ACTED-band ball 100% under the prism; both balls in view
+      at reset ~100%; SEEN-ONLY ball never contacted (verify, do not assume).
+- [ ] P3. RULER BASELINE: signed bias ~0 in BOTH bands with the prism OFF (pre-registered null).
+- [ ] P4. Confirm the aux label is CONTACT-DERIVED, not read from the ball's qpos. If it reads
+      qpos it is smuggled supervision and Arm A is not testing what we claim.
+
+### Pre-registered falsification
+- Both bands realign equally -> Taylor's regional specificity is FALSE in AB; realignment generalises
+  (plausible given conv weight sharing). Report as such; do not rescue it.
+- Neither band realigns -> check aux sample count FIRST. Zero contacts = apparatus failure (VOID),
+  not evidence.
+- Arm C realigns -> the strong "self-produced movement required" claim fails in AB too, matching the
+  human literature. This would be a clean negative result against Taylor's strong form and MUST be
+  reported as such.
+
+### Framing rule for the writeup
+Any result of the form "AB didn't adapt when it couldn't move" reproduces Held & Hein 1958, which has
+documented replication failures (Templeton 1966; Walk 1988; Zaadnoordijk 2020). It must be written as
+"we reproduce the contested side of a 60-year argument," NEVER as a discovery.
