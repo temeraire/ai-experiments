@@ -1052,3 +1052,56 @@ Only then switch the lens on and measure realignment. That also matches the real
 already-calibrated eye, then the glasses go on. Cost: one extra phase, ~15 min.
 Pre-registered gate for the re-run: **bearing-head bias must be within +-2 deg in BOTH bands with the
 lens off before the prism phase starts; if not, do not proceed.**
+
+---
+
+## REVIEW — session of 2026-07-20/21
+
+### What was delivered
+1. **Spatial-bearing test: PASSED, replicated across 3 seeds.** The walker steers by WHERE it sees the
+   ball. Sighted contact 98.3–100% vs fair-blind 0.8–9.2%. Constrained honestly to REACTIVE
+   closed-loop visual servoing (no recurrent state; occlusion probe R² +0.741 → +0.000), so no
+   predictive/model-based language is used anywhere.
+2. **Prism regional dissociation: strict Taylor locality REFUTED.** A visual region that contributed
+   ZERO training frames (verified 0/106) realigned ~105% anyway. Graded residual recorded as
+   CONFOUNDED, not as a finding.
+3. **A working ruler.** The old bearing probe was saturated (raw pixels alone score R²=0.919). The
+   replacement — PCA-equalised, sample-starved, reported in degrees — separates mildhead (1.4°) from
+   the best floor (9.2°) by 6.5×, and the gap WIDENS as samples shrink, which is the signature of
+   measuring explicitness rather than mere preservation.
+4. **Apparatus:** prism ghost on the walker, PrismBearingEnv, three trainers/evals, a same-readout
+   baseline gate, an occlusion probe, and reward-curve logging (the Monitor wrapper) that this whole
+   line of runs had been missing.
+
+### Errors I made, and what each cost
+- **Wrong checkpoint paths** handed to the controls workflow → R43/R49 measured on RANDOM networks.
+  The tell was in the data (R43 landed exactly on the random floor) and I missed it. This is the exact
+  trap I had briefed the agents to avoid.
+- **Baseline validated with a different instrument than the result was scored with** (fitted probe vs
+  the encoder's own bearing head). A fitted probe absorbs a constant frame offset, so it read 0.1° and
+  looked clean while the real readout was ~90° out of frame. **Cost: one entire 3-arm run, VOID.**
+- **Overstated the literature** ("Taylor's claim fails in humans"). Corrected: the counterexamples
+  mostly measure PROPRIOCEPTIVE shift while Taylor's claim is about VISION, and he pre-empted the
+  passive case.
+- **Invented a mechanism coverage already explained** ("global but graded"). Caught by theory-monitor.
+- **Two-ball design would have manufactured its own confirmation** (distractor suppression looks
+  identical to regional locality). Caught before running.
+- **Framed a learned capability as a shortcut** — David corrected: the crawler LEARNED the bearing
+  map; the transplant is the design working, not a way around the hard part.
+
+### The through-line
+Almost every substantive thing learned came from **checking an instrument, not from running an
+experiment.** The oracle caught a contact threshold that was physically impossible (0% for a perfect
+controller). The skeptics caught a saturated probe. Seed 1 caught a metric swinging 0.35 across seeds.
+The smoke test caught a learning signal that never fired (n_samples=0). The `none` control caught a
+90° frame mismatch, then caught a wrong reference a second time. In every case the underlying finding
+survived — what was broken was the ruler. **The gates paid for themselves repeatedly; the experiments
+mostly confirmed what the gates let through.**
+
+### Outstanding (all cheap, none needs training from scratch)
+1. Coverage-matched clamp — the single control that separates contingency from training coverage.
+2. Lens-naive per-band baseline — is the ~5° pre-existing band gap optics or artifact?
+3. Second independent pre-adaptation seed — all three arms inherit a checkpoint that failed its gate.
+4. Bootstrap CIs on the bias numbers; stop reporting "realigned %".
+5. Still untouched, and the biggest one: **can reward alone GROW a bearing representation, or do our
+   positive results only ever come from a pre-verified transplanted eye?**
