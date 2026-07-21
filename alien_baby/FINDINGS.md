@@ -3920,3 +3920,71 @@ weakened, by the corrected numbers.
 **Ruler verdict: USABLE.** Separation at n_train=50 is +7.8° (bar was ≥3.0°) and the gap WIDENS as
 samples shrink (5.5×→6.5× going from n=100 to n=50), which is the signature of measuring
 *explicitness* rather than mere preservation. The matched-pair experiment can be scored on this.
+
+---
+
+## 2026-07-21 — PRISM REGIONAL DISSOCIATION: strict Taylor locality REFUTED; graded residual CONFOUNDED
+
+### In plain English
+Put displacing glasses on the creature and it learns to correct for them. The question was whether
+that correction stays only in the part of its visual world it actually walked into and touched things
+in — Taylor says it should, because on his account seeing where something is IS being ready to move to
+it, so only the bits you act in can be re-taught. **It did not stay local. The correction spread to a
+region the creature never once acted in.** In the strongest arm, the eye was retrained using ONLY
+pictures where the ball was on the left — verified, zero right-hand-side training frames ever entered
+the learning signal — and the right-hand side corrected itself anyway, essentially in full.
+
+### Setup
+Walker, frozen gait, transplanted mildhead eye left TRAINABLE. Gaze-relative prism, nominal 15° =
+**+12.6° measured** effective shift. One ball per episode; its bearing BAND decides whether the
+creature can act on it (ACTED = contact enabled and fires the seen-vs-touched signal; SEEN-ONLY =
+contact disabled, equally visible for an equally long fixed 60-step episode). The displaced image is a
+visual-only ghost (contype=0) that can never be touched, so contact always resolves against the real
+hidden ball. Three arms, 150K each, seed 0, all from one pre-adapted checkpoint.
+
+### Result (encoder's OWN bearing head, n=400; reference = pre-adapted model measured WITH LENS ON,
+per band: ACTED +6.14°, SEEN-ONLY +11.30°)
+
+| arm | ACTED realigned | SEEN-ONLY realigned | locality gap |
+|---|---|---|---|
+| none (control, encoder frozen) | 8.0% | 1.4% | +6.6 |
+| act (contact-gated) | 162.9% | **105.2%** | +57.7 |
+| clamp (ungated) | 151.7% | **123.4%** | +28.3 |
+
+### What is ESTABLISHED
+**Strict Taylor locality is REFUTED, and the cleanest evidence does not need the arm comparison at
+all.** In `act` the gated signal keeps an episode only if the body touched the ball, and contact is
+disabled outside the acted band — so no seen-only episode can ever pass the gate. **Verified directly:
+of 106 episodes entering the gated aux, 106 came from the ACTED band and 0 from SEEN-ONLY.** That band
+contributed zero training examples and still realigned ~105%. Realignment generalises across the
+visual field. This is the expected behaviour of a convolutional trunk, which shares weights across
+spatial position and has no mechanism to confine learning to a region.
+
+### What is NOT established — the graded residual is CONFOUNDED (theory-monitor, relayed)
+I read the ACTED>SEEN gap as "global but graded" and that reading is not earned:
+- **Coverage, not contingency.** `act` trained on 100% acted-band frames; `clamp` trained on both
+  bands. So `act` showing MORE locality (+57.7 vs +28.3) is most parsimoniously explained by which
+  regions each arm trained on, not by contact-contingency. **Outstanding control:** a coverage-matched
+  clamp — restrict the ungated aux to the same band distribution as act's gated samples. If the gap
+  collapses toward +57.7, coverage explains everything and contingency gets no support.
+- **The overshoot undermines the metric.** Both arms exceed 100% (bias crosses 0 to −3.86/−3.18°).
+  Nothing caps the regression at the true bearing, so a linear head under an unbounded loss can
+  overshoot indefinitely. With n=1 snapshot and no error bars, −3.86° is not distinguishable from 0
+  plus noise. **Stop reporting "realigned%" as if it implies convergence**; report degrees with a
+  bootstrap CI, and treat >100% as "cannot separate overshoot from noise."
+- **The starting checkpoint FAILED its own pre-registered gate** (±2° required; −2.34/−3.19 actual).
+  All three arms inherit that. **Outstanding control:** a second, independently pre-adapted checkpoint.
+- **The reference itself shows a ~5° band gap BEFORE any lens training.** Whether that is intrinsic
+  optics (the gaze-relative prism may not shift uniformly across eccentricity) or an artifact of the
+  failed pre-adaptation is unknown. **Outstanding control:** per-band bias of a lens-NAIVE checkpoint.
+- **n=1 seed per arm.**
+
+### FORKING-PATHS DISCLOSURE
+The eval ran on all three arms at once under a lens-OFF reference, so I HAD seen act/clamp before
+switching to the lens-ON reference. The switch was triggered by the `none` arm reporting an impossible
+value (a criterion blind to the hypothesis, and `none` now validates the new reference at 8.0%/1.4%),
+but I cannot claim the decision was made blind to the other arms. Recorded so a reader can discount it.
+
+### VERDICT (theory-monitor's wording, adopted)
+"Strict locality refuted; graded residual observed but confounded, three specific controls
+outstanding." NOT "global but graded — confirmed."
