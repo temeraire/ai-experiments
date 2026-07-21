@@ -981,3 +981,36 @@ winnability stays strict.
 ### ALL FOUR GATES RESOLVED
 P1 PASS (offset formally observable) | P2 PASS after fixes | P3 PASS (baseline bias ~0.1 deg both
 bands) | P4 QUALIFIED (contact-GATED, not contact-DERIVED -- caveat, not a blocker).
+
+### CORRECTION (David, 2026-07-20 evening) — "Taylor's strong claim FAILS in humans" was OVERSTATED
+David pushed back and he is right. What I wrote ("empirically false as stated") is stronger than the
+evidence supports. The accurate version, and it matters because it changes what our result can mean:
+
+1. **The counterexamples mostly measure the WRONG VARIABLE.** Ronchi 2011 and Mostafa 2019 report
+   PROPRIOCEPTIVE recalibration — a shift in where the hand is felt to be. Taylor's claim is about
+   VISION swinging into line. Redding & Wallace show these DISSOCIATE (walking moves vision,
+   hand-pointing moves proprioception), so passive-proprioceptive-shift results may leave Taylor's
+   actual visual claim untouched.
+2. **Taylor PRE-EMPTED the passive case, and the critics concede the fact.** He argued "passive
+   contemplation" is covertly active: eye movements ARE behaviour and DO involve "contacts" (§12.5).
+   The Zaadnoordijk 2020 review independently notes passive subjects still move head and eyes and
+   still attend. So "adaptation under passive conditions" does not refute him unless the EYES were
+   still — and in those studies they were not.
+3. **Effect sizes are small.** Ronchi's observational adaptation was 2.29 deg / 1.66 deg. Active prism
+   adaptation typically recovers a large fraction of the displacement. "A measurable shift occurred"
+   is far weaker than "adaptation does not need movement."
+4. **The decomposition cuts BOTH ways.** Mostafa found passive training transferred proprioceptive
+   recalibration and aftereffects but NOT the update to predicted sensory consequences — passive gets
+   you part of the system, not all of it.
+5. The clinical prism literature (Petitet & O'Reilly 2018) still teaches the strong Held line, which
+   is evidence the question is NOT settled rather than evidence either way.
+
+**Corrected statement for all writeups:** Taylor's claim in its BLUNTEST form (zero adaptation with
+zero movement of any kind) has counterexamples. Taylor's ACTUAL claim — visual realignment of a
+DISPLACEMENT, with eye movement counted as action — is NOT refuted by that literature and remains open.
+Do not write "fails in humans."
+
+**Consequence for the running experiment:** none for the design — we are testing LOCALITY (does
+realignment stay in the acted region), not NECESSITY. But it changes how the `clamp` arm reads: if
+clamp realigns, that is evidence about OUR creature, and must NOT be presented as "confirming the
+human literature that movement is unnecessary," because that literature does not cleanly say so.
