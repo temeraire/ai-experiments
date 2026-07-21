@@ -60,6 +60,14 @@ def main():
     p.add_argument("--acted-band", type=int, default=1)
     p.add_argument("--aux-lr", type=float, default=1e-4)
     p.add_argument("--mismatch-coef", type=float, default=1.0)
+    p.add_argument("--init-model", default=None,
+                   help="Resume from a prior checkpoint instead of the raw mildhead transplant. This "
+                        "is how the LENS-OFF PRE-ADAPTATION phase feeds the prism phase: run once "
+                        "with --prism-deg 0 to bring the bearing head into the GAZE frame, gate it "
+                        "with check_prism_baseline.py, then run the prism phase with --init-model "
+                        "pointing at that checkpoint. Without this the first run is spent converting "
+                        "the crawler's TORSO-frame readout (~90 deg away) and the 12.6 deg prism "
+                        "shift is swamped -- the failure that voided the 2026-07-20 three-arm run.")
     args = p.parse_args()
     os.makedirs("alien_baby/results", exist_ok=True)
 
@@ -79,13 +87,19 @@ def main():
     # Transplant the LEARNED mildhead eye and leave it TRAINABLE. This experiment recalibrates an
     # already-competent eye; freezing it (as the vbear runs do) would make realignment impossible
     # by construction, which is the tautology we are specifically avoiding.
-    _, params, _ = load_from_zip_file(MILDHEAD, device=args.device)
-    px = {k: v for k, v in params["policy"].items()
-          if any(s in k for s in ["cnn.", "proj.", "bearing_head."])}
+    src = args.init_model or MILDHEAD
+    _, params, _ = load_from_zip_file(src, device=args.device)
+    if args.init_model:
+        # Resuming a prior phase: take the WHOLE policy, so the gaze-frame calibration established
+        # in the lens-off phase carries into the prism phase.
+        px = dict(params["policy"])
+    else:
+        px = {k: v for k, v in params["policy"].items()
+              if any(s in k for s in ["cnn.", "proj.", "bearing_head."])}
     tgt = model.policy.state_dict()
     ok = {k: v for k, v in px.items() if k in tgt and tuple(tgt[k].shape) == tuple(v.shape)}
     model.policy.load_state_dict(ok, strict=False)
-    print(f"[init] transplanted {len(ok)}/{len(px)} mildhead pixel tensors (TRAINABLE, not frozen)")
+    print(f"[init] loaded {len(ok)}/{len(px)} tensors from {src} (TRAINABLE, not frozen)")
     if len(ok) == 0:
         raise SystemExit("REFUSING TO RUN: zero encoder tensors loaded -- would be probing a random "
                          "net and reporting it as a result (the trap that bit us on the MICOA probe).")
