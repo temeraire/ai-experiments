@@ -1704,3 +1704,18 @@ punted before centre-distance drops below ~0.93 m. reach=1.0 gives oracle 100%.
 A: Zeroed/gray pixels are out-of-distribution; the policy collapses to one fixed action, which fakes a
 clean sighted-vs-blind gap. Noise is in-distribution but carries no information, so it gives the true
 chance floor.
+
+**Q: What is an experimental "arm"?**
+A: One condition in an experiment — a separately-trained creature given one specific treatment, with
+everything else held identical. From clinical trials (treatment arm vs placebo arm). The discipline:
+vary exactly ONE thing, so any difference between arms is attributable to that thing.
+
+**Q: Why run three arms instead of just the one you care about?**
+A: Because a single run has nothing to compare against. The extra arms tell you what the result would
+look like if your hypothesis were false (`clamp`) and what it looks like when nothing is learning at
+all (`none`) — without those, a number has no meaning.
+
+**Q: What can go wrong with arms even when the design looks clean?**
+A: They can differ in more ways than you intended. In the 2026-07-20 prism runs, `act` and `clamp`
+differed in contingency AND in data volume (180 vs 3840 samples), so any difference between them
+would have been unattributable. Check for unintended differences BEFORE reading results.

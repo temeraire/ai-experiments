@@ -642,3 +642,20 @@ the pixels with RANDOM NOISE, not zeros and not flat gray. Zeroed/gray images ar
 which is an artifact that can manufacture a clean "sighted beats blind" gap out of nothing. Noise
 keeps the policy in-distribution while carrying zero information about the target, so it lands on the
 true chance floor. Standardised in `eval_vsteer_choice.py` and `eval_vsteer_bearing.py` 2026-07-20.
+
+**Arm (experimental arm / training arm).** One CONDITION in an experiment — one separately-trained
+creature that gets one specific treatment. Borrowed from clinical trials, where a drug study has a
+treatment arm and a placebo arm: same kind of patients, differing only in what they are given. In our
+runs an arm is a whole training run, and the discipline is that every arm is identical except for the
+ONE thing under test — same body, same frozen gait, same starting encoder, same lens, same steps,
+same seed. That is what makes a difference between arms attributable: if only one thing varied, only
+one thing can explain the result. Worked example (2026-07-20 prism experiment, three arms): `act` =
+the eye learns only from episodes where the body actually touched the ball; `clamp` = the eye gets the
+same correction signal whether or not the creature earned it by touching; `none` = no learning signal
+at all (a plumbing control — the eye CANNOT change, so if its readout moves, something we did not
+intend is training it and the run is suspect). Caution learned the same day: arms can differ in more
+ways than intended. `act` and `clamp` also differ in DATA VOLUME (180 vs 3840 aux samples per
+rollout, because contact-gating discards most episodes), so a difference between them would be
+unattributable between contingency and sample count — the fix is a further arm holding one of those
+constant. Related: *ablation* (remove a component and measure the drop) is a kind of arm; a *control
+arm* is one expected to show no effect, included so that a null has a reference.
