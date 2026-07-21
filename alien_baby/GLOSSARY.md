@@ -607,3 +607,38 @@ driver could later sit on top of a DIFFERENT body (a biped) that accepts the sam
 only the low-level gait is body-specific. In code the policy emits a 2D action in [-1,1] mapped to
 `cmd`: `cmd_fwd = 0.3*(a[0]+1)` (→ 0–0.6 m/s), `cmd_turn = 0.6*a[1]` (→ ±0.6 rad/s), and the mapping
 is chosen to match the gait's trained command range and its speed sweet spot.
+
+---
+
+**Spatial bearing (steer-by-direction).** The capability being tested 2026-07-20: can the creature
+reach a target because it SEES WHERE the target is — its direction, left or right — as opposed to
+seeing WHAT it is. The colour-choice win (2026-07-20) proved vision can drive a categorical flag
+("go to the red one, not the blue one"); spatial bearing is the harder thing Phase V found vision
+failing at. Plain English: knowing "that's the red ball" is not the same as knowing "it's off to my
+left, so I must turn left." Measured in the GAZE frame (from the eye, against the camera's own
+forward axis), never from the torso or the world origin — see the GAZE rule.
+
+**Motor-habit floor.** The success rate of the best TARGET-INDEPENDENT policy — one that ignores the
+target completely. Operationally: sweep a fixed turn command and take the best one. This is the bar a
+"vision works!" number must clear, and it exists because reaching the ball is not evidence of seeing
+it: if the ball spawns near dead-ahead often enough, a creature that just walks a fixed curve reaches
+it at a respectable rate. Measured for the spatial-bearing task = 30% (best fixed turn −0.2).
+Crucially it must be MEASURED, not assumed from geometry: we assumed `cmd_turn=0` meant "straight
+ahead" and it does not — the v10 gait drifts +77°..+112° left over an episode.
+
+**Oracle ceiling.** The success rate of a scripted controller given the TRUE answer for free (here:
+turn proportional to the true gaze bearing). Two jobs: (1) it is the winnability proof — if the
+oracle can't win, the task is impossible and any agent failure is our setup's fault, not the
+creature's; (2) it bounds what a perfect-vision policy could achieve, so a trained result can be read
+as a fraction of the achievable range rather than a bare percentage. Worked example, 2026-07-20: at
+reach=0.75 m the oracle scored 0% — the ball (radius 0.5, light at density=3) gets punted before
+centre-distance can drop that low, flooring closest approach at ~0.93 m. That threshold was
+UNWINNABLE and looked merely "harder"; at reach=1.0 the oracle scores 100%. Run the oracle before
+trusting any difficulty knob.
+
+**Fair blind (noise blind).** The correct way to take vision away for an ablation control: replace
+the pixels with RANDOM NOISE, not zeros and not flat gray. Zeroed/gray images are OUT OF DISTRIBUTION
+— the policy has never seen a uniform image and collapses to a single fixed action (turn-std 0.00),
+which is an artifact that can manufacture a clean "sighted beats blind" gap out of nothing. Noise
+keeps the policy in-distribution while carrying zero information about the target, so it lands on the
+true chance floor. Standardised in `eval_vsteer_choice.py` and `eval_vsteer_bearing.py` 2026-07-20.

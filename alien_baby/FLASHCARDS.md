@@ -1677,3 +1677,30 @@ A: The two-number command the high-level vision policy sends to the frozen low-l
 `cmd = [forward_speed, turn_rate]` (gas pedal + steering wheel). The vision "driver" outputs it from
 what the eyes see; the gait "legs" turn it into eight joint motions. The split makes the learned
 steering body-agnostic — the same two-number command could drive a different body (e.g. a biped).
+
+---
+
+**Q: What is "spatial bearing" and how does it differ from the colour-choice result?**
+A: Spatial bearing is steering to a target because you see WHICH DIRECTION it is. The colour-choice
+win showed vision can drive a category ("red not blue"); spatial bearing asks whether vision supplies
+direction ("it's to my left, turn left"). Phase V found vision failed at exactly this.
+
+**Q: Why can't you use "reached the ball" as proof that vision is working?**
+A: Because a creature that ignores the target entirely still reaches it whenever it spawns near
+dead-ahead. You must measure the MOTOR-HABIT FLOOR — the best target-independent policy — and beat it.
+For the spatial-bearing task that floor is 30%.
+
+**Q: Why measure the motor-habit floor instead of computing it from geometry?**
+A: Because the assumption behind the geometry can be false. We assumed cmd_turn=0 means "walk
+straight"; the v10 gait actually drifts 77–112° left per episode, so the geometric estimate was
+meaningless.
+
+**Q: What is an oracle ceiling and what did it catch on 2026-07-20?**
+A: A scripted controller handed the true answer, used to prove the task is winnable and to bound
+achievable performance. It caught that reach=0.75 m was IMPOSSIBLE (oracle 0%) — the light ball gets
+punted before centre-distance drops below ~0.93 m. reach=1.0 gives oracle 100%.
+
+**Q: Why is a "blind" control made of noise rather than zeroed pixels?**
+A: Zeroed/gray pixels are out-of-distribution; the policy collapses to one fixed action, which fakes a
+clean sighted-vs-blind gap. Noise is in-distribution but carries no information, so it gives the true
+chance floor.

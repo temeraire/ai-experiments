@@ -32,7 +32,14 @@ def _both_in_view(env):
     return red >= 2, blue >= 2
 
 
-def run(model, env, n, blind, seed0):
+def run(model, env, n, blind, seed0, blind_mode="noise", blind_seed=1234):
+    # FAIR BLIND (fix, 2026-07-20): hard-ZERO and flat-GRAY pixels are OUT OF DISTRIBUTION -- the
+    # policy has never seen a uniform image, and it collapses to a single fixed action (turn-std
+    # 0.00). That is an artifact, not blindness: it can fake a clean sighted-vs-blind gap. NOISE
+    # pixels keep the policy in-distribution and still carry zero information about the ball, so
+    # the policy keeps varying and lands on the true chance floor. noise = the standard; "zero"
+    # is kept for reproducing older numbers.
+    rng_blind = np.random.default_rng(blind_seed)
     contact = red_choice = both_view = 0
     for e in range(n):
         env.rng = np.random.default_rng(seed0 + e)      # SAME episodes for sighted vs blind
@@ -42,7 +49,8 @@ def run(model, env, n, blind, seed0):
         while not done:
             o = obs.copy()
             if blind:
-                o[PROP:] = 0.0                           # zero the pixel columns
+                o[PROP:] = (0.0 if blind_mode == "zero"
+                            else rng_blind.uniform(0.0, 1.0, o.shape[0] - PROP))
             a, _ = model.predict(o, deterministic=True)
             obs, _, term, trunc, info = env.step(a)
             done = term or trunc
@@ -81,13 +89,16 @@ def main():
     p.add_argument("--run-tag", default="vsteer")
     p.add_argument("--seed", type=int, default=4000)
     p.add_argument("--no-render", action="store_true")
+    p.add_argument("--blind-mode", default="noise", choices=["noise", "zero"],
+                   help="noise = the FAIR blind (in-distribution, zero information). zero = the "
+                        "old OOD blind that collapses the policy to a fixed action.")
     args = p.parse_args()
     model = PPO.load(args.model, device="cpu")
     env = VisionSteerEnv(seed=args.seed)
 
     sighted = run(model, env, args.episodes, blind=False, seed0=args.seed)
-    blind = run(model, env, args.episodes, blind=True, seed0=args.seed)
-    print(f"=== {args.run_tag} choice eval (n={args.episodes}) ===")
+    blind = run(model, env, args.episodes, blind=True, seed0=args.seed, blind_mode=args.blind_mode)
+    print(f"=== {args.run_tag} choice eval (n={args.episodes}, blind={args.blind_mode}) ===")
     print(f"  winnability (BOTH balls in view at reset): {sighted['both_view']:.0f}%")
     print(f"  SIGHTED : contact {sighted['contact']:.0f}%   choice %RED {sighted['choice_red']:.0f}%")
     print(f"  BLIND   : contact {blind['contact']:.0f}%   choice %RED {blind['choice_red']:.0f}%   (~50 = can't tell color)")

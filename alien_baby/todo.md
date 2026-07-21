@@ -762,3 +762,49 @@ bearing-readout and the early-window reach both failed exactly this.
 missing=0 guard). NOT launched: there is no VALID, significant aftereffect to replicate (both deepen
 instruments were invalid/confounded). Resume widen only after a VALIDATED instrument shows a real effect.
 All deepen work was eval-only; NO training compute spent this entire session.
+
+## 2026-07-20 — SPATIAL-BEARING TEST (per CHECKPOINT_2026_07_20.md, agreed spec)
+Question (plain English): can the walker steer to ONE ball by WHERE it is — i.e. does its vision
+carry the ball's DIRECTION, not just its color? Phase V said direction was the thing vision failed at.
+- [x] 1. Pre-experiment panel (process gate): experiment-strategist + literature-scout +
+        local-book-agent in parallel; relay findings before training compute is spent.
+- [x] 2. Env variant (minimal): `single_ball=True` flag on VisionSteerEnv — red ball at random
+        bearing ±0.5 rad, 2.5–4 m, in view; blue decoy PARKED far ([50,-50], the gait-env fix);
+        expose true gaze-relative bearing + turn cmd in `info` for the instrument.
+- [x] 3. SMOKE-TEST THE ENVIRONMENT first (yesterday's lesson): N resets → red-in-view %,
+        bearing spread, no fling/overlap; sanity render from an untrained model.
+- [ ] 4. Train driver `vbear_s0`: transplanted frozen crawler eyes (--init-vision mildhead), frozen
+        v10 gait, ~300K steps (same recipe as vsteer_v10).
+- [ ] 5. New eval `eval_vsteer_bearing.py`: sighted vs FAIR blind (NOISE pixels, not zeros);
+        contact%; INSTRUMENT CHECK R²(true bearing → turn/heading): sighted HIGH, blind LOW.
+- [x] 6. Fix known caveat: make NOISE the standard blind in eval_vsteer_choice.py.
+- [ ] 7. Render + WATCH episodes of the exact eval config (render-every-experiment rule).
+- [ ] 8. theory-monitor independent verdict, then FINDINGS.md + THEORY_LOG.md entries (plain
+        English, Taylor tie-in), glossary if new terms.
+Expected per Phase V: this may FAIL (vision non-directional). If so, the identified fix is the
+auxiliary "where's-the-ball" decode loss on the encoder — escalate to that, not to reward tweaks.
+
+### Preflight results (2026-07-20) — the plan CHANGED before compute was spent
+The agent panel + two measurements caught three things. Recorded because each would have made the
+300K run uninterpretable:
+1. **The frozen eyes DO carry direction — R²=0.996** (n=2000, held-out, ridge on the frozen conv
+   trunk's 64-d latent -> sin of the true gaze bearing). This was the gate the strategist demanded,
+   and the prior was pessimistic (a comparable crawler encoder measured lateral R²=0.010, chance).
+   CONSEQUENCE: the direction information is already sitting in the latent. So if the trained driver
+   fails to steer, that is a POLICY failure, not a representation failure — which is the exact fork
+   the checkpoint said we needed to resolve, and it is now resolved IN ADVANCE.
+2. **reach=0.75 m is UNWINNABLE — oracle scores 0%.** The strategist proposed tightening reach from
+   1.0 to 0.75 to make the task harder. A scripted perfect-vision oracle scores 0% there: the ball
+   (r=0.5, density=3 = light) gets punted, flooring closest approach at ~0.93 m. At reach=1.0 the
+   oracle scores 100%. Adopting 0.75 would have been a winnability violation dressed as difficulty.
+3. **cmd_turn=0 is NOT "straight ahead"** — the v10 gait drifts +77°..+112° left per episode. My
+   first floor measurement (0%) was therefore an artifact, not evidence the task needs steering. The
+   honest floor is the best FIXED turn: **30%** (at turn −0.2). Oracle ceiling 100%. 70-point window.
+FINAL SPEC: single_ball, cone ±0.9 rad, reach 1.0 m, 2.5–4.0 m, ball in view 100% at reset (measured).
+Panel notes carried forward: Taylor Ch.4 §4.6 predicts vision ALONE never determines the steering
+action (it is joint with proprioception) — so a small blind-vs-sighted swing is ambiguous, and the
+R² slope, not the ablation magnitude, is the disambiguator. Lit-scout: Wijmans et al. ICLR 2023 —
+fully BLIND agents hit ~95% PointNav, so a sighted agent has no pressure to encode bearing; the
+field's fix hierarchy is distil-then-RL over aux-loss.
+- [x] 4. RUNNING: vbear_s0, 300K, transplanted+frozen eyes, frozen v10 gait.
+- [x] 5. eval_vsteer_bearing.py written (first-step turn R², fair noise blind, stratified contact).
