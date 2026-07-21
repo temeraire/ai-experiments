@@ -208,3 +208,136 @@ Two bugs caught — and the first one is serious:
 The harness is now correct: it refuses to emit a number when there's no steering to measure, and it scores at a winnable threshold. The untrained control behaves as it should — 0% contact, well under the 30% floor, verdict NO.
     [→ tool: Bash]
     [→ tool: Bash]
+Training is alive and progressing (65K of 300K, first eval at 80K). The completion waiter will wake me; nothing more to do until it lands.
+
+**What I did while waiting, and why it mattered:** I smoke-tested the eval harness against an untrained policy rather than waiting to run it on the real checkpoint, and it caught a bug that would have wasted the whole run. `eval_vsteer_bearing.py` still had `--reach 0.75` as its argparse default — the threshold I'd proven unwinnable earlier — which silently overrode the corrected value. Every episode would have scored 0% contact, and the natural reading of that output is "vision failed completely at steering," which would have been entirely an artifact of my own stale constant. The training run itself was never affected.
+
+The second fix is smaller but the same species of problem: the untrained policy emits a near-constant turn, and the R² fit happily returned +0.22 on what was float noise. The instrument now returns `nan` and says explicitly that there is no steering behavior to measure, so a degenerate policy can't masquerade as a weak-but-real signal. That guard matters specifically because the *fair blind* arm is also a candidate for near-constant output — it's the exact failure the noise-blind fix was meant to prevent, and now the instrument catches it rather than trusting it.
+
+Both committed to `exp/spatial-bearing-test` (`288d664`, `a7b3f9c`). Nothing pushed — I'll leave the PR to you unless you want it.
+
+Once the run finishes: eval against the measured 30% floor, render and watch the episodes before reading any number, then theory-monitor for the independent verdict, and only then FINDINGS/THEORY_LOG. Still happy to run those legs as a Workflow if you want them live in `/workflows` — otherwise they go inline in the main thread.
+
+======================================================================
+USER:
+======================================================================
+<task-notification>
+<task-id>bp33rouge</task-id>
+<tool-use-id>toolu_01W9Nz8wMPduEXeSo7iJRRiw</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-davidwolpe-Documents-DataScience-dev-ai-experiments/6abf9666-4fa9-4d69-aa58-6dbecdc06d82/tasks/bp33rouge.output</output-file>
+<status>completed</status>
+<summary>Background command "Launch spatial-bearing training run vbear_s0" completed (exit code 0)</summary>
+</task-notification>
+
+======================================================================
+CLAUDE:
+======================================================================
+Training finished. Checking what came out:
+    [→ tool: Bash]
+Reward plateaued early (16.50 → 16.83 → 16.68 across the three evals — essentially flat from 80K). Given the reward structure, ~16.7 is consistent with usually reaching the ball. Running the real eval:
+    [→ tool: Bash]
+This is a clean **PASS**, and the strongest vision result in the project — but the render-and-watch rule exists for exactly this moment, so I'm not calling it until I've seen the behavior.
+    [→ tool: Bash]
+    [→ tool: Bash]
+    [→ tool: Bash]
+    [→ tool: Read]
+    [→ tool: Read]
+    [→ tool: Read]
+    [→ tool: Read]
+The side view shows a genuinely upright, standing quadruped (not a ragdoll), and the ball grows in the eye view as it approaches. But eyeballing frames can't tell me whether it's *centering* the ball — which is the actual signature of steering. Let me measure it directly:
+    [→ tool: Bash]
+Measured confirmation of steering: **episode 5 is the clincher** — ball starts at bearing +0.96 rad, at the very left edge of the eye image (blob_x −0.97), and ends dead center (−0.06). The creature drove it to the middle of its own field of view. That's Taylor's §6.4 "turn until the object is in the line of advance," measured rather than asserted. 7 of 10 episodes center the ball; the 3 that don't are all at the moment of contact, where the ball is 1 m away and subtends a huge angle, so the centroid swings wildly — an artifact of proximity, not a steering failure.
+
+Now the mandatory independent verification before anything goes into FINDINGS:
+    [→ tool: Agent]
+    [→ tool: Agent]
+Both checks came back with real challenges, and one of them changes how I should describe this result. Let me close the gaps they named.
+
+First, the theory-monitor's central objection — that this could be pure reactive visual servoing rather than anything predictive. There's an architectural fact that settles part of this immediately:
+    [→ tool: Bash]
+Settled architecturally: the policy is `ActorCriticPolicy` with only Conv/Linear/LayerNorm/ReLU/Tanh — **no LSTM, no GRU, no recurrent state of any kind.** So "pure reactive visual servoing" isn't a rival hypothesis the data can't distinguish; it is the *only* thing this architecture can implement. There is nowhere for a predictive estimate to live. I'll run the occlusion probe anyway to confirm it empirically, and re-run the eval with a durable log:
+    [→ tool: Bash]
+    [→ tool: Write]
+    [→ tool: Bash]
+Decisive: R² goes **0.741 → 0.000** the instant vision is removed, while turn-std stays at 0.271 — it keeps moving, just no longer in any relation to the target. Pure closed-loop visual servoing, exactly as the wiring predicts. That's a real constraint on what I can claim.
+    [→ tool: Bash]
+    [→ tool: Bash]
+    [→ tool: ToolSearch]
+    [→ tool: SendMessage]
+    [→ tool: SendMessage]
+    [→ tool: Bash]
+While the logged eval finishes, updating the working record:
+    [→ tool: Bash]
+    [→ tool: Bash]
+Writing the record now — the eval re-run is deterministic (fixed seeds, deterministic predictions) so it will reproduce, and I'll verify against it. Let me check the house format first:
+    [→ tool: Bash]
+The eval finished. Verifying the durable numbers reproduce before writing anything:
+    [→ tool: Bash]
+Reproduced exactly, now on disk. Writing the record:
+    [→ tool: Bash]
+    [→ tool: Bash]
+    [→ tool: Bash]
+    [→ tool: Bash]
+The spatial-bearing test is done and passed. Everything is committed to `exp/spatial-bearing-test` (nothing pushed — the PR is yours to make).
+
+## The result, in plain English
+
+Yesterday's win showed the creature could tell red from blue and go to the red one — knowing *what* a thing is. This asked the harder question: put one ball off to the side, with no colour to go on, and see whether the creature turns the right way to reach it. The only way to win is to see which direction it's in.
+
+**It reached the ball 120 times out of 120, at every angle we tested.** With its eyes fed meaningless static, it managed it once in 120. And how much it turned tracked how far off-centre the ball actually was — a little turn for a ball nearly ahead, a big turn for one near the edge of vision. In the most extreme case the ball started at the very edge of its own eye view and it swung around until the ball sat dead centre.
+
+## What it is not — and this changed how I wrote it up
+
+The theory-monitor pushed back hard on the obvious triumphant reading, and it was right. The creature is not remembering the ball or predicting anything. I checked the architecture: the driver has **no recurrent state at all** — no LSTM, no GRU — so it physically cannot hold an estimate between moments. "Pure reactive visual servoing" isn't a rival explanation the data can't rule out; it's the only thing the wiring permits. The occlusion probe confirmed it: cover the eyes mid-approach and the bearing-to-turn relationship drops from **R² 0.741 to 0.000** instantly, while it keeps moving. So the honest claim is *it steers toward what it can see right now* — real seeing-for-action, nothing model-based. Both writeups say that explicitly.
+
+The second correction: **this does not cleanly overturn Phase V's "vision is non-directional."** Two variables changed at once versus R43 — the body became steerable *and* the encoder is a different transplanted one. Claiming either caused it would be exactly the false-causality your hypothesis-gate rule exists to stop. What it actually does is confirm the R49 hypothesis already on record: vision was inert because the cart body made direction pointless. Both docs frame it that way.
+
+## Three things the preflight caught before compute
+
+Running the panel and two cheap measurements first was the difference between a result and a wasted run.
+
+The frozen eyes **already** encoded direction at R² = 0.996 — against a pessimistic prior of 0.010. That resolved the representation-vs-policy fork before training rather than after. But it's also a confound I recorded: with a near-perfect feature handed over, 300K steps only had to learn a map to two numbers. Whether reward alone could *grow* that representation is still open.
+
+The suggested difficulty increase — tightening contact from 1.0 m to 0.75 m — was an **impossibility in disguise**. A perfect-vision oracle scores 0% at 0.75 m because the light ball gets punted before you can get that close. And my own first floor measurement was an artifact: `cmd_turn=0` isn't straight ahead, the gait drifts 77–112° left, so the real motor-habit floor is 30%, not 0%.
+
+Separately, smoke-testing the eval on an *untrained* policy caught that the eval script still defaulted to that unwinnable 0.75 m. Every episode would have scored 0% and read as catastrophic vision failure.
+
+## Open, in priority order
+
+Three-seed replication before trusting this (your R20→R22/R23 precedent). The isolating control against Phase V — same R43 encoder, steerable body. A proprio-ablation arm, since we ablated vision but never proprioception, so Taylor's joint-determination claim is reconciled but untested. And a two-line fix: `train_vision_steer.py` never wrapped its envs in SB3's `Monitor`, so no run in this line has ever logged a reward curve.
+
+On the live agent view — I ran the panel and the verification legs as subagents again, so they still didn't show in `/workflows`. Say the word and I'll drive the replication seeds as a Workflow so you can watch it live.
+
+---
+SESSION SUMMARY 2026-07-20 (spatial-bearing test — PASSED)
+Result: The walker steers by WHERE it sees the ball. Sighted contact 100% (120/120, all bearing bins); fair-blind (noise) 0.8%. Instrument: R2(true gaze bearing -> first commanded turn) sighted +0.517 slope +0.58, blind +0.006; R2(->mean turn5) +0.807. Passes all four required conditions.
+Watched: describe_video.py broken in this env (both fallbacks missing SDKs) - did NOT rely on it. Read 12 frames directly + traced red-blob position in the creature's own eye: drives ball to eye-centre 7/10; extreme case bearing +0.96 rad, blob -0.97 (edge) -> -0.06 (centre). 3 misses are contact-proximity centroid instability.
+CONSTRAINT ON THE CLAIM: reactive closed-loop visual servoing, NOT predictive. Policy has no recurrent state; occlusion probe gives R2 +0.741 sighted -> +0.000 occluded (turn-std unchanged 0.271).
+Preflight (changed the experiment before compute): frozen eyes already encode bearing R2=0.996 (prior was 0.010); reach 0.75 m UNWINNABLE (oracle 0%, kept 1.0 where oracle=100%); cmd_turn=0 is NOT straight (gait drifts +77..+112 deg), true motor-habit floor 30% not 0%.
+Bug caught by smoke-testing eval on an untrained policy: eval defaulted to the unwinnable 0.75 m - would have scored 0% and read as catastrophic vision failure.
+Confounds recorded, NOT smoothed: does not cleanly overturn Phase V (body AND encoder both changed vs R43 - it confirms the R49 hypothesis instead); frozen trunk already competent so RL only learned a map; single seed; no proprio-ablation arm; 6-ep vs 120-ep R2 swing (0.349 vs 0.517).
+Files: train_vision_steer.py (single_ball/cone/reach + gaze_bearing), preflight_bearing.py, eval_vsteer_bearing.py, probe_occlusion.py, eval_vsteer_choice.py (noise blind), FINDINGS.md, THEORY_LOG.md, GLOSSARY.md, FLASHCARDS.md, todo.md. Branch exp/spatial-bearing-test, commits 288d664 / a7b3f9c / 13a6403. Not pushed.
+Next: 3-seed replication; isolating control vs Phase V (R43 encoder on steerable body); proprio-ablation arm; add SB3 Monitor wrapper so reward curves get logged.
+---
+
+======================================================================
+USER:
+======================================================================
+Yes please re /workflows
+Please push the branch
+And let's proceed with the 3 things you suggest
+
+======================================================================
+CLAUDE:
+======================================================================
+On it — pushing, then launching the three follow-ups with the workflow visible in `/workflows`.
+    [→ tool: Bash]
+Pushed. Now the two-line reward-logging fix so the replication seeds are actually observable, then locating what the Phase V control needs:
+    [→ tool: Edit]
+    [→ tool: Edit]
+    [→ tool: Bash]
+    [→ tool: Bash]
+MICOA-lineage encoders (the Phase V / R43 family) are on disk — so the isolating control is runnable. Launching the two replication seeds first, since they're the long pole:
+    [→ tool: Bash]
+    [→ tool: Bash]
+    [→ tool: Bash]

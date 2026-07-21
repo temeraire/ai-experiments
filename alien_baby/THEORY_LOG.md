@@ -2022,3 +2022,43 @@ distributed code rather than a categorical trigger; robustness to small perturba
 precedent); (2) the isolating control against Phase V; (3) whether reward alone can grow a bearing
 representation without a transplanted frozen encoder; (4) a proprio-ablation arm for the Taylor claim;
 (5) instrument-tightness flag — a 6-episode run gave R² 0.349/slope +0.07 vs the n=120 run's 0.517/+0.58.
+
+### ADDENDUM 2026-07-20 — controls run; the monitor's H2 was REFUTED and Phase V comes out CORROBORATED
+
+The theory-monitor's two open challenges were both taken to measurement, and one of its own hypotheses
+lost. Recording that plainly, because the monitor's H2 was the more attractive story and it is wrong.
+
+**H2 (Phase V's null was a measurement-frame artefact) is REFUTED on current evidence.** The monitor
+reasoned that R43's lateral R²≈0.01 might reflect decoding in a torso frame ~90° off functional forward,
+with the information present all along. Tested by running our gaze-frame probe on the R43/R49 MICOA
+encoders (loading verified by name and shape, 14/14). Result: R43 sits AT its architecture-matched
+random floor in the wide cone (0.828 vs 0.807–0.841) and clearly BELOW it in the narrow cone (0.846 vs
+0.947). By the control's own pre-registered rule that is **H1** — the representations genuinely differ,
+the transplant did real work, and **Phase V's original null is corroborated rather than explained away.**
+
+**A methodological failure this exposed, which generalises beyond this run.** The probe is nearly
+saturated: a hand-coded 32-number redness-per-column statistic with no network reads gaze bearing at
+R²=0.919, and untrained trunks score 0.762–0.841. Our own headline preflight number (0.996) was
+originally reported against an implied floor of ~0.0 and framed as an enormous gap. It is not — the
+honest bar is ~0.92, and mildhead clears it (error remaining 0.003 vs 0.081) but by far less than the
+original framing implied. **Standing rule earned here: never report an encoder-probe R² without (i) a
+raw-input baseline with no network and (ii) a seed-AVERAGED random-init floor of the same architecture.
+A single-draw floor and a missing raw baseline together can turn a saturated ruler into a false
+discovery.** This is the same species of error as the two aim-instruments that failed the
+sighted-high/blind-low check in July: the number was real, the ruler was not.
+
+**Taylor's joint determination: STILL UNTESTED, and our earlier "reconciled" language was premature.**
+The proprio-ablation arm showed steering unaffected by scrambling proprio (contact 100%, R² +0.560 vs
+intact +0.521), which looks like support for our reconciliation. It is not, for two reasons found by the
+skeptic: the frozen gait reads proprioception straight from `qpos/qvel` and so kept an uncorrupted copy
+throughout, and the scrambled 9-number channel provably carries no bearing information anyway (decode
+R² −0.055, at shuffled baseline). Scrambling an empty channel and observing no change is arithmetic.
+Taylor's claim could hold in full and this table would be identical — a design that cannot produce the
+disconfirming outcome is not a test. The apparatus may not be able to settle it: corrupting the gait's
+proprioception would likely just topple the walker, confounding information-removal with inability to act.
+
+**Net effect on the 2026-07-20 verdict.** The headline result (vision sets direction, reactively) is
+UNCHANGED — it rests on the sighted-vs-blind behavioural gap and the bearing→turn slope, neither of
+which is touched by any of the above. What changed: the supporting preflight claim is weaker than
+written, Phase V is corroborated rather than merely un-overturned, and one of the two "missing controls"
+turns out not to have been run at all.

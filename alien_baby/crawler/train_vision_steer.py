@@ -14,6 +14,7 @@ from gymnasium import spaces
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv
 from stable_baselines3.common.callbacks import CheckpointCallback, EvalCallback
+from stable_baselines3.common.monitor import Monitor
 from alien_baby.crawler.crawler_cnn_extractor import StereoCrawlerCNN
 
 XML = "alien_baby/crawler/quad_walker.xml"
@@ -196,8 +197,12 @@ def main():
     args = p.parse_args()
     os.makedirs("alien_baby/results", exist_ok=True)
     ekw = dict(single_ball=args.single_ball, cone=args.cone, reach=args.reach) if args.single_ball else {}
-    venv = DummyVecEnv([(lambda i=i: VisionSteerEnv(seed=args.seed + i, **ekw)) for i in range(args.n_envs)])
-    evalenv = DummyVecEnv([lambda: VisionSteerEnv(seed=args.seed + 777, **ekw)])
+    # Monitor wrapper (added 2026-07-20): without it SB3 never sees an episode end, so NO
+    # rollout/ep_rew_mean is ever logged -- vbear_s0 and vsteer_v10 both trained with no reward
+    # curve at all, leaving EvalCallback's occasional score as the only progress signal. Recording
+    # only; does not touch training dynamics.
+    venv = DummyVecEnv([(lambda i=i: Monitor(VisionSteerEnv(seed=args.seed + i, **ekw))) for i in range(args.n_envs)])
+    evalenv = DummyVecEnv([lambda: Monitor(VisionSteerEnv(seed=args.seed + 777, **ekw))])
     model = PPO("MlpPolicy", venv, n_steps=512, batch_size=1024, n_epochs=8, gamma=0.99,
                 gae_lambda=0.95, ent_coef=0.005, learning_rate=3e-4, clip_range=0.2,
                 policy_kwargs=dict(features_extractor_class=StereoCrawlerCNN,

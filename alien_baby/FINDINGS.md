@@ -3628,9 +3628,15 @@ only retrained. 300K PPO, single seed. Code: `train_vision_steer.py --single-bal
 
 ### Preflight — three things measured BEFORE compute, two of which changed the experiment
 1. **The frozen eyes already carried direction: held-out R² = 0.996** (ridge, frozen conv-trunk
-   latent → sin(true gaze bearing), n=2000). The prior was pessimistic (a comparable crawler encoder
-   measured lateral R² = 0.010, chance). Consequence: a steering failure here would have been a
+   latent → sin(true gaze bearing), n=2000). Consequence: a steering failure here would have been a
    POLICY failure, not a REPRESENTATION failure — the fork resolved in advance.
+   **[CORRECTED 2026-07-20, see ADDENDUM] — this number was originally read against the wrong
+   baseline.** It was framed as "0.010 (chance) → 0.996", implying an enormous gap. That framing is
+   WRONG: the 0.010 came from a different setup, and on OUR images the probe is near-saturated. A
+   randomly-initialised trunk of the same architecture scores **0.762**, and a hand-coded 32-number
+   redness-per-column statistic with NO network at all scores **0.919**. mildhead's 0.996 is still
+   genuinely above both (error remaining 0.003 vs 0.081 for raw pixels, ~27× better), so the claim
+   "these eyes encode bearing" SURVIVES — but the honest bar is ~0.92, not ~0.0.
 2. **reach = 0.75 m is UNWINNABLE.** A scripted perfect-vision oracle scores 0% there: the ball
    (r=0.5, density 3 = light) gets punted, flooring closest approach at ~0.93 m. At 1.0 m the oracle
    scores 100%. The proposed "make it harder" threshold was an impossibility in disguise (winnability
@@ -3722,3 +3728,69 @@ pixels; ball qpos never enters), and found that `std` fell 0.998→0.825 with en
 the eval score sat flat from 80K. theory-monitor's verdict is recorded in THEORY_LOG.md, and its two
 substantive challenges — the two-variables-at-once confound and the reactive-vs-predictive question —
 are carried into the caveats above; the occlusion probe was run at its recommendation.
+
+### ADDENDUM (same day, after the two controls + adversarial verification) — one claim CORRECTED, one caveat STRENGTHENED, one control found NOT YET RUN
+
+Two controls were run in a workflow, each then independently re-run by a skeptic instructed to refute
+it. The skeptic accepted control 1's numbers but rejected the conclusion drawn from control 2, and in
+doing so overturned part of what is written above. Recording both, and not averaging them.
+
+**(a) THE PROBE IS A NEARLY-SATURATED RULER — the biggest correction.**
+A big red ball on a 32×32 image announces its own position so plainly that almost any linear readout
+finds it. Measured baselines on OUR images, gaze-frame bearing, same probe:
+- raw pixels, NO network (32-number redness-per-column statistic): **R² = 0.919**
+- randomly-initialised MICOA trunk: **0.807** (±0.033 over 8 seeds, range 0.787–0.892)
+- randomly-initialised crawler trunk: **0.762**
+- mildhead (ours, trained with a bearing readout): **0.997**
+Plain English: a high score on this probe is mostly evidence that the picture is easy, not that the
+encoder learned anything. mildhead is still the ONLY encoder measurably above its architecture-matched
+floor, so the transplant is not vacuous — but every future use of this probe MUST report the
+raw-pixel baseline and a seed-averaged random floor alongside it, or the ruler saturates and the table
+is uninterpretable.
+
+**(b) PHASE V IS CORROBORATED, NOT MERELY "NOT OVERTURNED" — strengthen the caveat above.**
+Running the same gaze-frame probe on the Phase V / R43 and R49 MICOA encoders (14/14 tensors verified
+loaded by name AND shape — the silent-`strict=False` trap was checked for and avoided):
+- R43 mu_v **0.828** vs matched random floor **0.807–0.841** → AT the floor
+- R49 mu_v **0.905** — above R43 but below the 0.919 raw-pixel baseline
+- narrow cone (±0.15): R43 **0.846** vs random floor **0.947** → clearly BELOW an untrained network
+Neither Phase V encoder carries gaze bearing above an architecture-matched random baseline; R43 is
+below it at both cone widths. By the control's own pre-registered decision rule this is **H1
+(the representations genuinely differ)**, NOT H2 (measurement-frame artefact). So the transplanted
+crawler eyes did real work, and Phase V's "vision is non-directional" finding stands **corroborated**.
+The replacement sentence for the caveat above: *"This result does not overturn Phase V; on an
+architecture-matched probe the Phase V encoders sit at or below an untrained baseline, which
+corroborates their original null. What changed here is the encoder, not merely the measurement."*
+NOTE the limit, which the control itself flagged correctly: R43's weights were run on WALKER imagery,
+not R43's own cart imagery, so frame AND stimulus both changed. Nothing here isolates the torso-vs-gaze
+frame specifically. The decisive follow-up is the same weights on R43's OWN cart frames, decoding
+torso-frame ball-x versus gaze-frame bearing.
+
+**(c) THE PROPRIO ARM DID NOT ACTUALLY TEST TAYLOR — it is STILL UNTESTED, not supported.**
+Four arms, n=60 matched seeds, degeneracy guard never fired, all figures reproduced by the skeptic:
+
+| arm | contact | R²(bearing→first turn) | slope | turn-std |
+|---|---|---|---|---|
+| INTACT | 100.0% | +0.521 | +0.53 | 0.431 |
+| VISION-ABLATED | 0.0% | +0.009 | +0.03 | 0.175 |
+| PROPRIO-ABLATED | 100.0% | +0.560 | +0.60 | 0.471 |
+| BOTH | 1.7% | +0.049 | −0.07 | 0.185 |
+
+The tempting headline — "scramble its body sense and it still steers perfectly" — is **FALSE as
+written and must not be quoted.** Two reasons:
+1. **Only one of two copies of proprioception was scrambled.** `_gait_obs()` builds the frozen gait's
+   observation directly from `self.data.qpos/qvel`, so the gait kept full, uncorrupted proprioception
+   every step of every "ablated" episode. What was corrupted was the steering head's 9-number copy.
+   Correct claim: *the steering command does not need proprioception* — NOT *the creature can act
+   without proprioception.*
+2. **The scrambled channel was already empty of the relevant information.** Decoding gaze bearing from
+   those 9 proprio numbers gives R² **−0.055** at reset and **−0.040** after 5 steps, at or below
+   shuffled-label baselines. We scrambled an empty channel and correctly observed that steering did not
+   care. That is arithmetic, not evidence.
+Taylor's joint-determination claim could hold in full and this table would look identical. A design
+that cannot produce the disconfirming outcome is not a test. **Verdict: STILL UNTESTED.** The apparatus
+limit is real and worth recording: a genuine test would have to corrupt the GAIT's proprioception,
+which would most likely just make the walker fall over — confounding information-removal with
+inability to act at all.
+**Outstanding precondition:** no video was rendered for the proprio arm. Under the render-every-experiment
+rule, 100% contact is an outcome flag that cannot separate a directed approach from an incidental one.
