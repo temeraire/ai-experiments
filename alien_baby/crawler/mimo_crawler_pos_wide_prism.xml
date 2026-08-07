@@ -28,6 +28,7 @@
     <material name="hair_mat"   rgba="0.30 0.18 0.10 1"/>   <!-- dark brown hair -->
     <material name="lip_mat"    rgba="0.85 0.40 0.35 1"/>   <!-- mouth/lip color -->
     <material name="neck_mat"   rgba="0.92 0.78 0.48 1"/>   <!-- skin, slightly darker than face -->
+    <material name="nose_mat"   rgba="1.00 0.72 0.05 1"/>   <!-- bright gold: unmistakable FRONT marker -->
 
     <material name="MatPlatform" rgba="0.72 0.72 0.68 1"/>
     <material name="MatGround"   rgba="0.35 0.30 0.25 1"/>
@@ -112,6 +113,12 @@
                    range="-18 18" stiffness="1.45" damping="0.29" frictionloss=".018" armature="0.01"/>
             <geom name="ub3" type="capsule" size=".041 .047" mass="0.7217"
                   material="green_top" pos="0 0 0" euler="90 0 0"/>
+            <!-- Neck bridge, CHEST-anchored (David 2026-07-18): a cylinder up the spine (body +Z)
+                 from the shoulders to the head base. Anchored to the torso so it always reads as a
+                 neck coming out of the collar toward the head, instead of a rod that swings with the
+                 head. Visual only (no contact). Spans chest-z ~.01 to ~.14 (head base at .135). -->
+            <geom name="neck_base" type="cylinder" material="neck_mat" size=".025 .064"
+                  pos="0 0 .074" mass=".001" contype="0" conaffinity="0"/>
 
             <!-- RIGHT ARM -->
             <body name="right_upper_arm" pos="-.005 -0.105 .003" euler="170 0 0">
@@ -204,21 +211,26 @@
 
             <!-- HEAD: eye joints removed, fixed stereo cameras instead -->
             <body name="head" pos="0 0 .135">
+              <!-- Head-steadiness pass v2 (2026-07-18): MILD damping. The first pass (damping .70/1.20/.70)
+                   calmed the loll but measurably hurt far-distance vision-steering (choice 76.8%->59.4%,
+                   p~0.009) by fighting the head-turns AB uses to search. This mild setting leans close to
+                   the original floppy values on the SWIVEL (lateral search DOF) to protect head-search,
+                   with a little steadiness on tilt. Ranges/stiffness/actuators unchanged (26-dim action
+                   preserved). Original floppy was .29/.53/.29 damping, .018 friction, .005 armature. -->
               <joint name="robot:head_swivel"    type="hinge" pos="0 0 0"      axis="0 0 1"
-                     range="-111 111" stiffness=".23" damping=".29" frictionloss=".018" armature="0.005"/>
+                     range="-111 111" stiffness=".23" damping=".38" frictionloss=".022" armature="0.008"/>
               <joint name="robot:head_tilt"      type="hinge" pos="0 0 0.0123" axis="0 1 0"
-                     range="-70 81"  stiffness=".45" damping=".53" frictionloss=".018" armature="0.005"/>
+                     range="-70 81"  stiffness=".45" damping=".70" frictionloss=".022" armature="0.008"/>
               <joint name="robot:head_tilt_side" type="hinge" pos="0 0 0.0245" axis="1 0 0"
-                     range="-70 70"  stiffness=".37" damping=".29" frictionloss=".018" armature="0.005"/>
+                     range="-70 70"  stiffness=".37" damping=".38" frictionloss=".022" armature="0.008"/>
               <geom name="head_geom" type="sphere" size=".0735" mass="1.7748"
                     material="head_mat" pos="0.01 0 0.0735"/>
               <site name="vestibular" type="sphere" size="0.01" pos="0.01 0 0.0735"/>
 
-              <!-- Visible neck: cylinder descending from base of head body toward chest.
-                   Visual only (no contact). Helps see head articulation in renders. -->
-              <geom name="neck" type="cylinder" material="neck_mat"
-                    size=".025 .024" pos="0 0 -.013" mass="0.001"
-                    contype="0" conaffinity="0"/>
+              <!-- Head-side neck stub removed (David 2026-07-18): it poked out as a knob on the
+                   back of the head when tilted. The neck is now entirely CHEST-anchored (neck_base),
+                   so the head needs no stub. -->
+
 
               <!-- Eye whites (sclera) — visible spheres in render -->
               <geom name="geom:left_eye"  type="sphere" material="eye_mat" size=".015"
@@ -236,21 +248,34 @@
               <geom name="pupil_right" type="sphere" material="pupil_mat" size=".0045"
                     mass=".0001" pos=".081 -.025 .067" contype="0" conaffinity="0"/>
 
-              <!-- Nose: small skin-toned protrusion between and slightly below the eyes.
-                   Unambiguously marks the front of the face in any render angle. -->
-              <geom name="nose" type="sphere" material="head_mat" size=".010"
-                    mass=".001" pos=".082 .0 .055" contype="0" conaffinity="0"/>
+              <!-- Front marker: bright-gold patch on the top-FRONT of the head (David 2026-07-18).
+                   Moved up onto the crown-front so it's visible from straight OVERHEAD (the old
+                   face-level nose pointed down/away when prone and couldn't be seen). Pairs with the
+                   brown hair on the back-top: gold = FRONT, brown = BACK, obvious from above. Sits
+                   above/behind the eye-camera look axis, so it stays out of AB's POV. -->
+              <geom name="nose" type="sphere" material="nose_mat" size=".019"
+                    mass=".001" pos=".071 .0 .113" contype="0" conaffinity="0"/>
 
               <!-- Mouth: small reddish horizontal bar below the nose. -->
               <geom name="mouth" type="box" material="lip_mat" size=".012 .002 .003"
                     mass=".0005" pos=".076 .0 .035" contype="0" conaffinity="0"/>
 
-              <!-- Hair: positioned on the back-top of the head so it does not
-                   occlude the forward-facing eye cameras. -->
-              <geom name="hair_top"  type="sphere" material="hair_mat" size=".045"
-                    mass=".005" pos="-.005 0 .135" contype="0" conaffinity="0"/>
-              <geom name="hair_back" type="sphere" material="hair_mat" size=".045"
-                    mass=".005" pos="-.045 0 .080" contype="0" conaffinity="0"/>
+              <!-- Eyebrows: small dark bars on the face surface just above each eye. Cosmetic
+                   (no contact, no mass to speak of); together with the back-of-head hair and nose
+                   they make face/gaze direction obvious at a glance. Placed at x~.078 to sit on the
+                   sphere surface, behind the camera lens plane (x=.07) so they don't occlude the POV. -->
+              <geom name="eyebrow_left"  type="box" material="hair_mat" size=".012 .004 .0035"
+                    mass=".0002" pos=".078 .026 .082" euler="0 8 0" contype="0" conaffinity="0"/>
+              <geom name="eyebrow_right" type="box" material="hair_mat" size=".012 .004 .0035"
+                    mass=".0002" pos=".078 -.026 .082" euler="0 8 0" contype="0" conaffinity="0"/>
+
+              <!-- Hair: shifted clearly onto the BACK of the head (David 2026-07-18) so the two
+                   spheres overlap into one back-of-head mass rather than reading as two blobs on top.
+                   Brown mass = BACK; bright-gold nose = FRONT. Kept off the forward eye cameras. -->
+              <geom name="hair_top"  type="sphere" material="hair_mat" size=".046"
+                    mass=".005" pos="-.032 0 .120" contype="0" conaffinity="0"/>
+              <geom name="hair_back" type="sphere" material="hair_mat" size=".048"
+                    mass=".005" pos="-.056 0 .086" contype="0" conaffinity="0"/>
               <!-- Stereo cameras: look forward-and-down when body is PRONE.
                    When prone: head+Z = world+Y (forward), head+X = world-Z (down).
                    Cameras are tilted 15° downward from horizontal so the ball
@@ -358,6 +383,12 @@
          prism mode (rgba alpha->0) but stays solid+rewarding. -->
     <body name="ghost" mocap="true" pos="0.4 0 2.131">
       <geom name="ghost_geom" type="sphere" size="0.053" rgba="1 0.12 0.12 1" contype="0" conaffinity="0"/>
+    </body>
+
+    <!-- GHOST decoy (blue): visible non-physical twin of target2, for two-ball prism
+         mode (whole-field displacement). Parked far off-platform unless prism+decoy. -->
+    <body name="ghost2" mocap="true" pos="10 10 0">
+      <geom name="ghost2_geom" type="sphere" size="0.053" rgba="0.12 0.3 1 1" contype="0" conaffinity="0"/>
     </body>
 
     <!-- TARGET BALL 2 (blue) — used by Phase C two-ball env -->

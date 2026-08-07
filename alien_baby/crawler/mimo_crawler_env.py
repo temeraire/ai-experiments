@@ -23,6 +23,7 @@ Observation (vision, optional):
 Action: 25 continuous values in [-1, 1], scaled by strength_scale.
 """
 
+import os
 import pathlib
 import numpy as np
 import gymnasium as gym
@@ -52,8 +53,12 @@ CRAWL_POSES = {
     "arms_fwd": {7: 0.7, 11: 0.7, 10: -0.4, 14: -0.4},
 }
 
-CAM_H = 32
-CAM_W = 32
+# Camera resolution. Default 32 preserves all existing 32px models/behavior; set the
+# env var AB_CAM_RES=64 (before import) to train/eval at higher resolution. The CNN
+# extractor computes its conv output size at runtime, so it adapts automatically; note a
+# model trained at one resolution can only be loaded under the same AB_CAM_RES.
+CAM_H = int(os.environ.get("AB_CAM_RES", "32"))
+CAM_W = CAM_H
 
 PROPRIO_DIM = 69  # 3 pos + 4 quat + 6 vel + 25 jpos + 25 jvel + 3 acc + 3 gyro
 VISION_DIM_STEREO = CAM_H * CAM_W * 3 * 2  # stereo: left + right, each (H, W, 3)
@@ -90,7 +95,8 @@ class MimoCrawlerEnv(gym.Env):
 
     def __init__(self, vision=False, max_steps=DEFAULT_MAX_STEPS,
                  spawn_radius=None, spawn_cone_deg=DEFAULT_SPAWN_CONE_DEG,
-                 spawn_cone_min_deg=0.0,
+                 spawn_radius_hole=None,
+                 spawn_cone_min_deg=0.0, gaze_spawn=False,
                  strength_scale=1.0, n_substeps=4, render_mode=None,
                  approach_reward_scale=APPROACH_REWARD_SCALE,
                  velocity_bonus_scale=VELOCITY_BONUS_SCALE,
@@ -98,6 +104,8 @@ class MimoCrawlerEnv(gym.Env):
                  random_start_orientation=False,
                  memory_obs=False,
                  stereo=True,
+                 frame_stack=1,
+                 frame_stride=1,
                  action_mode="torque",
                  step_cost=STEP_COST,
                  xml_path=None,
@@ -107,17 +115,35 @@ class MimoCrawlerEnv(gym.Env):
                  tilt_cost=0.0,
                  tilt_cost_deg=30.0,
                  prism_offset_deg=0.0,
-                 target_obs=False):
+                 target_obs=False,
+                 decoy_ball=False,
+                 decoy_penalty=-5.0):
         super().__init__()
+        # decoy_ball: two-ball visual DISCRIMINATION mode. Ball2 (blue, identical
+        # size/physics to the red target) spawns in the cone each episode; touching
+        # it ends the episode with decoy_penalty. Touch cannot tell the balls apart,
+        # so reliably winning requires using the DIRECTION of the red one in vision
+        # (removes the touch-search escape documented in FINDINGS 2026-07-05).
+        self.decoy_ball = bool(decoy_ball)
+        self.decoy_penalty = float(decoy_penalty)
         self.vision = vision
         self.max_steps = max_steps
         self.spawn_radius = spawn_radius or DEFAULT_SPAWN_RADIUS
+        # spawn_radius_hole: optional (lo, hi) sub-band of spawn_radius that the ball
+        # NEVER spawns in — a held-out distance gap for the generalization test (train the
+        # ends, eval the middle). None keeps every prior run bit-identical.
+        self.spawn_radius_hole = tuple(spawn_radius_hole) if spawn_radius_hole else None
         self.spawn_cone_deg = spawn_cone_deg
         # spawn_cone_min_deg: if >0, exclude the near-forward wedge so |bearing| lies in
         # [min/2, max/2] with random sign — a LATERAL-BAND spawn. Makes forward-crawl fail
         # and the ball's direction behaviorally necessary (defeats the +/-22 forward-crawl
         # confound). Default 0.0 keeps every prior run bit-identical.
         self.spawn_cone_min_deg = float(spawn_cone_min_deg)
+        # gaze_spawn: re-place the ball AFTER settling so the VISIBLE target (ghost under a lens,
+        # real ball at offset 0) lands within +-spawn_cone/2 of the eye's actual GAZE, at
+        # spawn_radius from the body — fixes the world-origin spawn whose bearing-from-the-forward-
+        # offset-eye was amplified out of view. Default False keeps every prior run bit-identical.
+        self.gaze_spawn = bool(gaze_spawn)
         self.strength_scale = strength_scale
         self.approach_reward_scale = approach_reward_scale
         self.velocity_bonus_scale = velocity_bonus_scale
@@ -140,6 +166,14 @@ class MimoCrawlerEnv(gym.Env):
         self.random_start_orientation = random_start_orientation
         self.memory_obs = memory_obs
         self.stereo = stereo
+        # frame_stack: emit the current pixel frame plus (frame_stack-1) PAST frames spaced
+        # frame_stride steps apart, so the vision network can see self-motion (motion parallax).
+        # One crawl step moves the viewpoint <1px at 32x32, so adjacent frames show no motion —
+        # the stride spaces them far enough apart to accumulate a supra-pixel image shift.
+        # frame_stack=1 (default) is bit-identical to the single-frame past behaviour.
+        self.frame_stack = int(frame_stack)
+        self.frame_stride = max(1, int(frame_stride))
+        self._frame_buf = None
         # Crawl-ready default pose (2026-07-02, minimal-change track). crawl_pose is a
         # dict {actuator_index: center_angle_rad}: the position-offset ranges for those
         # actuators are re-centred on the angle (offsets around a locomotion-adjacent
@@ -200,7 +234,7 @@ class MimoCrawlerEnv(gym.Env):
 
         memory_dim = 2 if memory_obs else 0
         if vision:
-            vis_dim = VISION_DIM_STEREO if stereo else VISION_DIM_MONO
+            vis_dim = (VISION_DIM_STEREO if stereo else VISION_DIM_MONO) * int(frame_stack)
         else:
             vis_dim = 0
         target_dim = 3 if target_obs else 0
@@ -236,12 +270,30 @@ class MimoCrawlerEnv(gym.Env):
         self.prism_offset_deg = float(prism_offset_deg)
         self._headcam_vopt = None
         self._ghost_mocap_id = -1
+        self._ghost2_mocap_id = -1
+        self._eye_cam_ids = None
         if self.prism_offset_deg != 0.0:
             self.model.geom_group[self._target_geom_id] = 3
             self._headcam_vopt = mujoco.MjvOption()
             self._headcam_vopt.geomgroup[3] = 0   # real ball invisible to the agent's cameras
             gbody = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_BODY, "ghost")
             self._ghost_mocap_id = int(self.model.body_mocapid[gbody])
+            # Cache the two eye cameras for the gaze-relative prism (see _update_prism_ghost).
+            self._eye_cam_ids = (
+                mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_CAMERA, "left_eye"),
+                mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_CAMERA, "right_eye"),
+            )
+            if self.decoy_ball:
+                # Two-ball prism = whole-field displacement: hide the real blue
+                # decoy too and show a blue ghost at its rotated bearing. (Rotating
+                # only red would be confounded by the gaze-choice inversion — the
+                # anchored blue would steer AB to true-red via blue-avoidance.)
+                self.model.geom_group[self._target2_geom_id] = 3
+                g2 = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_BODY, "ghost2")
+                if g2 < 0:
+                    raise ValueError("prism+decoy needs a 'ghost2' body in the XML "
+                                     "(use mimo_crawler_pos_wide_prism.xml)")
+                self._ghost2_mocap_id = int(self.model.body_mocapid[g2])
 
         # Cache joint qpos/dof addresses for fast obs
         self._jpos_adr = np.array([
@@ -269,9 +321,19 @@ class MimoCrawlerEnv(gym.Env):
         self._contact_rewarded = False
 
     # ------------------------------------------------------------------
+    def _draw_radius(self):
+        """Draw a spawn radius from spawn_radius, rejecting the held-out hole if set."""
+        for _ in range(20):
+            r = self.np_random.uniform(*self.spawn_radius)
+            h = self.spawn_radius_hole
+            if h is None or not (h[0] < r < h[1]):
+                return r
+        return r
+
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
         mujoco.mj_resetData(self.model, self.data)
+        self._frame_buf = None   # frame-stack buffer refills from the first frame this episode
 
         # Place MIMo prone (face down) on platform.
         # Default _PRONE_QUAT puts spine along world +Y. If random_start_orientation,
@@ -336,22 +398,38 @@ class MimoCrawlerEnv(gym.Env):
                 theta = mag if self.np_random.uniform() < 0.5 else -mag
             else:
                 theta = self.np_random.uniform(-angle_rad, angle_rad)
-            r     = self.np_random.uniform(*self.spawn_radius)
+            r     = self._draw_radius()
             bx, by = r * np.sin(theta), r * np.cos(theta)
             self.data.qpos[tgt1_qadr:tgt1_qadr + 3] = [bx, by, PLATFORM_TOP_Z + 0.053]
             self.data.qpos[tgt1_qadr + 3:tgt1_qadr + 7] = [1, 0, 0, 0]
-            self.data.qpos[tgt2_qadr:tgt2_qadr + 3] = [10.0, 10.0, 0.0]
-            self.data.qpos[tgt2_qadr + 3:tgt2_qadr + 7] = [1, 0, 0, 0]
-            self._ball2_active = False
+            if self.decoy_ball:
+                # Decoy (blue) mirrored across the midline, with a minimum angular
+                # separation of 30 deg so the two balls never sit in one touch sweep.
+                min_sep = np.deg2rad(30.0)
+                theta_d = -theta
+                if abs(theta_d - theta) < min_sep:
+                    theta_d = theta - np.sign(theta if theta != 0.0 else 1.0) * min_sep
+                # Randomly swap which bearing gets red vs blue. Without this the
+                # min-sep rule leaves red systematically more central and a BLIND
+                # sweep picks red above chance (measured 63% — the decoy_v1 confound).
+                # With the swap, blind choice is 50% by construction.
+                if self.np_random.uniform() < 0.5:
+                    theta, theta_d = theta_d, theta
+                    self.data.qpos[tgt1_qadr:tgt1_qadr + 3] = [
+                        r * np.sin(theta), r * np.cos(theta), PLATFORM_TOP_Z + 0.053]
+                self.data.qpos[tgt2_qadr:tgt2_qadr + 3] = [
+                    r * np.sin(theta_d), r * np.cos(theta_d), PLATFORM_TOP_Z + 0.053]
+                self.data.qpos[tgt2_qadr + 3:tgt2_qadr + 7] = [1, 0, 0, 0]
+                self._ball2_active = True
+            else:
+                self.data.qpos[tgt2_qadr:tgt2_qadr + 3] = [10.0, 10.0, 0.0]
+                self.data.qpos[tgt2_qadr + 3:tgt2_qadr + 7] = [1, 0, 0, 0]
+                self._ball2_active = False
 
-        # Prism: place the GHOST at the real ball's bearing rotated by prism_offset_deg
-        # (same radius, same height). Vision sees the ghost; the real ball is hidden + solid.
-        if self.prism_offset_deg != 0.0 and self._ghost_mocap_id >= 0:
-            bx, by, bz = self.data.qpos[tgt1_qadr:tgt1_qadr + 3]
-            r = float(np.hypot(bx, by))
-            th = np.arctan2(bx, by) + np.deg2rad(self.prism_offset_deg)
-            self.data.mocap_pos[self._ghost_mocap_id] = [r * np.sin(th), r * np.cos(th), bz]
-
+        # Prism ghost placement moved to _update_prism_ghost() (called after settling below and
+        # every step): a faithful GAZE-RELATIVE displacement needs the final camera pose, which the
+        # settling step establishes. The old world-origin placement here was wrong (see
+        # PRISM_GAZE_RELATIVE_PROPOSAL.md).
         mujoco.mj_forward(self.model, self.data)
         # Crawl track: let the body drop the few cm onto the platform and settle into
         # the crawl-ready pose BEFORE the episode starts, holding the neutral targets.
@@ -361,6 +439,9 @@ class MimoCrawlerEnv(gym.Env):
             for _ in range(40):
                 self.data.ctrl[:] = self._act_mid
                 mujoco.mj_step(self.model, self.data)
+        if self.gaze_spawn and not self.fixed_ball_positions:
+            self._gaze_spawn_ball()  # place ball in the gaze frame so the visible target is in view
+        self._update_prism_ghost()   # gaze-relative prism, from the settled camera pose
         # Reference dorsal(up) axis in body frame, for tip detection: the body-frame
         # vector that points to world-up in the settled starting pose.
         R0 = self.data.xmat[self._root_body_id].reshape(3, 3)
@@ -379,6 +460,97 @@ class MimoCrawlerEnv(gym.Env):
         c = float(np.clip(up_world[2] / (np.linalg.norm(up_world) + 1e-9), -1.0, 1.0))
         return float(np.degrees(np.arccos(c)))
 
+    def _update_prism_ghost(self):
+        """Faithful GAZE-RELATIVE lateral prism: place the ghost so it appears, in the eye, at the
+        real ball's CAMERA-frame azimuth shifted by +prism_offset_deg, preserving elevation and
+        range. Uses the CYCLOPEAN eye (midpoint of the two parallel eye cameras). Called at reset
+        and every step, so the displacement is a constant RETINAL shift as the head/body moves.
+
+        Replaces the old world-origin placement, which measured azimuth from the world origin (not
+        the eye, which sits reached-forward and tilted down) and so delivered the wrong angle and
+        usually put the ghost off-screen (validated: a "30 deg prism" became a 55 deg off-screen
+        shift). No-op at offset 0 (no ghost; the agent sees the real ball) or if no ghost body
+        exists. See PRISM_GAZE_RELATIVE_PROPOSAL.md."""
+        if self._ghost_mocap_id < 0 or self._eye_cam_ids is None:
+            return
+        cl, cr = self._eye_cam_ids
+        cam = 0.5 * (self.data.cam_xpos[cl] + self.data.cam_xpos[cr])
+        M = self.data.cam_xmat[cl].reshape(3, 3)      # both eyes are parallel (same orientation)
+        right, up, fwd = M[:, 0], M[:, 1], -M[:, 2]   # camera views along -z
+        off = np.deg2rad(self.prism_offset_deg)
+
+        def shift(ball_w):
+            v = ball_w - cam
+            vf, vr, vu = v @ fwd, v @ right, v @ up
+            h = np.hypot(vf, vr)                       # horizontal magnitude (fwd-right plane)
+            az = np.arctan2(vr, vf) + off              # shift retinal azimuth by +offset
+            return cam + (h * np.cos(az)) * fwd + (h * np.sin(az)) * right + vu * up  # keep el+range
+
+        j1 = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_JOINT, "target_free")
+        a1 = self.model.jnt_qposadr[j1]
+        self.data.mocap_pos[self._ghost_mocap_id] = shift(self.data.qpos[a1:a1 + 3])
+        if self._ghost2_mocap_id >= 0 and self._ball2_active:
+            j2 = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_JOINT, "target2_free")
+            a2 = self.model.jnt_qposadr[j2]
+            self.data.mocap_pos[self._ghost2_mocap_id] = shift(self.data.qpos[a2:a2 + 3])
+        mujoco.mj_kinematics(self.model, self.data)   # propagate mocap -> geom_xpos for rendering
+
+    def _gaze_spawn_ball(self):
+        """Place the ball(s) so the VISIBLE target (ghost under a lens; real ball at offset 0)
+        lands within +-spawn_cone/2 of the eye's actual GAZE. Bearing is taken FROM THE EYE
+        (visibility); distance FROM THE TORSO (reach / stay on-platform). Called after settling
+        when gaze_spawn=True; no-op with fixed_ball_positions. See PRISM_GAZE_RELATIVE_PROPOSAL.md."""
+        cl, cr = (mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_CAMERA, n)
+                  for n in ("left_eye", "right_eye"))
+        eye = 0.5 * (self.data.cam_xpos[cl][:2] + self.data.cam_xpos[cr][:2])
+        fwd = -self.data.cam_xmat[cl].reshape(3, 3)[:, 2]
+        gaze_yaw = np.arctan2(fwd[0], fwd[1])
+        torso = self.data.qpos[:2].copy()
+        off = np.deg2rad(self.prism_offset_deg)
+        half = np.deg2rad(self.spawn_cone_deg / 2)
+        z = PLATFORM_TOP_Z + 0.053
+        plat_half = 0.95   # keep inside the ~1 m platform half-extent
+
+        def sample_bearing():
+            if self.spawn_cone_min_deg > 0.0:                # lateral-band spawn
+                mag = self.np_random.uniform(np.deg2rad(self.spawn_cone_min_deg / 2), half)
+                return mag if self.np_random.uniform() < 0.5 else -mag
+            return self.np_random.uniform(-half, half)
+
+        def place(qadr, target_bearing):
+            # world azimuth (from the eye) the REAL ball must sit at so its ghost lands at
+            # gaze_yaw+target_bearing: pre-subtract the offset the prism adds back.
+            phi = gaze_yaw + target_bearing - off
+            d = np.array([np.sin(phi), np.cos(phi)])
+            W = eye - torso
+            P = eye + max(self.spawn_radius) * d
+            for _ in range(8):                                # shrink R if it leaves the platform
+                R = self._draw_radius()
+                disc = (W @ d) ** 2 - (W @ W) + R * R
+                s = -(W @ d) + np.sqrt(max(disc, 0.0))
+                P = eye + s * d
+                if np.hypot(*P) <= plat_half:
+                    break
+            self.data.qpos[qadr:qadr + 3] = [P[0], P[1], z]
+            self.data.qpos[qadr + 3:qadr + 7] = [1, 0, 0, 0]
+
+        j1 = self.model.jnt_qposadr[mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_JOINT, "target_free")]
+        t1 = sample_bearing()
+        if self.decoy_ball and self._ball2_active:
+            min_sep = np.deg2rad(30.0)
+            t2 = -t1
+            if abs(t2 - t1) < min_sep:
+                t2 = t1 - np.sign(t1 if t1 != 0 else 1.0) * min_sep
+            t2 = float(np.clip(t2, -half, half))
+            if self.np_random.uniform() < 0.5:                # exchangeable placement (blind=50%)
+                t1, t2 = t2, t1
+            place(j1, t1)
+            j2 = self.model.jnt_qposadr[mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_JOINT, "target2_free")]
+            place(j2, t2)
+        else:
+            place(j1, t1)
+        mujoco.mj_forward(self.model, self.data)
+
     # ------------------------------------------------------------------
     def step(self, action):
         # Apply action based on mode:
@@ -394,6 +566,8 @@ class MimoCrawlerEnv(gym.Env):
         for _ in range(self.n_substeps):
             mujoco.mj_step(self.model, self.data)
         self._step += 1
+
+        self._update_prism_ghost()   # keep the gaze-relative prism attached to the moving eye
 
         obs = self._get_obs()
 
@@ -418,13 +592,18 @@ class MimoCrawlerEnv(gym.Env):
             reward += CONTACT_REWARD
             self._ball1_touched = True
         if self._ball2_active and ball2_hit and not self._ball2_touched:
-            reward += CONTACT_REWARD
+            # Decoy mode: the blue ball is a trap, not a second target.
+            reward += self.decoy_penalty if self.decoy_ball else CONTACT_REWARD
             self._ball2_touched = True
 
         # Termination rule:
         #   - Single-ball mode (ball2 inactive): terminate on first ball1 touch (legacy behavior)
-        #   - Two-ball mode (ball2 active): terminate only when BOTH balls touched
-        if self._ball2_active:
+        #   - Decoy mode (decoy_ball): terminate on EITHER touch — red wins, blue loses
+        #   - Two-ball mode (ball2 active, non-decoy): terminate when BOTH balls touched
+        if self.decoy_ball and self._ball2_active:
+            if self._ball1_touched or self._ball2_touched:
+                terminated = True
+        elif self._ball2_active:
             if self._ball1_touched and self._ball2_touched:
                 terminated = True
         else:
@@ -458,7 +637,37 @@ class MimoCrawlerEnv(gym.Env):
             "step": self._step,
             "strength_scale": self.strength_scale,
             "body_motion": body_motion,
+            "ball1_bearing": self._ball1_ego_bearing(),
         }
+
+    # ------------------------------------------------------------------
+    def _ball1_ego_bearing(self):
+        """True ego-bearing (radians) to the REAL red ball in the BODY/torso (root) frame
+        (x=lateral, y=forward) — the ACTION frame the policy steers in. This is the target the
+        eye should learn: the direction the body confirms by actually reaching the ball.
+
+        FRAME CHOICE (matched-step experiment, 2026-07-12, theory-monitor verified): the target
+        must be in the frame the policy ACTS in (body/root), NOT the head/camera frame. The head
+        frame is cleaner for the pixel->bearing readout (camera rides the head), but a matched-step
+        A/B showed it HURTS behavioral steering — the policy reads the CNN's visual latent and
+        steers the body, so a head-relative signal requires an extra head-pose composition it does
+        not learn, collapsing sighted-vs-blind steering from 67/43 (body) to 53/50 (head). The
+        body frame's pixels->bearing map is blurrier (pixels alone can't fully resolve body-
+        direction under head yaw), but it is action-aligned and the policy uses it directly
+        (Taylor's interpenetration: the signal that gets used is the one tied to the action).
+        A future upgrade — feed head pose into the VISUAL pathway for an accurate AND aligned
+        signal — is deferred; the Stage-2 recalibration readout controls for head pose instead.
+
+        Under a +offset lens the pixels show the ball at bearing+offset (the ghost), so training
+        theta_vis against this true bearing forces the encoder to subtract the offset = recalibration."""
+        root_qadr = self.model.jnt_qposadr[self._root_joint_id]
+        root_pos  = self.data.qpos[root_qadr:root_qadr + 3]
+        tgt_jid   = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_JOINT, "target_free")
+        tgt_qadr  = self.model.jnt_qposadr[tgt_jid]
+        ball_w    = self.data.qpos[tgt_qadr:tgt_qadr + 3]
+        R = self.data.xmat[self._root_body_id].reshape(3, 3)
+        ball_ego = R.T @ (ball_w - root_pos)
+        return float(np.arctan2(ball_ego[0], ball_ego[1]))
 
     # ------------------------------------------------------------------
     def _ball_dist(self):
@@ -549,21 +758,33 @@ class MimoCrawlerEnv(gym.Env):
             return proprio
 
         _vopt = self._headcam_vopt   # hides the real ball (group 3) in prism mode; None otherwise
-        if _vopt is not None:
-            self._cam_renderer.update_scene(self.data, camera="left_eye", scene_option=_vopt)
-        else:
-            self._cam_renderer.update_scene(self.data, camera="left_eye")
-        left_img = self._cam_renderer.render().copy().astype(np.float32) / 255.0
 
-        if not self.stereo:
-            return np.concatenate([proprio, left_img.ravel()])
+        def _render(cam):
+            if _vopt is not None:
+                self._cam_renderer.update_scene(self.data, camera=cam, scene_option=_vopt)
+            else:
+                self._cam_renderer.update_scene(self.data, camera=cam)
+            return self._cam_renderer.render().copy().astype(np.float32).ravel() / 255.0
 
-        if _vopt is not None:
-            self._cam_renderer.update_scene(self.data, camera="right_eye", scene_option=_vopt)
+        cur = _render("left_eye")
+        if self.stereo:
+            cur = np.concatenate([cur, _render("right_eye")])
+
+        if self.frame_stack <= 1:
+            return np.concatenate([proprio, cur])
+
+        # Strided frame stack: emit [current, current-stride, current-2*stride, ...] so the
+        # network sees self-motion. Buffer is (re)initialised to copies of the first frame on
+        # reset (self._frame_buf set to None there), so early steps have valid frames.
+        maxlen = (self.frame_stack - 1) * self.frame_stride + 1
+        if self._frame_buf is None:
+            self._frame_buf = [cur.copy() for _ in range(maxlen)]
         else:
-            self._cam_renderer.update_scene(self.data, camera="right_eye")
-        right_img = self._cam_renderer.render().copy().astype(np.float32) / 255.0
-        return np.concatenate([proprio, left_img.ravel(), right_img.ravel()])
+            self._frame_buf.append(cur)
+            if len(self._frame_buf) > maxlen:
+                self._frame_buf = self._frame_buf[-maxlen:]
+        frames = [self._frame_buf[-1 - k * self.frame_stride] for k in range(self.frame_stack)]
+        return np.concatenate([proprio] + frames)
 
     # ------------------------------------------------------------------
     def render(self):

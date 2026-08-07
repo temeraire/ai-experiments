@@ -8,11 +8,15 @@ Terms that show up in FINDINGS.md, the training scripts, and our conversations. 
 
 **SAC (Soft Actor-Critic).** The learning algorithm we use. It's a modern reinforcement-learning method for problems with continuous actions (like joint torques). "Soft" because it rewards the agent for keeping some randomness in its behavior — it discourages premature lock-in to a single strategy. It's the standard workhorse for robotic-arm tasks in simulation.
 
+**State.** Providing a machine -- what we call an agent -- direct experience of the world through sensors. We call this *perception of the world* the state of the world. In the case of tic-tac-toe it's the board; in the case of a cart and pole, it's the speed and angle of the system. This perception can also include occasional reward and punishment signals, such as winning or losing a game, staying balanced or falling down. 
+
+Goal. The goal of reinforcement learning, then, is to find a policy that leads to maximum future rewards. 
+
 **Actor.** The neural network that chooses actions. Input: the observation (proprio + pixels). Output: a distribution over actions. In our case it's a small MLP: obs → 256 → 256 → action.
 
 **Critic.** A second neural network that estimates "how good was that action in that state?" — a scalar value. SAC actually uses two critics and takes the minimum (a trick to stop the agent from over-trusting its own value estimates). The actor trains itself to pick actions the critic rates highly.
 
-**Policy.** The rule that maps observations to actions — i.e., the creature's moment-to-moment behavior strategy. In our code the policy *is* the actor network: feed in the observation vector (proprio + pixels), out comes a distribution over the action vector (joint torques, head commands). "Running the policy" = executing that mapping step-by-step through an episode. SAC's whole job is to shape the policy over training so that actions it picks lead to high reward. When we talk about "vision-ablation sensitivity" (how much the action changes when pixels are zeroed), we are asking: how much does the policy depend on vision?
+**Policy.**  Learning how to behave -- what actions to take  -- given a certain state. The rule that maps observations to actions — i.e., the creature's moment-to-moment behavior strategy. In our code the policy *is* the actor network: feed in the observation vector (proprio + pixels), out comes a distribution over the action vector (joint torques, head commands). "Running the policy" = executing that mapping step-by-step through an episode. SAC's whole job is to shape the policy over training so that actions it picks lead to high reward. When we talk about "vision-ablation sensitivity" (how much the action changes when pixels are zeroed), we are asking: how much does the policy depend on vision?
 
 **Episode.** One trial: reset the environment, let the agent act for up to 200 timesteps or until it touches the target (whichever comes first). Our task gives +10 reward for touching the target.
 
@@ -352,3 +356,254 @@ ablation gap flipped to −7.5 — the policy re-solved the task as a conservati
 the penalty priced out the aggressive vision-triggered maneuvers. Lesson: after ANY reward change
 in a vision phase, re-measure the ablation gap; success and tip rates alone will not show that
 vision quietly stopped mattering.
+
+**Touch-search escape.** The loophole that has capped every vision result on the single-ball task:
+because the target is the only solid object on the platform, a policy can win by sweeping blindly
+until it bumps into something — no seeing required. The time-pressure calibration showed this sweep
+is fast (blind contacts 37-55% inside 150-350 steps), so it can't be priced out with a clock. It
+makes vision optional: at best an arousal cue ("something's out there, start sweeping"), never a
+direction signal. Closing it requires a wrong-answer cost, not a time cost.
+
+**Decoy-discrimination task.** The two-ball answer to the touch-search escape: a blue decoy ball,
+identical to the red target in size and physics, spawns in the cone every episode (mirrored bearing,
+min 30 deg separation); touching it ends the episode with a penalty. Touch cannot tell the balls
+apart — only vision can — so reliably winning requires reading the RED ball's direction from
+pixels. The eval adds a WRONG-BALL rate; a blind policy should be at chance between the two balls.
+
+**Choice accuracy (decoy task).** The primary metric of the decoy-discrimination phase: of the
+episodes where AB touched SOME ball, the fraction where it was the red target — red/(red+blue).
+With exchangeable placement the blind floor is exactly 50% (a pixel-blind policy has no channel to
+prefer red), so any CI excluding 50% is pure vision. Contact rate stops being informative here: a
+policy can contact often by grabbing whichever ball is nearest. decoy_v2_s0's 63.2% +/- 10.1
+sighted vs 49.4% +/- 10.6 ablated is the project's first above-chance visual discrimination.
+
+**Gaze-choice inversion (repulsor gaze).** The decoy-task discovery that AB keeps the ball it will
+NOT touch in view and approaches the one it is barely looking at (blue visible 62% of steps in
+red-ending episodes; red only 13%). Holds in the early decision phase, so it is a strategy, not
+the trivial fact that an approached ball slides under the chin. Means vision's contribution to
+choice may be "identify and veto the fixated ball," not "steer toward red-ness" — the sign of the
+gaze-behavior link is opposite to the naive assumption. Diagnosed by logging per-step color-in-view
+fractions from the actual obs pixel block, split by episode outcome and by early/late phase.
+
+**Touch-as-information (proposed phase).** The distinction between touch as a *success signal*
+(current: contact = reward + episode over) and touch as an *information channel* (a hip-bump on a
+table teaches where the table is, without being success at anything). The proposed future phase
+wires MIMo's tactile sensors into the obs, makes wrong-touch non-terminal, and adds memory, so
+incidental bumps update AB's knowledge of object positions. Deliberately deferred until after the
+prism experiment: informative touch reopens the touch-search escape at the tactile level ("bump it;
+if the episode continues it was the decoy; go find the other"), which would wreck the clean
+choice-accuracy = vision metric. See TOUCH_AS_INFORMATION_PROPOSAL.md.
+
+**Whole-field prism displacement (two-ghost design).** The displacement mechanism for the two-ball
+task: BOTH real balls stay solid at their true positions but are hidden from AB's cameras, and a
+red + blue ghost pair appears at the true bearings rotated by the prism offset. Displacing only the
+red cue would have been confounded by the gaze-choice inversion — an anchored blue ghost would
+steer AB to true-red via blue-avoidance even under full visual control. Rotating the whole picture
+means every visual selection rule points at the displaced bearing, so "follows the picture" vs
+"ignores the picture" separates cleanly. The classical prism experiment, faithfully.
+
+**Follow-the-ghost (prism regime 1).** The pre-registered outcome in which displacing the visible
+picture drags AB's choice with it — confirmed 2026-07-08 in both strong discriminators. Signatures:
+choice-vs-true collapses with offset and goes BELOW chance at 60-90° (an arousal gate can only decay
+toward 50%, never through it), and conditionally, when the red ghost appears near the true-blue
+position AB touches blue 67.7% vs 34.8% otherwise. The other pre-registered regimes: arousal-gate
+(choice ignores the offset) and partial binding (in between). Caution on record: follow-the-ghost
+proves vision's position signal drives selection, NOT that AB has a spatial map — a retinotopic
+"climb the red gradient" salience-follower predicts the same curve.
+
+**Negative aftereffect (prism adaptation).** The decisive signature of genuine sensorimotor
+recalibration: after adapting to displaced vision, remove the prism and behavior errs in the
+OPPOSITE direction of the displacement before re-converging — the system re-mapped vision-to-action,
+and the re-mapping now misfires on normal input. Distinguishes true recalibration from mere
+relearning (a second policy for prism conditions), which recovers during adaptation but shows NO
+aftereffect when the prism comes off. The arousal account predicts neither. This is the measurement
+the whole project is named for.
+
+**Synthetic-null metric check.** Standing methods rule (theory-monitor, 2026-07-08) after the third
+"tautological metric" trap: before any new metric becomes a headline number, run it on a case where
+the true answer is known to be null/chance and confirm it reports that. The traps it would have
+caught: the ±22° cone where forward-crawl made vision look load-bearing, the decoy_v1 placement
+bias that made a blind sweep look like discrimination, and the displayed-red heading fraction whose
+committed-episode end-positions could only land on real balls (structurally incapable of its job).
+
+**Per-bearing symmetry check (central-cone reading; 2026-07-07).** The diagnostic that decides
+whether the decoy discriminator is *really seeing color* or just *always going one way*. Worry:
+if the policy had a habit of always crawling left, and red happened to spawn on the left more
+often, its choice accuracy would look like color vision when it is actually a motor bias (a
+*lateralization confound* — the same "aggregate hides the tails" trap that bit head-search seed 1).
+Test: with fair exchangeable placement (red/blue assigned to the two bearings at random, blind
+floor exactly 50%), bin every episode by which side the red ball actually spawned and read accuracy
+per bin. Result (decoy_v2_ext_s0, 100 ep): accuracy is *symmetric*, not one-sided — ~93–100% when
+red is within ±40° of center (left OR right), falling to ~50% (chance) at BOTH far edges. That
+symmetric central-strong / edge-weak shape rules out a left-going motor bias and instead points to
+a benign field-of-view limit: the camera can resolve the two balls near center but not at the
+extreme angles, so the edge bins are effectively unwinnable (cf. winnability rule — do not score
+out-of-view configs as "AB failed to discriminate"). Consequence: the headline "vision drives the
+choice" survives; the honest caveat is that it drives the choice *only inside the central cone*,
+and the ~76% aggregate is pulled down by edge bins that no color signal could win.
+
+**Visual object-agnosticism (mismatched-shape decoy test; 2026-07-08).** The visual analogue of
+the proprioceptive object-agnostic equivalence class — and a stronger claim. Proprio's shape-
+invariance (Phase XV: held-out ellipsoid/capsule reached like spheres) is nearly by-construction,
+because a touch-driven reach *cannot perceive shape*. Vision can: a box and a sphere have different
+32×32 silhouettes. The test overrides the two decoy balls' geom primitive zero-shot on the sphere-
+trained policy and asks whether the color choice survives. It does: choice_vs_true is 76–81%
+whether the red target is a sphere, box, or capsule, whether the blue decoy is too, and even when
+BOTH objects are boxes (neither the trained shape). So the visual channel keys on COLOR identity,
+not object geometry — a *learned* indifference to shape information it demonstrably has, which is
+why it outranks the proprio version. Two controls make it airtight: the ablated (blind) floor is
+~52% for box and sphere alike (no cube-vs-rolling-sphere touch/physics asymmetry), and the fixed
+red-sphere prism "ghost" distractor is hidden in all conditions (else it would supply a red sphere
+in the box conditions and fake the result). Open: approach-red vs avoid-blue, and whether shape
+would compete at higher camera resolution.
+
+**Ghost distractor (offset-0 confound).** A pre-existing scene element the shape test forced into
+the open: the prism env's `ghost`/`ghost2` mocap bodies are only repositioned/hidden when
+prism_offset ≠ 0, so at offset 0 a fixed RED-sphere ghost sits in view. Hiding it left the decoy
+control unchanged (77.2% vs prior 76–79%), so it did NOT confound prior offset-0 results — but it
+WOULD have silently defeated the shape test by supplying a red sphere in every box condition. Now
+neutralized (alpha=0) in the shape-eval harness. Canonical example of a distractor that is inert
+for one question and fatal for the next — check scene contents per experiment, don't assume.
+
+**Approach-red / chromatic phototropism (recolor test; 2026-07-08).** What the decoy policy's
+color cue actually is, pinned down by recoloring the balls zero-shot (reward stays on the same
+object regardless of its color). The rule is a POSITIVE attraction to the red channel — "steer
+toward the reddest region in view" — not "avoid blue." Evidence: with the reward object colored
+blue and the decoy red, the policy chases the red decoy (reaches the rewarded object only 18%);
+with no red present (green target vs blue decoy) it drops to chance (a blue-avoider would still
+pick green); and it generalizes to yellow (R channel 0.95 ≈ red's 1.0) over green (0.12). Why it
+matters: this leans the long-open salience-vs-spatial-code fork toward SALIENCE — the visual
+channel is a chromatic phototropism (approach-the-red-blob), not an abstract "compute the target's
+bearing" spatial map. Combined with the displacement-degradation result (vision is directional),
+the decoy visual channel is best described as a red-channel-keyed *directional attractor*:
+directional, object-agnostic, field-of-view-limited, salience-flavored.
+
+**Grounding program / rival grounding architecture (2026-07-09, `GROUNDING_LLMS.md`).** The
+project's proposed next goal: use AB's developmentally-grounded perception to GROUND a language
+model, and thereby demonstrate an alternative to how AI grounds language today. Current VLMs
+bolt a static web-contrastive image encoder (CLIP) onto an LLM — which is AB's own "all-at-once
+fusion," the architecture AB showed is brittle (v1: 95%→30% under noise). AB embodies the
+developmental / interpenetrated alternative. Why it matters: it reframes eight months of
+perception work as building the grounded substrate that LLMs lack, with a built-in control group
+(AB-grounded vs CLIP-grounded).
+
+**Image-schema bridge (metaphor-extension).** The move that makes grounding an LLM tractable
+despite AB grounding only a few invariants. From embodied-cognition theory (Lakoff-Johnson):
+abstract language is metaphorically extended from a small set of bodily-spatial schemas
+(source-path-goal, near-far, toward-away, containment). So AB need only ground the sensorimotor
+CORE (bearing, distance, toward/away, reach) that the abstract vocabulary is claimed to be built
+on — not the whole lexicon. Claim is at the level of mechanism/structure, not percept content.
+
+**Concept-anchoring probe.** The cheapest first test of the grounding thesis (near-zero build):
+measure whether AB's grounded latent space and an LLM's word-activation space share structure,
+changing neither model. Extract AB encoder latents for scene states with known invariants
+(bearing, distance, toward/away); extract an LLM's hidden activations for the words naming those
+states; test alignment via RSA + cross-validated linear decode against permutation baselines. A
+positive says spatial words are anchored to sensorimotor structure AB has; a NULL says text-only
+words are ungrounded relative to it — which motivates the bridge even more. Either way informative.
+
+**Governor vs. foundation (the grounding fork).** The strategic choice the whole grounding
+program turns on. GOVERNOR: constrain a pretrained LLM post-hoc with AB's grounded model as a
+consistency-critic (AB's own vision-must-agree-with-proprio loss, scaled up to
+language-must-agree-with-perception) — easy to prototype, leaves the LLM's ungrounded core
+intact. FOUNDATION: make grounded perception the base and grow language ON it (via the
+distil-then-RL lesson) — the theory-faithful reading of "perception underpins language," and the
+far harder build. Recommendation: prototype the governor for signal, write foundation as the
+north star.
+
+**Forward model / world-model predictor.** A learned "what happens next" simulator: given the
+current state and a candidate action, predict the sensory consequences (next latent, next
+proprio, "the ball will move and hit the wall"). Grounding architecture (e) in GROUNDING_LLMS.md
+(added from reframed.docx): instead of only checking that a language model's *representations*
+match grounded perception, make it predict the *consequences* of the actions it proposes, scored
+against an embodied forward model — a governor over outcomes, not just plausibility. Sibling of
+the deferred MICOA Phase II "anticipatory vision" (vision predicts proprio's next step — seeing
+contact before feeling it). Matters here because it is the one integration idea that adds
+causality rather than reference to the grounding program.
+
+**Binocular disparity (two-eye depth).** Depth you get by comparing the slightly different views
+from your left and right eyes: a near object sits at noticeably different spots in the two eyes, a
+far object at nearly the same spot. The size of that left-vs-right difference ≈ eye-separation ÷
+distance, so it shrinks with distance. Why it matters here: AB's eyes are 5 cm apart and only 32×32
+pixels over a 120° view, so each pixel is a chunky ~3.75° of the world. The two-eye difference is
+~2 pixels at 0.35 m (detectable) but drops below ONE pixel past ~0.6–0.7 m — both eyes then land the
+ball on the same pixel and there's literally no difference to read. So AB's two-eye depth is
+resolution-limited to roughly arm's length; the fix is sharper eyes (more pixels) or wider-set eyes
+(bigger baseline). Contrast with motion parallax (depth from self-movement over time).
+
+**Motion parallax.** Depth from your OWN movement over time: as you move sideways, near things sweep
+across your view faster than far things. It's a memory-over-time cue (you must compare now vs a
+moment ago), so a single-frame vision system can't use it — which is why AB needed frame-stacking
+(visual memory) to attempt it. Taylor's PRIMARY distance cue (he ranks it above two-eye depth), and
+in humans it comes online before stereo. For AB it only carries depth if he actually translates his
+viewpoint enough between the compared frames (hence a temporal stride so >1 px of motion accumulates).
+
+**mildhead (run nickname).** Our internal name for the model from run tag `mildhead_vis_s0` — NOT a
+literature term. It's the current best vision policy, retrained on the head with MILD joint damping
+(the setting we landed on after heavy damping calmed the head but hurt far-distance vision-steering,
+76.8%→59.4%; mild recovered it to 85%). Naming convention for our runs generally: descriptive
+nicknames + `_vis` (vision) + `_sN` (seed N), e.g. dist_holdout, steadyhead, mildhead, parallax_mem —
+all ours, none external.
+
+**Gain-field arm.** A version of AB's vision network with an extra piece (a FiLM modulation) that lets
+his head-pose adjust how visual features are read — the bet being that knowing your head angle helps
+undo a lens fixed to the eye. Named for real "gain-field" neurons that blend "what I see" with "where
+my eyes/head point" to convert eye-centred to body-centred coordinates. In the Stage-2 prism runs the
+gain-field arm INVERTED (vision-on did worse than vision-off), reproducibly — it hurt rather than
+helped. The "plain arm" is the version without it.
+
+**Aux loss (mismatch aux loss).** "Aux" = auxiliary — a side teaching signal separate from the game's
+reward. Here it's a "how wrong is the eye's guess?" score: the gap between where AB's eye estimates the
+ball is and where it actually turned out to be (confirmed by touching it). Training should shrink it as
+the eye learns. Under a prism lens, minimizing it forces the eye to subtract the lens offset =
+recalibration. In the failed Stage-2 run it never dropped (flat), meaning the teaching signal never
+engaged — a key reason that run couldn't show recalibration.
+
+**MuJoCo (Multi-Joint dynamics with Contact).** The physics engine our simulation runs on (v3.6):
+fast rigid-body dynamics with contacts, joints, actuators, sensors, and rendering — the standard
+tool for robotics/locomotion RL. Distinct from MIMo (the infant BODY model we run inside it):
+MuJoCo = the simulator, the MIMo-derived XML = the creature. It CAN build complex scenes — terrain
+(heightfields), arbitrary shapes (mesh imports), many objects/obstacles, multiple creatures, even
+deformables (cloth/cable/soft bodies in v3). The real limit is compute, not capability: richer scenes
+simulate slower, which trades against the many-fast-parallel-environments that RL training wants.
+
+**Greek room.** David's design (2026-07-19) for a richer world built entirely from MuJoCo primitives
+(columns = stacked cylinders with capitals, checkered floor plane, boxes, spheres; extendable with
+cones, pyramids, tori and composites). Purpose, and why it matters technically: (1) OCCLUSION — you
+can't see some objects until you move around a column, which creates genuine PRESSURE to move (the
+thing motion parallax needs) and adds accretion-deletion (a depth cue where texture appears/disappears
+at edges as you move); it also makes vision load-bearing in a way a bare platform can't — you can't
+proprio-grope your way to a thing you can't see. (2) PERSPECTIVE — a long colonnade's parallel columns
+converge to a point, and the checkered floor is a texture gradient: the classic pictorial + linear-
+perspective depth cues (Taylor's §6.11 floor-texture example), the substrate for FAR-distance
+perception the near-field platform lacks. (3) A philosophical layer David attaches: partial visibility
+= DOUBT / uncertainty about what's there, and the "atomization of meaning" — the creature sees obscured
+parts that must be integrated (over movement/time) into whole objects and, eventually, meanings, the
+way language assembles meaning from parts. So the room is a vehicle for depth perception, movement-
+driven adaptation, object variety, AND perceptual inference (assembling a whole from glimpses).
+
+**cmd (the two-number command the vision policy sends the gait; forward speed + turn rate).**
+`cmd` is the two-number command the high-level vision policy sends down to the walking gait EVERY
+step. It is the ENTIRE interface between the two layers of the walker's brain — nothing else passes
+between them. `cmd = [forward_speed, turn_rate]` — literally a gas pedal and a steering wheel:
+- `cmd[0]` = how fast to walk FORWARD, in metres/second. In our setup it ranges 0 to 0.6.
+- `cmd[1]` = how fast to TURN, in radians/second; positive turns one way, negative the other. Range ±0.6.
+
+The design is a two-level hierarchy:
+- The HIGH-LEVEL vision policy (the "driver") looks through the eyes and decides WHERE TO GO — it
+  outputs `cmd`, e.g. "walk forward at 0.5, turn left a bit."
+- The FROZEN low-level gait (the "legs" — gait v10) receives that `cmd` and works out the eight
+  leg-joint motions that actually produce that forward speed and turn rate. It knows and cares
+  NOTHING about balls or vision; it just follows the command.
+
+Worked example (from when it went wrong): "the vision env drives the gait at cmd 0.8" meant the driver
+was flooring the gas to 0.8 m/s — which happened to be v10's WORST speed (v10 walks fastest at ~0.6
+m/s and slows to ~0.09 m/s at 0.8), so the creature barely moved. Fixing it = capping the driver's
+"full forward" at the 0.6 sweet spot.
+
+Why the split matters (the payoff): the vision layer only has to learn "steer toward the ball I see"
+in TWO numbers, not micromanage eight joints. That makes the learned steering BODY-AGNOSTIC — the same
+driver could later sit on top of a DIFFERENT body (a biped) that accepts the same two-number `cmd`;
+only the low-level gait is body-specific. In code the policy emits a 2D action in [-1,1] mapped to
+`cmd`: `cmd_fwd = 0.3*(a[0]+1)` (→ 0–0.6 m/s), `cmd_turn = 0.6*a[1]` (→ ±0.6 rad/s), and the mapping
+is chosen to match the gait's trained command range and its speed sweet spot.

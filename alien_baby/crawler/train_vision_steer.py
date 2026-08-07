@@ -1,0 +1,178 @@
+"""train_vision_steer.py — the DRIVER: eyes steer the frozen-gait quadruped to the ball it sees.
+
+Hierarchical: a high-level policy reads the stereo eye-view (+ a little torso proprio) and outputs a
+2D command (forward speed, turn rate). That command drives the FROZEN gait (ant_gait_v3) for k
+sub-steps. Reward = getting closer to / reaching the ball. This is where vision becomes load-bearing:
+the only way to reach a ball off to the side is to SEE it and turn toward it.
+
+  python -m alien_baby.crawler.train_vision_steer --steps 300000 --run-tag vsteer_s0
+"""
+import argparse, os, subprocess
+import numpy as np, mujoco
+import gymnasium as gym
+from gymnasium import spaces
+from stable_baselines3 import PPO
+from stable_baselines3.common.vec_env import DummyVecEnv
+from stable_baselines3.common.callbacks import CheckpointCallback, EvalCallback
+from alien_baby.crawler.crawler_cnn_extractor import StereoCrawlerCNN
+
+XML = "alien_baby/crawler/quad_walker.xml"
+GAIT = "alien_baby/results/ant_gait_v10_best/best_model.zip"   # the first WORKING walker (v3-v9 broken;
+# v4-v8 were sabotaged by a 105kg ball spawned on the creature in the gait env -- fixed 2026-07-20)
+STAND = np.array([0, 0, 0.55, 1, 0, 0, 0, 0, 1.0, 0, -1.0, 0, -1.0, 0, 1.0])
+CAM = 32
+PROP = 9   # high-level proprio: torso up-vector(3) + lin vel body(3) + ang vel(3)
+
+
+class VisionSteerEnv(gym.Env):
+    def __init__(self, max_steps=150, k_sub=8, seed=0):
+        self.model = mujoco.MjModel.from_xml_path(XML)
+        self.data = mujoco.MjData(self.model)
+        self.gait = PPO.load(GAIT, device="cpu")
+        self.rend = mujoco.Renderer(self.model, CAM, CAM)
+        self.max_steps, self.k = max_steps, k_sub
+        self.rng = np.random.default_rng(seed)
+        self.action_space = spaces.Box(-1.0, 1.0, (2,), np.float32)          # [fwd, turn]
+        self.observation_space = spaces.Box(-np.inf, np.inf, (PROP + 2 * CAM * CAM * 3,), np.float32)
+
+    def _R(self):
+        M = np.zeros(9); mujoco.mju_quat2Mat(M, self.data.qpos[3:7]); return M.reshape(3, 3)
+
+    def _gait_obs(self, cmd):
+        q, v, R = self.data.qpos, self.data.qvel, self._R()
+        return np.concatenate([[q[2]], R.T @ [0, 0, 1.0], R.T @ v[0:3], v[3:6],
+                               q[7:15], v[6:14], cmd]).astype(np.float32)
+
+    def _obs(self):
+        v, R = self.data.qvel, self._R()
+        prop = np.concatenate([R.T @ [0, 0, 1.0], R.T @ v[0:3], v[3:6]]).astype(np.float32)
+        self.rend.update_scene(self.data, camera="left_eye");  L = self.rend.render().astype(np.float32).ravel() / 255.0
+        self.rend.update_scene(self.data, camera="right_eye"); Rr = self.rend.render().astype(np.float32).ravel() / 255.0
+        return np.concatenate([prop, L, Rr])
+
+    def red_in_view(self):  # is the RED target currently visible in the (left) eye?
+        self.rend.update_scene(self.data, camera="left_eye")
+        im = self.rend.render()
+        R, G, B = im[..., 0].astype(int), im[..., 1].astype(int), im[..., 2].astype(int)
+        return int(np.sum((R > 150) & (G < 90) & (B < 90))) >= 2
+
+    def facing_deg(self):   # world yaw the creature is facing, degrees
+        M = np.zeros(9); mujoco.mju_quat2Mat(M, self.data.qpos[3:7]); M = M.reshape(3, 3)
+        return float(np.degrees(np.arctan2(M[1, 0], M[0, 0])))
+
+    def _dist(self):        # to RED target
+        return float(np.linalg.norm(self.data.qpos[15:17] - self.data.qpos[0:2]))
+
+    def _dist_blue(self):   # to BLUE decoy
+        return float(np.linalg.norm(self.data.qpos[22:24] - self.data.qpos[0:2]))
+
+    def reset(self, seed=None, options=None):
+        super().reset(seed=seed)
+        mujoco.mj_resetData(self.model, self.data)
+        self.data.qpos[:15] = STAND + self.rng.uniform(-0.02, 0.02, 15)
+        # MEASURE the creature's ACTUAL forward (don't assume +x) and place BOTH balls in front of
+        # THAT, within +-30deg of where it truly looks, at a visible range -- so a target is NEVER
+        # spawned in a blind spot (winnability). Positions from the SAME distribution, RANDOMLY
+        # labelled red/blue, so only COLOUR distinguishes them. (Out-of-view search comes LATER.)
+        M = np.zeros(9); mujoco.mju_quat2Mat(M, self.data.qpos[3:7]); M = M.reshape(3, 3)
+        fwd = float(np.arctan2(M[1, 0], M[0, 0]))         # world yaw of the body's forward (+x) axis
+        # Creature is 1.44 m foot-to-foot (feet reach 0.72 m from center), so a target must sit
+        # 2-3 BODY-LENGTHS out to make reaching an actual walk-and-steer, not a one-step touch.
+        # Balls are body-sized (r=0.5) so they stay visible to ~6 m; z=0.5 = ball resting on floor.
+        # Sample until the two balls are >=1.2 m apart (radius sum is 1.0) -- else two light spheres
+        # spawn INTERPENETRATING and MuJoCo's overlap-resolution flings them across the map.
+        for _ in range(50):
+            a1 = self.rng.uniform(-0.45, 0.45)
+            a2 = float(np.clip(a1 + self.rng.choice([-1.0, 1.0]) * self.rng.uniform(0.35, 0.55), -0.55, 0.55))
+            r1, r2 = self.rng.uniform(2.5, 4.0), self.rng.uniform(2.5, 4.0)
+            p1 = np.array([r1 * np.cos(fwd + a1), r1 * np.sin(fwd + a1)])
+            p2 = np.array([r2 * np.cos(fwd + a2), r2 * np.sin(fwd + a2)])
+            if np.linalg.norm(p1 - p2) >= 1.2:
+                break
+        ri = int(self.rng.integers(2))                    # random which is the red target
+        rp, bp = (p1, p2) if ri == 0 else (p2, p1)
+        self.data.qpos[15:22] = [rp[0], rp[1], 0.5, 1, 0, 0, 0]
+        self.data.qpos[22:29] = [bp[0], bp[1], 0.5, 1, 0, 0, 0]
+        mujoco.mj_forward(self.model, self.data)
+        self.t = 0; self.prev = self._dist()
+        return self._obs(), {}
+
+    def step(self, action):
+        # map policy action to the gait's SWEET SPOT: v10 walks fastest at cmd 0.6 (0.23 m/s) and
+        # slows to 0.09 m/s at 0.8, so cap forward at 0.6, not 0.8. Turn +-0.6 matches training.
+        cmd = np.array([0.3 * (action[0] + 1.0), 0.6 * float(action[1])], np.float32)  # fwd 0..0.6, turn +-0.6
+        for _ in range(self.k):                       # k gait-control decisions per high-level command
+            ga, _ = self.gait.predict(self._gait_obs(cmd), deterministic=True)
+            for _ in range(5):                        # gait was trained at n_sub=5 mj_steps/action
+                self.data.ctrl[:] = ga
+                mujoco.mj_step(self.model, self.data)
+        self.t += 1
+        d = self._dist(); db = self._dist_blue()
+        up_z = (self._R().T @ np.array([0, 0, 1.0]))[2]
+        reached_red = d < 1.0        # ball surface (r=0.5) is ~0.5 m in from center; creature reaches 0.72 m
+        reached_blue = db < 1.0
+        fell = self.data.qpos[2] < 0.28 or up_z < 0.4
+        reward = 3.0 * (self.prev - d) + 0.02 - (5.0 if fell else 0.0)
+        if reached_red:  reward += 10.0
+        if reached_blue: reward -= 8.0        # decoy penalty: reaching blue is bad
+        self.prev = d
+        term = bool(reached_red or reached_blue or fell)
+        return self._obs(), float(reward), term, self.t >= self.max_steps, {"red": reached_red, "blue": reached_blue}
+
+
+def _chime():
+    try: subprocess.run(["afplay", "/System/Library/Sounds/Glass.aiff"], timeout=5)
+    except Exception: pass
+
+
+def main():
+    p = argparse.ArgumentParser()
+    p.add_argument("--steps", type=int, default=300000)
+    p.add_argument("--n-envs", type=int, default=8)
+    p.add_argument("--run-tag", default="vsteer_s0")
+    p.add_argument("--device", default="mps")
+    p.add_argument("--seed", type=int, default=0)
+    p.add_argument("--init-vision", default=None,
+                   help="transplant a crawler vision encoder: load its conv trunk (which already "
+                        "learned to see our ball at 32x32) and FREEZE it; retrain only the steering "
+                        "head. Reuse, not re-derive.")
+    args = p.parse_args()
+    os.makedirs("alien_baby/results", exist_ok=True)
+    venv = DummyVecEnv([(lambda i=i: VisionSteerEnv(seed=args.seed + i)) for i in range(args.n_envs)])
+    evalenv = DummyVecEnv([lambda: VisionSteerEnv(seed=args.seed + 777)])
+    model = PPO("MlpPolicy", venv, n_steps=512, batch_size=1024, n_epochs=8, gamma=0.99,
+                gae_lambda=0.95, ent_coef=0.005, learning_rate=3e-4, clip_range=0.2,
+                policy_kwargs=dict(features_extractor_class=StereoCrawlerCNN,
+                                   features_extractor_kwargs=dict(proprio_dim=PROP),
+                                   net_arch=[128, 128]),
+                verbose=1, seed=args.seed, device=args.device)
+    if args.init_vision:
+        import torch
+        from stable_baselines3.common.save_util import load_from_zip_file
+        _, params, _ = load_from_zip_file(args.init_vision, device=args.device)
+        # copy the pixel pathway (conv trunk + proj + bearing head) from the crawler encoder into all
+        # 3 aliased extractor copies; the conv trunk is body-agnostic (it sees pixels, not legs).
+        px = {k: v for k, v in params["policy"].items()
+              if any(s in k for s in ["cnn.", "proj.", "bearing_head."])}
+        res = model.policy.load_state_dict(px, strict=False)
+        frozen = 0
+        for attr in ("features_extractor", "pi_features_extractor", "vf_features_extractor"):
+            fe = getattr(model.policy, attr, None)
+            if fe is not None:
+                for p_ in fe.cnn.parameters():
+                    p_.requires_grad = False; frozen += 1
+        print(f"[init-vision] transplanted conv/proj/bearing from {args.init_vision} "
+              f"(loaded {len(px)} tensors), froze conv trunk ({frozen} params). Retraining head only.")
+    ev = EvalCallback(evalenv, best_model_save_path=f"alien_baby/results/{args.run_tag}_best",
+                      eval_freq=10000, n_eval_episodes=10, deterministic=True, verbose=1)
+    cp = CheckpointCallback(save_freq=25000, save_path=f"alien_baby/results/{args.run_tag}_ckpt",
+                            name_prefix=args.run_tag)
+    print(f"=== VISION-STEER training: {args.run_tag} steps={args.steps} n_envs={args.n_envs} dev={args.device} ===")
+    model.learn(total_timesteps=args.steps, callback=[ev, cp], progress_bar=False)
+    model.save(f"alien_baby/results/{args.run_tag}_final")
+    _chime()
+    print(f"=== vision-steer done: {args.run_tag} ===")
+
+
+if __name__ == "__main__":
+    main()

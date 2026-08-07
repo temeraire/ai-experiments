@@ -209,10 +209,11 @@ def make_env(rank, seed, strength_scale, spawn_cone_deg, max_steps, n_substeps,
              target_obs=False, hand_success=False, pin_targets=False,
              near_contact_bonus_scale=0.0, near_contact_range=0.12,
              actuate_hands=False, contact_reward=None,
-             action_mode="torque", spawn_radius=None,
+             action_mode="torque", spawn_radius=None, spawn_radius_hole=None,
+             frame_stack=1, frame_stride=1,
              spawn_disc_lo=0.30, spawn_disc_hi=0.55, step_cost=-0.05,
              xml_path=None, crawl_pose=None, terminate_tilt_deg=None, tip_penalty=0.0,
-             tilt_cost=0.0):
+             tilt_cost=0.0, decoy_ball=False, prism_offset_deg=0.0, gaze_spawn=False):
     def _init():
         if cart_mode != "none":
             # Phase G: cart substrate. HER not used; plain MimoCrawlerCartEnv.
@@ -263,6 +264,9 @@ def make_env(rank, seed, strength_scale, spawn_cone_deg, max_steps, n_substeps,
                 stereo=stereo,
                 action_mode=action_mode,
                 spawn_radius=spawn_radius,
+                spawn_radius_hole=spawn_radius_hole,
+                frame_stack=frame_stack,
+                frame_stride=frame_stride,
                 step_cost=step_cost,
                 xml_path=xml_path,
                 crawl_pose=crawl_pose,
@@ -270,6 +274,9 @@ def make_env(rank, seed, strength_scale, spawn_cone_deg, max_steps, n_substeps,
                 tip_penalty=tip_penalty,
                 tilt_cost=tilt_cost,
                 target_obs=target_obs,
+                decoy_ball=decoy_ball,
+                prism_offset_deg=prism_offset_deg,
+                gaze_spawn=gaze_spawn,
             )
             if her:
                 # HERCrawlerWrapper instantiates MimoCrawlerEnv internally and adds

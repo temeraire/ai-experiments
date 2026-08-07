@@ -1513,3 +1513,448 @@ task — but that is bribery toward vision, note it); (b) a precise/small target
 can't stumble onto; (c) a distractor field of solid non-targets so touch-sweep is punished and only
 the visually-identified target pays — forcing vision to set direction. Until one of these makes the
 reach vision-direction-dependent, the prism aftereffect is premature.
+
+## 2026-07-05 — Head-search seed replication (s1, s2) and the posture-term result: sign replicates, size doesn't, and reward-shaping can silently delete the vision gap
+
+**Seed 1 (2M steps):** contact 70.0% sighted / 57.5% ablated → gap +12.5 pts; mean_toward +0.093 vs +0.008 (weaker sign-flip than seed 0). Bearing diagnostic: misses are NOT noise — far-left spawns hit 1/9 (11%) vs far-right 7/8 (88%) — seed 1 learned a right-lateralized search sweep, a systematic blind wedge at the cone's left extreme.
+
+**Seed 2 (1.3M steps):** contact 45.0% sighted / 37.5% ablated → gap +7.5 pts; mean_toward +0.200 vs +0.000 (largest toward-effect of any seed). Bearing diagnostic: NOT lateralized — weak at both extremes, a narrow-symmetric search phenotype, despite a near-perfect-looking training curve (the "aggregate hides the tails" trap recurring).
+
+**Three-seed verdict:** gap is positive in 3/3 seeds (s0 +22.5, s1 +12.5, s2 +7.5; mean ~+14) — real but seed-dependent in magnitude, not the seed-invariant headline the best-of-three (+22.5) implied. The most seed-consistent signal is mean_toward: sighted ≥ +0.09 in all seeds, ablated ≤ +0.01 in all seeds — vision reliably converts wander into net approach even when the contact-rate gap is modest. Search phenotype (broad / right-lateralized / narrow-symmetric) varies wildly by seed and is the dominant source of between-seed variance in the blind baseline; vision's marginal contribution on top is steadier than the raw gap suggests.
+
+**POSTURE-TERM RESULT — reward-shaping fragility, demonstrated.** Same seed 0, same curriculum, ONE change: tilt-cost 1.0 added to the reward. Result: tip rate rose (10.0% → 12.5%) — the term FAILED its one job. Contact stayed roughly flat (65.0% → 62.5%). But the vision-ablation gap went to **−7.5 pts** (62.5% sighted vs **70.0% ablated**, the best blind performance of any run) and mean_toward became numerically identical sighted vs ablated (+0.152/+0.150) — **vision stopped being load-bearing at all.** Reading: the tilt penalty prices out the aggressive vision-triggered maneuvers (fast turns/lunges that risk tilting), so training converges on a conservative, broad BLIND sweep instead. An auxiliary reward term that left aggregate success intact silently deleted vision dependence — the opposite of this branch's name ("reinforced, not destroyed"): here shaping destroyed it. **Rule going forward: any reward change in a vision-dependent task must re-measure the ablation gap, not just success/tip rates.**
+
+---
+
+## 2026-07-05/06 — Time-pressure calibration and the decoy-discrimination fix
+
+**TIME-PRESSURE CALIBRATION (no-training precheck):** tested whether truncating episodes at various step budgets T could separate directed reach from blind sweep, for the strongest head-search policies (s1, v1/+22.5). It could not: ablated (blind) contact was already 37.5-55% by T=150-350 — the touch-search sweep is an efficient learned behavior, not slow groping. Gap(T) for s1 wobbled +5..+15 at every T (never opened); v1 went NEGATIVE at tight T (blind beat sighted under pressure at T=150-200). **Time-pressure-alone REJECTED** as a lever; pivoted to two-ball decoy discrimination, where a wrong-colored decoy plus a wrong-touch penalty+termination closes the escape structurally rather than temporally.
+
+**DECOY RUN 1 (decoy_v1_s0, 1.3M) — a placement confound gave blind a 63% floor.** Official eval looked like a win: red-contact 57.5%/wrong-ball 32.5% sighted vs 47.5%/35.0% ablated (raw gap +10). But the per-episode choice diagnostic caught it: choice accuracy was STATISTICALLY IDENTICAL sighted vs ablated (63.9% vs 62.9%) — and blind picking red at 63% is impossible if the task were symmetric. Cause: the min-separation placement rule pushed the decoy away from center whenever the target spawned centrally, making red on average more central; the blind sweep exploited this geometry, not color. Lesson (repeated from the ±22° cone confound): always give the blind baseline a chance to cheat before crediting vision.
+
+**DECOY RUN 2 (decoy_v2_s0, fresh 2M) — FIRST ABOVE-CHANCE VISUAL DISCRIMINATION.** Fix: exchangeable placement (red/blue randomly assigned to the two computed bearings AFTER placement), making blind choice exactly 50% by construction. The decisive 100-episode choice diagnostic: **sighted choice 63.2% ± 10.1 (55R/32B) — CI excludes chance (p≈0.017)**; **ablated choice 49.4% ± 10.6 (42R/43B) — exactly the designed coin flip.** First time in the project that vision measurably changes WHICH object AB reaches, with no geometric escape available to the blind baseline. Official 40-ep eval (noisier): contact 45.0% both conditions (raw gap 0.0 — contact rate is no longer the right metric; choice is the signal now), wrong-ball 40.0%/35.0%, tip 10%. Training-eval reward oscillated 120-202 in the back half with no clean plateau — discrimination may still be sharpening with more steps.
+
+---
+
+## 2026-07-06 — Decoy discrimination: the touch-search escape closes, and the presence/arousal claim gets its first crack
+
+### Q1 — does the decoy result confirm, refine, or contradict "vision is presence/arousal, not direction"?
+
+**Refines it; does not cleanly confirm or contradict it.** The prism precheck's claim was specifically that the head-search policy does not use the R²=0.84 vision latent to set reach DIRECTION — it uses vision only to decide whether to engage, and lets a broad proprio/touch sweep supply the steering. A two-object choice is a genuinely new kind of test, because presence/arousal in that strict sense is symmetric information with respect to two balls: "a ball exists, engage" cannot, even in principle, tell AB WHICH of two balls to approach. For choice accuracy to rise above the structural 50% floor (63.2% ± 10.1 vs 49.4% ± 10.6), something in the pixels must be binding color-identity to a choice between two candidate bearings. In that narrow sense this is the first evidence of vision doing something functionally directional — discriminating BETWEEN targets, not just gating engagement with one.
+
+But the diagnostic cannot yet rule out a presence-style mechanism that still produces 63%. Consider "approach whichever direction the red-colored region of the visual field is more salient, more central, or larger in" — a phototropic, gradient-following rule (steer toward more red-ness in view) rather than "compute the bearing of the red object as a spatial coordinate, then turn to it." Both mechanisms produce above-chance red preference and are indistinguishable from the choice-accuracy number alone. The former is a real, if primitive, directional mechanism; the latter is a salience-weighted steering bias, a materially weaker claim than "vision sets reach direction via a spatial code." Verdict: the STRICT form of "presence/arousal, not direction" (vision contributes zero information about which of several targets to select) is REFUTED — 63% vs 50% cannot happen under a purely symmetric gate. The STRONG form (a genuine spatial bearing code drives the choice) remains unestablished — a salience/phototropism account is fully consistent with the same numbers. This is a refinement narrowing the space between "arousal only" and "full spatial code," not a resolution of it.
+
+### Q2 — touch-search escape closing to chance: CONFIRMED
+
+The touch-search escape framework predicted that once every non-visual route is genuinely closed (no time-pressure lever per the calibration precheck, no placement asymmetry per the decoy_v1 fix, wrong-touch actively penalized and terminating), blind performance should fall to the structural chance floor — a symmetric two-choice task gives an undirected search sweep nothing to exploit. Decoy run 2's ablated choice accuracy, 49.4% ± 10.6 against a designed 50.0%, lands almost exactly on that prediction. This is a genuine confirmed prediction, not a post-hoc fit: it was the explicit design goal of the exchangeable-placement fix, and the mechanism is now validated end to end across two runs — v1 showed the escape when a route existed (63.9% vs 62.9%, both far above 50%, driven by geometry not color), v2 showed its disappearance once the route was closed.
+
+### Q3 — task-structure vs. reward-shaping as the lever for keeping vision load-bearing
+
+The decoy runs used the identical curriculum recipe and warm-started encoder as the head-search runs, with NO additional auxiliary reward term — the only change was structural (a second ball, exchangeable colors, wrong-touch penalty + termination). Vision stayed measurably engaged (63.2% vs 49.4%, above chance) with nothing added to the reward function to keep it there. Contrast this directly with the posture-term result (2026-07-05): adding one auxiliary reward term (tilt-cost 1.0) to the SAME curriculum and seed left aggregate success essentially unchanged (65.0% → 62.5% contact) but SILENTLY ERASED the vision-ablation gap entirely (+22.5 → −7.5 pts; sighted and ablated mean_toward became numerically identical) — and the term did not even achieve its own stated goal (tip rate rose, not fell). One auxiliary reward term, chosen for an unrelated purpose, deleted the entire vision dependency without moving the visible success metric — the opposite of what every task-structure change in this arc has done (cone-widening curriculum: +12.5 → +22.5 pts; decoy discrimination: 50% → 63.2%). The pattern is now specific and twice-repeated: task-structure changes that remove a non-visual route to reward reliably INCREASE vision's measured contribution; reward-shaping additions layered on top of an already-solvable task put that contribution at risk, whether or not they achieve their own nominal purpose. Practical rule this log has now earned twice over: treat every auxiliary reward term in a vision-dependent task as a suspect until the ablation gap is re-measured, and prefer closing structural escapes over tuning reward coefficients as the lever for vision load-bearing.
+
+### Q4 — falsifiable expectations for the queued next steps
+
+**Seed replication.** Based on the head-search precedent (sign held 3/3 seeds, magnitude varied 7.5–22.5 pts), the prediction is: sighted choice accuracy should stay reliably above the ablated baseline across replication seeds (sign-robust), while the exact magnitude (currently a ~14-pt gap) likely varies seed to seed by a comparable range. A result that would REVISE the current reading: any replication seed where ablated choice accuracy is reliably off 50% (a tight CI excluding roughly 45–55%) would indicate a residual placement or geometric confound of the kind decoy_v1 had, not yet caught by the exchangeable-placement fix, and must be checked before trusting further magnitude comparisons.
+
+**Longer training.** If discrimination is a still-forming perceptual category — training-eval reward oscillated 120-202 in the back half with no clean plateau — the prediction is that choice accuracy should continue to rise with more steps, mirroring the head-search curriculum's own history (flat +12.5 → staged-curriculum +22.5). A result that would call this into question: if choice accuracy plateaus near the current ~60-63% indefinitely under substantially more steps, that points to a ceiling set by the coarseness of the 32×32 color signal or the touch-dominated architecture's limited capacity to route color into a choice decision, not by insufficient training time.
+
+**Prism displacement on a strong discriminator (the decisive test).** This is the experiment that can finally separate "vision sets target-selection direction" from "vision still only gates arousal, now for two objects." Concrete, falsifiable predictions:
+- If vision genuinely drives WHICH bearing gets approached (whether via a spatial code or a phototropic salience rule), prism-displacing the visible color cue away from its true bearing should pull choice toward the DISPLACED (ghost) position at a rate detectably above the no-prism baseline — and, the sharpest cut, accuracy scored against the TRUE object identity should fall as the offset grows while accuracy scored against the DISPLAYED position stays high. This is the direct analogue of classical prism adaptation: an initial displacement-direction error, adaptation under continued exposure, and a negative aftereffect on prism removal.
+- If vision still functions only as a presence/arousal gate (as the prism precheck found for the single-ball policy), displacing the color cue should have LITTLE TO NO effect on which real object gets chosen — choice accuracy should stay near the current 60-63%, because "a red thing exists somewhere" raises engagement without binding a specific direction, and the touch-search sweep (not vision) still supplies the steering.
+- An intermediate, also-informative outcome: displacement shifts choice toward the ghost's position LESS than "full following" predicts but MORE than "no effect" predicts — indicating partial directional binding, where vision biases the search sweep's starting point or weighting but proprioceptive/tactile correction still dominates the final approach. Given Q1's finding that the decoy result is equally compatible with a salience-weighted (non-spatial) mechanism, this intermediate outcome is plausible and should be scored as its own regime, not forced into either extreme.
+
+### Theory Monitor Note — 2026-07-06 (Decoy discrimination)
+
+**Touch-search escape framework: CONFIRMED.** Ablated choice accuracy (49.4% ± 10.6, 100 eps) lands on the designed 50% chance floor once every non-visual route (time pressure, placement asymmetry) is structurally closed — exactly the predicted collapse.
+
+**Presence/arousal-not-direction framework: REFINED, not overturned.** The strict form (vision cannot discriminate between two candidate targets) is refuted — sighted choice (63.2% ± 10.1) sits above the structural floor on a task a symmetric arousal gate cannot resolve. The strong form (a genuine spatial bearing code) remains unestablished: a salience/phototropism account ("approach more red-ness") explains the same number without positing a spatial map, and the two mechanisms have not yet been separated.
+
+**Task-structure vs. reward-shaping:** confirmed again, now twice over, in opposite directions. Closing a structural escape (decoy discrimination) grew the vision gap from a symmetric non-signal to 63.2% vs 49.4% with zero new reward terms. A single auxiliary reward term (posture tilt-cost, 2026-07-05) silently erased a previously robust +22.5-pt gap while leaving aggregate success intact and failing its own stated goal. Structural task changes remain the safer, and so far the only reliably positive, lever for vision dependence in this project.
+
+**The most important thing we don't know yet:** whether the decoy discrimination is a genuine spatial/directional binding of color to bearing, or a non-spatial salience-following rule (steer toward more red in view) that produces the same above-chance choice accuracy without any bearing code. Both mechanisms are equally consistent with 63.2% vs 49.4%.
+
+**Recommended diagnostic** (not a training run — a measurement): before committing to the full prism-displacement adaptation experiment, run the existing prism-ghost precheck harness on the decoy_v2 policy at several small-to-moderate offsets (15°/30°/45°) and check whether choice accuracy, scored against the TRUE object, degrades with offset. A clean degradation would show the decoy policy is using something bearing-like (the exact test the single-ball head-search policy failed); no degradation would show the decoy result is a salience effect rather than a spatial code, and would argue for redesigning the discrimination task (larger angular separation, or closing any remaining touch-search escape) before running the full aftereffect experiment.
+
+---
+
+## 2026-07-08 — Prism displacement result: the pre-registered "diagnostic" landed, and it discriminates further than the Q4 minimum bar required
+
+### 1. Regime 1 (follow-the-ghost) was pre-registered on 2026-07-06 — scoring the prediction
+
+Q4's first bullet spelled out exactly this outcome in advance: *"prism-displacing the visible color cue... should pull choice toward the DISPLACED (ghost) position at a rate detectably above the no-prism baseline — and, the sharpest cut, accuracy scored against the TRUE object identity should fall as the offset grows while accuracy scored against the DISPLAYED position stays high."* That is Regime 1, written down before the run. The result (both checkpoints, 100 eps/cell): choice_vs_true falls from baseline (76.4% ext_s0, 77.5% s2) through mid-offsets (62.0/47.6 at 30°, 53.2/53.3 at 45°) down to a minimum at 60° (44.7/37.8), with wrong-ball rate climbing in step (21→47% ext, 20→58% s2). **Score: CONFIRMED — and by more than the minimum the prediction asked for.** The pre-registered bar was "detectable pull toward displaced position + falling true-accuracy." What we got additionally is accuracy falling *below* the 50% structural floor, in both checkpoints, which the Q4 language did not explicitly require but is the strongest possible version of "the displaced picture is steering."
+
+**Strict presence/arousal account — refuted at what strength, precisely:** this is a harder refutation than the one Q1 logged on 2026-07-06. That entry refuted the strict form only to the level of "vision discriminates between two targets at all" (63.2% vs the 49.4% floor — still *above* chance, still explainable by a symmetric gate that merely leaks some signal). A pure presence/arousal gate — "a red thing exists somewhere, engage" — has no coordinate to distort and therefore has a hard floor at 50%: displacing the ghost can make the gate less informative (drifting choice_vs_true down toward 50%) but cannot make it anti-informative. Systematic mis-selection *below* 50% (down to 44.7% and 36.3%) is not a weaker signal from the same symmetric mechanism — it requires the visual position itself to be functioning as a directional variable that actively points AB at the wrong ball more often than chance. That is not compatible with any gating account, symmetric or leaky. The strict presence/arousal account is now dead outright, not merely "refined," on these two policies.
+
+### 2. Does follow-the-ghost resolve the Q1 fork (spatial code vs. phototropic salience)? Honest answer: no — and here is why the below-chance number doesn't settle it either
+
+It's tempting to read the below-chance collapse as resolving Q1 in favor of a genuine spatial bearing code. It doesn't, and the team should not let the FINDINGS.md phrasing ("the presence/arousal only account is dead") get quietly upgraded into "so AB has a spatial map." A retinotopic salience-follower — "steer toward wherever the red gradient is currently strongest in the visual field, with no coordinate transform, no persistent map" — is *also* directional in effect, and would *also* chase a displaced ghost, and would *also* produce below-chance mis-selection at large offsets: if the controller is simply climbing the red gradient wherever it currently renders, then at 45-60° the ghost's retinal location is closer to the WRONG solid ball more often than the right one, purely by geometry, with no internal representation of "where the true object is" required at all. Both the strong hypothesis (compute a bearing, steer to that coordinate) and the weak hypothesis (climb the local color gradient, no coordinate stored) predict the exact same choice_vs_true curve we measured, because both route behavior through "wherever red currently appears on the retina." **What follow-the-ghost resolves is the coarser question (presence/arousal-only is dead, per §1). What it does NOT resolve is the Q1 fork (spatial code vs. salience) — that remains exactly as open as it was on 2026-07-06.** A genuine discriminator would need a condition where the two mechanisms make different predictions — e.g., moving the ghost fully outside the camera's FOV mid-episode (a stored bearing could still be acted on from memory; a pure retinotopic gradient-follower has nothing left to climb once the stimulus leaves the sensor) — which the current sweep (15°-90°, ghost presumably still renderable) does not test.
+
+### 3. The below-chance choice + the conditional analysis (ghost-near-blue → 67.7% blue): does vision overriding touch-availability count as the interpenetration signature?
+
+Yes, and this is the sharpest theoretical upgrade in this entry. Recall the 2026-07-04 prism precheck's verdict on the single-ball head-search policy: vision was load-bearing only as an engagement gate, while touch/proprio's broad search sweep supplied *direction* — reach-to-real was "essentially invariant to visual displacement... even 120° away." That was a **coordination** pattern: two channels, touch dominant for direction, vision merely turning search on. The new conditional result inverts this. When the red ghost renders nearer the true-BLUE ball, AB touches blue 67.7% of the time (n=334); when nearer true-red, only 34.8% (n=563) — a ~33-point swing driven purely by where the color cue is rendered, on a task where BOTH balls are equally touchable and available to the touch/motor system at every trial. Touch-availability is symmetric by design (winnability rule: either ball is always reachable); the visual displacement alone decides which available target actually gets grabbed. That is the literal definition of interpenetration this project has been using throughout: vision is not an independent channel that touch can simply out-vote when it disagrees — vision's (possibly wrong) position signal is wired into the same action-selection pathway that decides which touch-target to commit to, strongly enough to override the pathway's own default. This is a genuine escalation from the head-search-era finding (vision gates engagement, touch supplies direction) to something closer to vision *setting* direction, at least in this two-target/decoy substrate. Caveat that must travel with this claim: per §2, "vision setting direction" here does not yet mean "a spatial map" — it is equally consistent with a salience-driven override. The interpenetration signature is about the entanglement of channels (vision can hijack touch's target selection), not yet about the *format* of the visual representation doing the hijacking.
+
+### 4. The displayed_red_frac metric failure — methods lesson, logged honestly
+
+FINDINGS.md notes plainly that the pre-registered `displayed_red_frac` heading-fraction metric was uninformative *as implemented*: for any episode that ends in a touch, the final bearing necessarily lands on a real, solid ball (the ghost has no mass and cannot be "arrived at"), so the metric's threshold could never discriminate hypotheses — it was structurally guaranteed to look the same regardless of which regime was true. This joins a now-recurring failure mode in this project's method log: a metric can be pre-registered in good faith and still be **tautological by construction** (compare: the ±22° cone reach-envelope confound, the decoy_v1 placement-geometry confound, the "reward is a poor proxy for discrimination" finding from the extension run). **The general lesson, worth stating as a standing rule:** before spending compute on the real run, run the metric's computation through a synthetic null (or through at least two of the candidate regimes on paper) and confirm it can actually produce *different* numbers under each — a metric that returns the same value under every hypothesis is not measuring anything, no matter how principled its derivation looked at design time. Credit where due: the team caught this honestly rather than reporting a null result as if it were informative, and swapped in the conditional analysis (ghost-near-blue / ghost-near-red touch rates), which turned out to be a strictly stronger measure than the one it replaced. That is the right response to a failed metric — but the next pre-registration should budget five minutes for a synthetic-null check on any brand-new metric before it becomes the headline number.
+
+### 5. Pre-registering the adaptation/aftereffect experiment — three outcomes, concrete numbers, BEFORE approval
+
+The gate PRISM_GHOST_PROPOSAL.md set ("vision must be directionally load-bearing, or there is nothing to remap") is now cleared by §1-§3. Below are the three pre-registered outcomes for a **+30° adaptation design** (Phase A baseline → Phase B sustained +30° prism exposure → Phase C prism removed, aftereffect window), using the two numbers we already have as anchors: baseline choice_vs_true ≈ 76-78% (both checkpoints, offset 0), and momentary (no-adaptation, single-shot eval) +30° choice_vs_true = 62.0% (ext_s0) / 47.6% (s2) — i.e., where AB starts on Day 1 of Phase B before any exposure-driven change.
+
+- **Outcome 1 — RECALIBRATION (interpenetration confirmed).** During Phase B, choice_vs_true *improves* with continued exposure — climbing from the ~48-62% starting point back toward something near baseline (a concrete target: recovering at least half the gap, i.e., ≥65-70%, by the end of Phase B). The decisive fork is Phase C: on prism removal, choice_vs_true should drop **below** the 76-78% baseline — a genuine negative aftereffect, concretely landing somewhere in the 55-65% range for the first ~10-20 post-removal trials — before gradually recovering back to baseline over subsequent trials. Any statistically detectable dip-then-recover in Phase C is the signature; its presence is what would make this the strongest result the project has produced, because it is not achievable by re-training a network cold on the new geometry (see Outcome 3).
+
+- **Outcome 2 — AROUSAL / NO ADAPTATION (nothing to recalibrate).** Choice_vs_true stays flat near its Phase-B starting value (48-62%) for the duration of exposure — no improvement, because each trial is independently steered by wherever the color cue currently renders and there is no persistent internal quantity being corrected. On prism removal (Phase C), choice_vs_true jumps **immediately** back to baseline (76-78%) with no dip and no recovery curve — a step function, not a gradual return, because there was nothing miscalibrated to begin with. This outcome would be consistent with the salience-following account surviving from §2.
+
+- **Outcome 3 — RELEARNING (a genuine third possibility, not just "recalibration under another name").** Choice_vs_true *improves* during Phase B — the same rising trajectory as Outcome 1, e.g. 48-62% climbing to 65-70%+ — but this improvement is ordinary policy plasticity re-solving the task under the new offset geometry (gradient updates), not a reversible perceptual remapping. The discriminator is Phase C: on prism removal, choice_vs_true returns to baseline **immediately**, step-function style, exactly like Outcome 2 — no negative aftereffect, because there is no old calibration left to conflict with the restored geometry. **Outcomes 1 and 3 are indistinguishable from Phase B data alone; only the Phase C aftereffect test separates them, which is precisely why PRISM_GHOST_PROPOSAL.md insists the aftereffect phase is not optional.**
+
+**Design-dependent caveat, on record before approval:** whether Outcome 3 is even a *live* possibility depends on whether Phase B keeps the policy's weights frozen (eval-only, as the current displacement sweep was) or continues RL training through the exposure phase. If Phase B is eval-only, Outcome 3 is structurally impossible — there is no gradient update for "relearning" to consist of — and any Phase-B improvement under a frozen policy would itself be a remarkable finding (some form of in-context/recurrent-state recalibration without weight change). If Phase B allows continued training, all three outcomes are live and the Phase C aftereffect test is the only thing that tells them apart. The strategist's protocol should state explicitly which regime (frozen vs. continued-training) Phase B uses, because it changes what a "positive" Phase B result is even allowed to mean.
+
+### Theory Monitor Note — 2026-07-08
+
+**Follow-the-ghost / Regime 1 (pre-registered 2026-07-06): CONFIRMED, at a strength beyond the minimum bar** — choice_vs_true falls below the 50% structural floor in both checkpoints (44.7-53.2 range at 45-60°), which a symmetric presence/arousal gate cannot produce even in principle.
+
+**Spatial code vs. phototropic salience (the Q1 fork): STILL UNRESOLVED** — both mechanisms predict identical chasing-and-below-chance behavior when the visual cue is simply retinotopically displaced; the experiment run so far cannot tell them apart.
+
+**The most important thing we don't know yet:** whether the visual signal steering target selection is a stored/persistent bearing representation or a moment-to-moment retinotopic gradient-follower with no memory — a question the planned +30° adaptation/aftereffect run does not resolve either (both mechanisms could in principle show *some* form of Phase-B change), so it should be treated as a separate open question from recalibration-vs-arousal-vs-relearning, not folded into it.
+
+**Recommended diagnostic** (not a training run — a measurement): before or alongside the adaptation run, take the existing 100-ep prism sweep data (already collected, no new compute) and check whether choice_vs_true at a fixed offset depends on episode length / time-since-ghost-first-visible — a salience-follower predicts the miscall is set the instant the ghost is in view and stays constant, while a bearing-holding mechanism predicts choice could still be corrected later in the episode if touch information starts to disagree with the stored bearing. This is a free re-analysis of data already in hand and would narrow the Q1 fork before spending a new compute budget on the adaptation design.
+
+---
+
+## 2026-07-08 — Prism adaptation + aftereffect: scoring the pre-registered outcomes (Theory Monitor)
+
+*In plain terms: this entry checks the adaptation experiment against the three predictions written down in advance on 2026-07-08 (§5 above), asks whether the Q1 "is it a real map or just a reflex" question got any narrower, states what the project's central "interpenetration" claim can and can't yet say, and proposes the next cheap checks.*
+
+### 1. Scoring the three pre-registered outcomes against the data
+
+**Relearning (Outcome 3) — REFUTED.** Its discriminating prediction was an *immediate, step-function* return to baseline the instant the prism comes off, because on this account there was never anything miscalibrated to conflict with — the network just re-solved the task under the new geometry. That is not what happened: prism-off choice_vs_true fell to 54.7% against a 76.4% baseline, and the miss pattern is lawful and direction-specific (92.1% vs 8.3% conditional capture depending on which side of red the blue ball sits). A step-function account predicts none of that structure. Dead.
+
+**Arousal / no-adaptation (Outcome 2) — REFUTED.** Its predictions were (a) a flat Phase B — no change because each trial is steered independently by wherever the cue currently renders, and (b) the same immediate snap-back at Phase C. Phase B was not flat (it moved, if noisily: 62.0 → 67.0 → 58.1 → 56.2 → 48.8 → 54.8), and Phase C shows the large, structured aftereffect above, not a snap-back. Dead.
+
+**Recalibration (Outcome 1) — the only surviving account, but score it precisely, not generously.** The pre-registration split this outcome into two separate numeric bars: a Phase-B bar (climb back to ≥65–70% by the end of exposure) and a Phase-C bar (a dip into 55–65%, then gradual recovery). The Phase-C bar is met almost exactly (54.7%, just under the window, with a lawful/controlled/red-anchored signature that is *more* diagnostic than the pre-registration required). The Phase-B bar is **not** met: the curve peaks at 67.0% at 100K and then declines to 54.8% by 1M — it ends *below* where it started (62.0%), not climbing toward 65–70%. That is a genuine miss on half of this outcome's own quantitative prediction, not a rounding error.
+
+**So: is "recalibration confirmed with a partial-adaptation caveat" the right verdict, or does this demand a fourth reading?** The right verdict is the former, but stated more sharply than "partial adaptation." The pre-registration itself says Phase B alone cannot distinguish Outcomes 1 and 3 — only Phase C can, because both predict *some* kind of Phase-B movement. What Phase C shows (a lawful, controlled, below/near-floor, direction-specific negative aftereffect) is a signature that *only* a recalibration account can produce; neither of the other two outcomes has a mechanism capable of generating it, regardless of what the Phase-B aggregate curve looked like. The honest reading is therefore: **the decisive Phase-C fork is won cleanly by recalibration, and the Phase-B aggregate accuracy number is the wrong instrument to have expected clean confirmation from** — it is a noisy, still-training RL curve on a task with an oscillating reward signal (train reward wobbled 35–140 throughout), and a noisy aggregate metric failing to rise smoothly does not, on its own, out-vote a clean downstream aftereffect that is otherwise inexplicable. We do not need a fourth regime; we need to downgrade our trust in the Phase-B number specifically, and say plainly that "recalibration occurred" rests on the Phase-C evidence, with Phase B logged honestly as inconclusive/noisy rather than confirmatory.
+
+### 2. Does the aftereffect narrow the Q1 fork (spatial code vs. reflexive salience-following)?
+
+Yes — more than the raw follow-the-ghost result did, and for a specific reason. The 2026-07-08 prism-displacement result (chasing the ghost, going below chance at 45–60°) could not separate a genuine stored bearing from a stateless "steer toward wherever red currently renders" reflex, because both mechanisms are driven by a *currently present* displaced cue — a reflex needs nothing stored to produce that pattern.
+
+The aftereffect is a different kind of evidence. In Phase C, the prism is OFF: the visible red cue is back at its true, undisplaced bearing. There is no ghost, no live displacement, nothing currently rendering at the wrong place. And yet the creature still misassigns blue balls that sit within 45° of (red − 30°) at 77–100%, falling to ~33% beyond that band — behaving as if red were still offset by the training displacement, despite there being no live stimulus at that offset location. A pure moment-to-moment reflex has nothing left to react to once the wrong-place cue is gone; it should immediately track the now-correct cue. The fact that it doesn't means **some quantity is being carried between trials** — a learned bias, gain, or offset sitting between the raw visual bearing and the action it produces. That rules out the strict zero-memory salience-follower reading outright.
+
+It does **not**, however, prove a genuine spatial map in the full sense (a coordinate system that would generalize smoothly to bearings/positions never encountered during Phase B). A single persistent scalar correction — "subtract roughly 30° from whatever pixel-bearing you compute, everywhere" — explains the data exactly as well as a re-organized allocentric map would. So the fork narrows from "reflex vs. map, indistinguishable" to "some form of persistent bias exists, but we still don't know if it's a single global offset or a genuine spatially-structured remapping" — real progress, not full resolution. §4 below proposes the test that would finish this: check whether the aftereffect generalizes to bearings the policy never saw displaced during Phase B.
+
+### 3. The interpenetration thesis: what's shown end-to-end, what isn't
+
+**Shown, in one continuous chain, on the same learned system:** (a) vision that carries direction — the decoy task made color-identity bind to a specific bearing choice (63→78% across seeds, structural floor pinned at 50%); (b) vision that dominates action selection even when the alternative (touch) is equally available — the conditional capture result (67.7% vs 34.8% blue-touch depending on which real ball the ghost renders nearer, on a task where both balls are always physically reachable) shows vision hijacking touch's default target, not merely gating whether touch engages; (c) an adaptable vision-action mapping that leaves a genuine, lawful, controlled negative aftereffect after sustained conflict with touch's ground truth. That is the classical prism-adaptation phenomenon — perceive, select, misjudge, adapt, mis-select the other way when the world snaps back — reproduced start to finish in a system built from pixels, proprioception, and touch, with no phase of that chain resting on an un-replicated or confounded result.
+
+**Not yet shown:** (i) **explicit spatial representation** — per §2, we have evidence of a persistent bias, not yet evidence of a structured, generalizing spatial code; (ii) **touch-vision convergence, the deferred touch-as-information phase.** Every experiment in this arc has used touch in exactly one role: as the ground-truth error signal that *tells* the vision-action mapping it is wrong (the mismatch between "reach where vision points" and "the rewarding object is actually elsewhere" is what presumably drives the Phase-B change). Touch has never been probed as a first-class channel with its *own* decodable representation that must reconcile with vision's — we don't know whether touch has anything like a bearing code, whether adaptation changes how touch's estimate and vision's estimate get combined, or whether the system is simply "vision defers to touch's authority" in one direction only. Genuine convergence (each channel able to pull the other, precision-weighted integration, cue combination) is a stronger and different claim than "vision recalibrates to match where touch found the reward," and it remains untested.
+
+### 4. Proposed next measurements (diagnostics, not training runs — except where a short continuation is unavoidable)
+
+- **De-adaptation curve.** Continue evaluating the adapted checkpoint under normal (no-prism) vision in blocks after the Phase C aftereffect measurement, tracking choice_vs_true block-by-block. Concrete prediction: if this is genuine recalibration, expect a *gradual* multi-block climb back to the 76–78% baseline (the classical paradigm's de-adaptation curve, typically dozens of trials, not one). Falsifier: a snap-back to baseline within the first block would suggest the "aftereffect" was itself a Phase-B training-noise artifact rather than a stable recalibrated state.
+- **Adaptation with the vision encoder frozen.** Repeat Phase B with only the downstream policy/actor layers allowed to update (encoder weights fixed) and separately with only the encoder allowed to update. This localizes *where* the re-mapping lives. Concrete prediction: if the aftereffect still appears with the encoder frozen, the offset is a policy/action-level compensation, not a perceptual one; if the aftereffect disappears (or is much weaker) with the encoder frozen, the encoder's own representation is what moved, and re-mapping is a genuinely perceptual event.
+- **Seed replication of the aftereffect.** Run the identical Phase A→B→C protocol on the s2 checkpoint (already prism-swept once) and at least one further seed. Concrete prediction, matching the decoy-discrimination precedent (sign robust, magnitude seed-variable): the negative, direction-specific, red-anchored sign of the aftereffect should replicate; the exact conditional percentages (currently 92.1/8.3) should vary. Falsifier: a seed where the aftereffect direction reverses or vanishes would undercut the "genuine mechanism" reading and point back toward Phase-B RL noise being mistaken for one.
+- **Generalization-of-offset test (closes §2).** Score the aftereffect at bearings/offsets never visited during the +30° Phase-B exposure (e.g. re-run the aftereffect eval at ±60°, ±90° pairings, not just near the trained −30° band). Concrete prediction: a single global scalar-bias account predicts the same ~30° subtraction applies everywhere, uniformly; a genuinely structured spatial remapping predicts the correction could vary by region (stronger near the trained offset, weaker or different far from it). Either outcome is informative and this uses only existing checkpoints plus new eval episodes — no new training.
+
+### Theory Monitor Note — 2026-07-08 (Prism adaptation + aftereffect)
+
+**Behavioral/recalibration framework: CONFIRMED via the Phase-C fork, with the Phase-B curve logged as inconclusive rather than confirmatory** — the negative aftereffect (54.7% vs 76.4% baseline, lawful 92.1%/8.3% conditional capture, controlled against a symmetric pre-adaptation baseline) is a signature only recalibration can produce; relearning and arousal are both refuted because both require an immediate snap-back at Phase C, which did not happen.
+
+**Spatial-code-vs-salience fork: NARROWED, not resolved** — the aftereffect rules out a zero-memory retinotopic reflex (there is no live cue during Phase C, yet the mis-selection persists and is bearing-specific), so *some* persistent state now sits between vision and action; whether that state is a single global bias or a structured, generalizing spatial map is still open.
+
+**The most important thing we don't know yet:** whether the persistent post-adaptation bias is a single scalar correction applied everywhere or a spatially-structured remapping that varies by bearing — a question the generalization-of-offset test (§4) can answer using checkpoints already in hand.
+
+**Recommended diagnostic** (not a training run — just a measurement): re-score the already-collected aftereffect eval episodes, binned by bearing distance from the trained −30° offset, to check whether the 77–100%-vs-~33% conditional-capture split is a clean step (consistent with a single global bias) or itself has structure (consistent with a spatially varying remap) — this uses data already on disk.
+
+---
+
+## 2026-07-08 — Visual object-agnosticism: the decoy discrimination is color-bound, not shape-bound
+
+The mismatched-shape decoy test (FINDINGS 2026-07-08) overrides the two balls' geom primitive zero-shot on the sphere-trained decoy policies. Result across two seeds, four shapes (sphere/box/capsule + both-non-sphere): sighted choice_vs_true is 76–81% in every condition; ablated floors sit at ~52% for both box and sphere.
+
+**Generalization-as-primary / object-agnostic equivalence-class claim: EXTENDED TO VISION for the first time.** Phase XV gave this claim its proprio support (held-out ellipsoid/capsule reached like spheres). That support was epistemically weak because proprio *cannot perceive shape* — invariance there is nearly definitional. The present result extends the equivalence class to the visual channel, where it is a genuine learned fact: vision HAS shape information (a box and a sphere have different 32×32 silhouettes, and the ablated floor confirms the difference is real to physics) and the policy nonetheless binds its choice to color, not geometry. Condition D (both objects boxes, neither the trained shape) at 79% is the sharpest cut — discrimination survives with the trained shape entirely absent. This is the strong form of the equivalence-class claim that the proprio-only result could not deliver.
+
+**Presence/arousal-vs-direction framework: consistent, and further constrained.** Today's prism-displacement entry established the decoy channel is directional (displacement degrades choice). This adds that the directional cue it uses is CHROMATIC — the policy computes "go toward the red one," and that binding is indifferent to the red object's shape. Together: the visual channel on the two-ball task is a color-keyed directional selector, robust to object geometry, limited only by field of view (central ~90–96%, edges →chance, unchanged across shapes).
+
+**Methodological note (synthetic-null / give-the-baseline-a-chance-to-cheat, again).** Two controls were load-bearing and both fired correctly. (1) The offset-0 prism `ghost` is a fixed red-sphere distractor left visible by the env; hiding it left the control unchanged (77.2% vs the prior 76–79%), so it did NOT confound prior offset-0 numbers — but it WOULD have silently defeated the shape test by supplying a red sphere in the box conditions. (2) The ablated floor was run per-shape; B′(box)=A′(sphere)=~52% rules out a cube-vs-rolling-sphere contact asymmetry masquerading as a visual result. Neither control was optional; both are now folded into the shape-eval harness.
+
+**What this resolves and what it doesn't.** Resolves: the decoy discrimination is not a shape/texture artifact and not a sphere-lock — it is color object-agnosticism. Does not resolve: whether the color binding is "approach red" or "avoid blue" (recolor test needed); whether shape would compete at higher camera resolution; shape × prism-displacement interaction.
+
+### Theory Monitor Note — 2026-07-08 (visual object-agnosticism)
+Object-agnostic equivalence class: **EXTENDED TO VISION (strong form)** — sphere-trained decoy policy discriminates color at full strength on boxes/capsules zero-shot, incl. both-object-novel (79%), across 2 seeds; ablated floor ~52% per-shape rules out a physical confound. First project evidence that the *visual* channel is object-agnostic (a learned indifference to available shape info, stronger than proprio's by-construction invariance).
+**Most important thing we don't know yet:** whether the color binding is approach-red or avoid-blue, and whether shape competes with color once the camera can resolve it.
+**Recommended diagnostic** (measurement, not a run): recolor test — target=green vs decoy=red (does the policy follow the rewarded target when it is no longer red → "approach target/avoid blue"), and target=red vs decoy=green (no blue present → does "avoid blue" collapse to chance). Separates approach-red from avoid-blue using the existing harness plus a geom_rgba override.
+
+### Recolor addendum — 2026-07-08 (mechanism: approach-red, not avoid-blue)
+
+The visual-object-agnosticism cue was pinned down by a zero-shot recolor sweep (reward always on target_geom): target=red/decoy=green 73%, target=green/decoy=blue 53% (chance), target=blue/decoy=red 18% (chases the red decoy 72%), target=green/decoy=yellow 30% (goes to yellow 63%). Reading: a positive attraction to the RED channel — "approach red." The blue-target row (pursues red into the wrong choice) refutes an "avoid-blue" account; the green/blue chance row confirms it (a blue-avoider would pick green well above chance); the green/yellow row shows the rule keys on the R chromatic channel and generalizes to yellow.
+
+**Salience-vs-spatial fork: LEANS SALIENCE.** This is the same fork the prism-displacement entry left open. "Approach the reddest region in view" is a chromatic phototropism, not an abstract target-bearing computation. So the two 2026-07-08 results combine to: the decoy visual channel is a **red-channel-keyed directional attractor** — directional (displacement degrades choice → not pure arousal), object-agnostic (shape-invariant), FOV-limited, and salience-flavored rather than a spatial map. A true bearing/spatial-map account is now the less-supported branch, though not excluded (a phototropism can still carry usable bearing information at short range).
+
+---
+
+## 2026-07-18 — GAZE-frame apparatus fix validated end-to-end: the interpenetration chain reproduces on corrected geometry, cleanest instrument yet
+
+**Context.** The 2026-07-18 governing-frame correction (CLAUDE.md: "Perception lives in the GAZE
+frame") diagnosed that every prior bearing-readout instrument (2026-07-17 x2, both R²≈0 even sighted)
+was likely broken by a world/torso-frame vs gaze-frame mismatch, not by an absent signal. This entry is
+the first trained-policy test of the fix: gaze-relative prism ghost + gaze-cone spawn, plain body-frame
+readout vs `--gain-field` (FiLM head-pose composition), offset 0, 250K each, gate eval 200 eps/cell.
+
+**Result: the fix works, and the interpenetration signature reproduces cleanly for the first time on
+this apparatus.** Sighted heading tracks true bearing (R²=0.524 plain / 0.400 gain-field, both clearing
+the pre-registered ≥0.30 gate) while blind is flat (R²=0.014 / 0.000, clearing ≤0.10) — and blind still
+touches balls MORE often (93.0%/90.5% vs 86.5%/88.0% sighted), ruling out the standing "low-touch
+artifact" concern independently via a second metric (choice_vs_true: blind 49.5%/51.4% sits on the 50%
+chance floor). Two structurally different instruments (continuous R², binary choice) now agree, on the
+first bearing readout that has ever cleared its own validity gate in this project.
+
+**What this confirms.** The **interpenetration thesis** (vision genuinely sets a directional/choice
+signal touch/proprio structurally cannot supply, established via the decoy-discrimination →
+prism-displacement chain of 2026-07-06/07-08) reproduces on the corrected gaze-frame geometry, with the
+cleanest instrument margin the project has produced. It also confirms the causal diagnosis in the
+2026-07-18 GAZE-frame governing-frame note itself: the world/gaze-frame mismatch, not an absent visual
+signal, was the reason every earlier readout returned R²≈0. Fixing the frame — not adding a new
+mechanism — was sufficient.
+
+**What this does NOT confirm.** Offset 0 has no lens displacement to correct, so this result is silent
+on the actual north-star question (does the gain-field help genuine recalibration under the lens?) and
+silent on the generalization-as-primary framework (no size/shape/distance sweep here). Both arms are
+committed to Stage 2 specifically because Stage 1 cannot discriminate them — see FINDINGS.md 2026-07-18
+entry for the full A/B and independent Theory Monitor verification.
+
+**The most important thing we don't know yet:** whether the gain-field's head-pose composition earns
+its complexity under the one condition it was designed for (the +30° lens) — untestable at offset 0 by
+construction.
+
+---
+
+## 2026-07-18 — Distance-holdout gap generalization on the vision line: interpolation supported, but qualify the "indistinguishable" claim (independent Theory Monitor read)
+
+**What was tested.** `dist_holdout_vis_s0`: the vision-line (`s1corr`) checkpoint continue-trained 200K
+steps on a widened ball-distance band 0.35–0.85 m with a held-out gap at 0.55–0.75 m (never sampled during
+training). Evaluated in three cells, 100 eps each, offset 0, gaze-spawn, cone 136°: near (0.35–0.55,
+trained), GAP (0.55–0.75, held-out), far (0.75–0.85, trained). Per PREREG_distance_generalization_holdout.md,
+contact rate is primary, directed choice_vs_true (red vs blue, 50% floor) is co-primary, steps-to-contact is
+corroborating-only (too noisy on this substrate), and `committed` (body actually translated toward a ball,
+vs. contact by proximity alone) is the confound check the panel added specifically because of the earlier
+cart-sweep-delivery problem on this project's proprio line.
+
+**1) Does gap ≈ trained bands confirm generalization-as-primary, or is the case weaker than it looks?**
+It is real evidence for the reach-as-law reading, but weaker than the headline framing suggests, for one
+concrete reason: **the near cell is not an admissible "trained" comparator.** committed = 5/100 at near
+means 95% of near contacts happened without the body translating toward a ball — geometry (prone-reach),
+not reach. So "gap is indistinguishable from the trained bands" is really only tested against the *far*
+cell, the only other clean (committed-heavy) bin: far contact 95%/committed 95, GAP contact 97%/committed
+78. Against that single clean anchor, the pre-registered pass condition (gap contact ≥ 0.8× trained, gap
+choice near trained) is met with room to spare, and the falsifier (gap contact ≤ 0.5× trained, choice
+collapsing to 50%) is nowhere close. That is a genuine pass — but it is a pass against one clean bracket,
+not two, and the paper's own framing ("indistinguishable from the trained bands," plural) overstates what
+the near cell actually licenses. Additionally, n=100/cell gives choice-accuracy CIs of ±8–9 points; overlap
+at that width rules out a large gap-specific deficit but cannot rule out a modest one (e.g. a genuine 10-pt
+dip would likely not separate from noise here). **Verdict: CONFIRMS the reach-generalizes-across-distance
+reading on the vision line, on the one clean comparison available, with the caveat that the claim currently
+rests on n=100/cell and a single clean trained anchor, not two.**
+
+**2) Taylor's interpolation prediction (gap sits between the bracketing trained distances) — does it hold,
+and does the near confound undermine it?** Only partially testable, for the reason above: Taylor's §6.11
+"automatic interpolation device" predicts the untrained middle should sit as a smooth *weighted average*
+between the two trained brackets. Contact rate can't show this — it's ceiling-bound (95–100%) across all
+three cells, so there's no gradient to read a weighted-average shape off of. Directed choice is the metric
+with headroom, and there the numbers do **not** show a clean monotonic in-between shape: near 77.0%, GAP
+72.2%, far 75.8% — GAP is numerically the *lowest* of the three, not sandwiched between two clean brackets,
+though well within the ±8-9-point noise band of both. This is consistent with "uniformly good across the
+whole range" more than with the specific graded-interpolation shape Taylor's account names, but the data
+cannot distinguish the two at this n. Yes, the near-cell geometry confound directly undermines using near
+as one of the two brackets Taylor's account requires — only GAP and far are demonstrated to be genuine-reach
+cells, so the "between two brackets" test is currently running on one real bracket plus one confounded one,
+not two real ones.
+
+**3) Does this bear on the long-running "vision inert / non-directional" finding — challenge or refine?**
+Refines, and in the confirming direction — it does not resurrect or contradict the old Phase XIII (R43/R44,
+2026-05-30) finding, because that finding was already attributed to an apparatus defect (world/torso-frame
+vs. gaze-frame mismatch), not to a fact about AB, and was superseded by the 2026-07-18 GAZE-frame fix
+entry immediately above this one. What this run adds to the corrected picture: directed choice stays
+reliably above the 50% chance floor (72.2–77.0%, all three cells) not just at the single offset-0/fixed-
+distance condition the Stage-1 gate-eval tested (87.9%/86.9%), but across a distance range from 0.35 m to
+0.85 m *including a never-trained middle band*. That is a genuine extension of "vision is directional" along
+a new axis (distance) that the 07-18 entry did not test. One honest wrinkle worth flagging, not smoothing
+over: choice accuracy here (72–77% across all three cells, including the *trained* near and far bins) sits
+noticeably below the Stage-1 gate-eval's 86.9–87.9% on the same lineage. Two candidate explanations, neither
+yet distinguished: (a) 200K more steps of continued training on a substantially harder, wider task diluted
+peak discrimination accuracy somewhat; (b) the wider spawn cone (136° here vs. whatever the Stage-1 gate
+used) makes the discrimination itself harder everywhere, independent of distance. Either way, the drop is
+present in the trained bins too, so it is not gap-specific and does not threaten the interpolation reading —
+but it should be tracked, not left unexplained.
+
+**4) Single sharpest follow-up.** Per the field's own function-learning framework (DeLosh, McDaniel &
+Busemeyer 1997, cited in the pre-reg): interpolation success is the *weaker* of the two rule-vs-lookup
+tests; **extrapolation beyond the trained range is the sharp discriminator**, because a sufficiently dense
+lookup/averaging table can pass an interpolation test but cannot pass an honest extrapolation test without
+an actual metric law. The single sharpest, cheapest next measurement is therefore an eval cell beyond 0.85 m
+(no new training — same checkpoint, one more eval bin, winnability-checked first per the standing rule) to
+see whether contact/committed/choice hold up, degrade gracefully (Taylor §4.10/6.6's "bounded extrapolation,
+carries a little beyond, then flattens"), or collapse. A second, genuinely free diagnostic that should
+happen first because it costs nothing: re-bin the *already-collected* near-cell episodes by the `committed`
+flag (or by sub-radius near the 0.55 edge vs. the 0.35 edge) and check whether the ~5 genuinely-committed
+near episodes' choice accuracy resembles GAP/far or differs — this would repair the "one clean bracket"
+problem in §1/§2 using data already on disk, before spending any new compute.
+
+**Disagreement with the framing in the dispatch, for the record.** The dispatch's question 1 asks whether
+gap-indistinguishable-from-trained-bands confirms the framework "or is the case weaker than it looks" — my
+read is the latter, specifically: it is a real, qualified CONFIRM (per §1), not the clean unqualified
+confirm the phrase "indistinguishable from the trained bands" (plural) implies, because one of those two
+bands (near) is not a valid comparator for reach-generalization. This should be recorded as a qualification
+of the headline, not a rejection of it — the GAP-vs-far comparison, which IS clean, passes clearly.
+
+### Theory Monitor Note — 2026-07-18 (Distance-holdout gap, vision line)
+
+**Generalization-as-primary / reach-as-law framework: CONFIRMED, qualified** — GAP performance (97%
+contact, 78% committed, 72.2% directed choice) matches the one clean trained anchor available (far: 95%
+contact, 95% committed, 75.8% choice) on a never-trained middle distance band; the near cell cannot serve
+as a second clean anchor because only 5/100 of its contacts involved genuine directed movement.
+
+**Interpenetration / vision-is-directional framework: CONFIRMED and extended** — directed choice stays
+well above the 50% floor at all three distances including the held-out gap, extending the 2026-07-18
+GAZE-frame result (directional at a single distance) to a range of distances; this refines rather than
+challenges the corrected picture, and does not revive the superseded Phase XIII "non-directional" finding.
+
+**The most important thing we don't know yet:** whether AB's reach law genuinely extrapolates beyond the
+trained 0.35–0.85 m range (the sharp rule-vs-lookup test) or only interpolates within it — untested by
+this run by design.
+
+**Recommended diagnostic** (not a training run — just measurements, in priority order): (1) free re-bin
+of the already-collected near-cell episodes by the `committed` flag / sub-radius to get a second genuinely
+clean trained anchor before trusting the "gap ≈ trained bands, plural" framing; (2) one new eval cell
+beyond 0.85 m, winnability-checked first, to test extrapolation rather than interpolation — the sharper
+discriminator per the pre-reg's own cited function-learning literature.
+
+---
+
+## 2026-07-19 — Stage-2 overnight (mildhead_vis_s0, +30° gaze-relative lens, cross-modal mismatch): recalibration NOT demonstrated, and the aftereffect remains UNMEASURABLE — independent Theory Monitor verdict
+
+**What was run.** Four 300K-step arms (plain/gain-field × seed 0/1), warm-started from `mildhead_vis_s0`,
+trained under a sustained +30° gaze-relative lens with the cross-modal mismatch aux loss (coef 0.1,
+gate_contact=True, encoder frozen — only the eye/bearing heads train, 14–18 tensors). Read at matched +30°
+against an unadapted base. This is the first Stage-2 test built on the 2026-07-18 GAZE-frame-corrected
+apparatus (the offset-0 Stage-1 A/B that validated the fixed instrument).
+
+**Headline numbers (choice_vs_true @ +30°, sighted / ablated):**
+
+| arm | sighted | ablated | vs. base sighted (67.6%) |
+|---|---|---|---|
+| base (unadapted) | 67.6% ± 6.8 | 56.5% ± 7.1 | — |
+| plain_s0 | 66.8% ± 6.7 | 50.8% ± 7.3 | flat |
+| plain_s1 | 61.5% ± 7.1 | 48.9% ± 7.4 | worse |
+| gain-field_s0 | **44.4% ± 7.3** | 52.0% ± 7.3 | **worse, and BELOW its own ablated control** |
+| gain-field_s1 | 56.8% ± 7.1 | 51.3% ± 7.1 | worse |
+
+Aftereffect (lens off, offset 0): ballistic no-feedback diff-in-diff −3.0/−7.5/+1.3/−1.8° (all \|z\|<1.4);
+in-view whole-episode signed-bias shift +74.1/+66.4/+58.6/+46.9° but base cc_inview = **−0.257** against a
+validated ~+0.5 baseline (fails its own printed sanity check).
+
+### 1. Genuine challenge to AB, or setup/instrument failure? — MIXED, and the two halves fail for different reasons
+
+The **choice_vs_true metric is a real, trustworthy null, not a broken ruler.** Its blind-condition chance
+floor holds tightly in every cell tonight (56.5/50.8/52.0/48.9/51.3 — all pinned near 50%, exactly as
+designed), and it is the same instrument that passed its Stage-1 validity gate (offset 0, R²=0.52/0.40
+sighted vs ~0 blind). So "none of the four arms improved over the 67.6% unadapted baseline" is a real
+behavioral fact, not an artifact.
+
+But that does not make it a challenge to the North Star claim, because there is a concrete, upstream,
+fixable cause sitting directly under "did training teach anything": **the mismatch aux_loss never
+converges.** Across all four 300K-step runs it oscillates in a 0.03–0.10 band with no visible downward
+trend (e.g. plain_s0: 0.037→0.061→0.038→0.050→…→0.061, ending where it started). That is the literal
+training signal this experiment is betting recalibration on, and it shows no sign of doing its job — compounded by `gate_contact=True` (aux loss fires only on contact, so effective sample density is likely far
+sparser than n_samples=4096 implies) and a frozen encoder (only the head, 14–18 tensors, can move). This
+is exactly the shape of "our setup failed to present a learnable correction," per the North Star rule —
+not evidence that AB's vision cannot be recalibrated.
+
+**Verdict: INFORMATIVE NULL, setup-attributable.** The metric is valid and shows real non-improvement; the
+most likely cause (a training signal that never converges) is diagnosable and fixable before concluding
+anything about AB's capability.
+
+### 2. The gain-field arm breaking — signal or noise?
+
+**A real, reproducible finding, not an unstable run.** Gain-field underperforms plain in BOTH seeds (44.4
+vs 66.8 at seed 0; 56.8 vs 61.5 at seed 1) — same direction both times, directly contradicting the
+2026-07-18 pre-registration ("watch whether the same small plain-favoring edge re-appears under the lens
+— a gain-field that helps nowhere would be a real, if modest, strike against carrying its extra
+parameters"). Seed 0 is worse than "nowhere": sighted (44.4%) falls below its own ablated control (52.0%)
+and below the 50% chance floor — by the logic already established in the 2026-07-08 follow-the-ghost
+entry, a below-chance choice means something is actively steering AB toward the wrong ball more often than
+chance, not merely failing to help. Most likely mechanism: the FiLM head-pose composition adds parameters
+trained by the same weak, non-converging aux signal noted above — more capacity with no more signal is
+worse-conditioned than the simpler plain readout, not better. This is a real strike against the gain-field
+as currently trained; it is not proof the gain-field hypothesis is wrong in principle (untrained-signal
+starvation and architectural unsuitability are not yet distinguished).
+
+### 3. Status of the north-star claim — "AB did not recalibrate" or "we cannot measure it"?
+
+**Squarely the second: we still cannot measure whether AB recalibrated.** Two separate instruments, two
+separate failures, and one correction to how the dispatch framed them:
+
+- The **in-view instrument** fails its own printed sanity check outright (base cc_inview should be ≈+0.5;
+  it reads **−0.257**, wrong sign and magnitude). This is the **second** documented failure of this exact
+  instrument — the 2026-07-18 afternoon `stage2_adapt_s0` entry already flagged it as "UNINTERPRETABLE...
+  validated base eye circ_corr +0.54 reads ~0 in-view here." The +47–74° "aftereffect" numbers tonight are
+  not evidence of anything; they are outputs of a ruler that does not read zero correctly at its own
+  baseline.
+
+- The **ballistic no-feedback instrument** (the "psychophysics convention" one) was **already proven
+  invalid on 2026-07-17** — R²(true bearing, early heading) ≈ 0 in all four cells *including sighted*,
+  meaning this body has no ballistic-aim phase to measure; the early window captures a target-independent
+  stereotyped motion, not vision-guided aim. **No R² re-validation for this instrument appears anywhere in
+  tonight's log** — it was reused without being re-checked. Its "NULL (\|z\|<1.4)" result tonight should
+  therefore be downgraded from "null" to "uninterpretable," the same status as the in-view instrument —
+  this is a correction to the dispatch's framing, which treated the ballistic result as a corroborating
+  clean null against the in-view result's known-broken one. They are both broken, for different, already-
+  documented reasons.
+
+Both instruments used tonight are either freshly broken or previously-diagnosed-broken-and-not-refixed.
+Under those conditions "AB did not recalibrate" is not a licensed conclusion. The honest statement is that
+the sharpest test in the classical prism paradigm (the aftereffect) has not yet been run with a working
+ruler.
+
+### 4. Single most important next step
+
+**Fix/re-validate the in-view aftereffect instrument first, using data already on disk — not a training
+run.** Diagnose why base cc_inview reads −0.257 instead of the validated ~+0.5 (the likely suspect is the
+same class of frame bug the GAZE-frame fix already found once — check whether the in-view azimuth is
+being read in the correct frame relative to the corrected per-step gaze-relative prism), and confirm the
+fix reproduces +0.5 at the offset-0/no-lens baseline before trusting any signed-bias number from it. This
+is the cheapest, most directly blocking fix: no new training required, and until it passes, no future run
+— including a stronger-error-signal rerun — can be interpreted. Close second, not this pick: check whether
+the mismatch aux_loss can be made to converge at all (higher coef, ungated, or more of the encoder
+unfrozen) before spending another overnight on this exact recipe — a validated ruler applied to a training
+signal that never moved will just confirm "nothing to measure" a different way.
+
+### Theory Monitor Note — 2026-07-19 (Stage-2 overnight, +30° gaze-relative lens)
+
+**Recalibration-under-lens (choice_vs_true): INFORMATIVE NULL, setup-attributable** — the metric is
+instrument-valid (blind pinned at chance in every cell) and shows a real non-improvement in all four arms
+(66.8/61.5/44.4/56.8% vs. 67.6% base), but the mismatch aux_loss shows no convergence over 300K steps in
+any arm, which is the more likely explanation than an incapacity finding about AB.
+
+**Gain-field hypothesis: WEAKENED under this training recipe, not refuted in principle** — seed-consistent
+underperformance vs. plain in both seeds, with seed 0 falling below its own ablated control and the 50%
+chance floor (an active-harm signature, not mere non-help), directly against the 2026-07-18
+pre-registration's watch condition.
+
+**Aftereffect (the sharpest test): UNMEASURABLE, not "absent"** — the in-view instrument fails its own
+baseline sanity check for the second documented time; the ballistic instrument was already proven to carry
+no aim signal on 2026-07-17 and was not re-validated before reuse tonight. Neither instrument licenses "AB
+did not recalibrate."
+
+**The most important thing we don't know yet:** whether the mismatch aux_loss can be made to converge at
+all on this task (right now it doesn't, in any of four independent 300K-step runs) — this is prior to and
+separable from the instrument-validity question, and until both are resolved, no amount of Stage-2 seed
+replication will produce an interpretable result.
+
+**Recommended diagnostic** (not a training run — a measurement): re-derive the in-view instrument's
+azimuth computation against the corrected per-step gaze-relative prism frame and confirm it reproduces the
+validated ~+0.5 base cc_inview at offset 0 before trusting any signed-bias number from it; in parallel,
+plot aux_loss over the full 300K steps for at least one arm already in hand to confirm (or refute) that it
+is genuinely flat rather than slowly trending — both are free re-analyses of data already on disk.
+
+---

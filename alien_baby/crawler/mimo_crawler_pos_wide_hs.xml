@@ -251,6 +251,17 @@
                     mass=".005" pos="-.005 0 .135" contype="0" conaffinity="0"/>
               <geom name="hair_back" type="sphere" material="hair_mat" size=".045"
                     mass=".005" pos="-.045 0 .080" contype="0" conaffinity="0"/>
+              <!-- Heading marker "haircut": yellow T on the occiput. When prone the
+                   occiput faces the overhead camera, so the T-stem reads as a heading
+                   needle (points toward the crown = forward) and the crossbar marks the
+                   rear. Strictly BEHIND the eye-camera viewing plane (verified vs
+                   baseline obs — AB cannot see it). Display-only: no contact, ~massless. -->
+              <geom name="hair_t_stem" type="capsule" rgba="1 0.85 0 1" size=".011"
+                    fromto="-.062 0 .050  -.050 0 .094" mass="0"
+                    contype="0" conaffinity="0"/>
+              <geom name="hair_t_bar" type="capsule" rgba="1 0.85 0 1" size=".010"
+                    fromto="-.062 -.026 .050  -.062 .026 .050" mass="0"
+                    contype="0" conaffinity="0"/>
               <!-- Stereo cameras: look forward-and-down when body is PRONE.
                    When prone: head+Z = world+Y (forward), head+X = world-Z (down).
                    Cameras are tilted 15° downward from horizontal so the ball

@@ -1550,3 +1550,130 @@ A: An auxiliary reward term (e.g. tilt penalty) can erase vision dependence with
 success: the posture run kept ~the same contact rate as the +22.5-gap recipe but its gap flipped to
 −7.5, because the penalty made vision-triggered aggressive maneuvers unprofitable and training
 found a blind-sweep solution. Always re-measure the ablation gap after any reward change.
+
+**Q: What is the touch-search escape, and why couldn't time pressure close it?**
+A: With one solid object on the platform, blind sweeping eventually wins — vision stays optional.
+Calibration showed the blind sweep is FAST (37-55% contact inside 150-350 steps), so every episode
+clock that starves the sweep also starves the sighted reach (gap never opened; one model's gap went
+negative under pressure). The escape needs a wrong-answer cost, not a time cost.
+
+**Q: How does the decoy-discrimination task force vision to carry direction?**
+A: A blue decoy ball, physically identical to the red target, spawns every episode; touching it
+ends the episode with a penalty. Touch can't distinguish the balls, so above-chance target choice
+requires reading the red ball's direction from pixels. Blind performance should drop to ~chance.
+
+**Q: What is choice accuracy and why did it replace contact rate on the decoy task?**
+A: red/(red+blue) among ball-touching episodes. Exchangeable placement pins the blind floor at
+exactly 50%, so above-chance choice is unambiguously vision. Contact rate stays high for a blind
+grab-the-nearest policy, so it no longer measures seeing. First result: 63.2% sighted vs 49.4%
+ablated (decoy_v2_s0, 100 eps each).
+
+**Q: What is the gaze-choice inversion in the decoy task?**
+A: AB fixates the ball it will NOT take (rejected ball in view ~60% of steps; chosen ball ~13-20%),
+already in the early phase of the episode. Vision may work as a veto/repulsor on the fixated ball
+rather than attraction to red. Found by quantifying color-in-view from the obs pixels after a human
+noticed red almost never appears in the eye panels.
+
+**Q: What is the touch-as-information proposal, and why is it deferred until after prism?**
+A: Make incidental contact informative (tactile obs + non-terminal wrong-touch + memory) instead of
+purely a terminal success/failure signal — bumps then teach object positions like a hip-bump on a
+table does. Deferred because a blind policy could then discriminate by touch alone (bump → episode
+continues → it was the decoy → seek the other), reopening the touch-search escape and destroying
+the above-chance-choice = vision metric the current phase depends on.
+
+**Q: Why did the prism experiment displace BOTH balls' images instead of just the red one?**
+A: Because of the gaze-choice inversion: AB picks red partly by avoiding blue. With blue anchored
+at its true bearing, blue-avoidance alone would steer AB to true-red and fake an "ignores the
+picture" result even if vision fully drives selection. Rotating the whole visual field (red + blue
+ghosts together, both real balls hidden but solid) makes every visual strategy point at the
+displaced bearing — the confound-free classical prism.
+
+**Q: What was the smoking-gun evidence that AB follows the displaced picture (follow-the-ghost)?**
+A: Two things. Choice-vs-true fell BELOW chance at 60-90° offsets in both checkpoints (an arousal
+gate can only decay toward 50%, never through it — systematic wrongness means the picture steers).
+And conditionally: when the red ghost appeared near the true-blue position, AB touched blue 67.7%
+of the time vs 34.8% when the ghost sat near true-red.
+
+**Q: What is the negative aftereffect, and why is it the decisive prism measurement?**
+A: After adapting to displaced vision, remove the prism: genuine recalibration errs OPPOSITE the
+trained offset before re-converging (the re-mapped vision-action link misfires on normal input).
+Mere relearning recovers during adaptation but snaps back clean with no aftereffect; arousal
+predicts nothing changes. Only the aftereffect separates the three — recovery during adaptation
+alone cannot.
+
+**Q: What is the synthetic-null metric check and which three traps motivated it?**
+A: Run every new metric on a known-null case before trusting it as a headline number. Motivated by:
+the ±22° cone (forward-crawl faked vision value), the decoy_v1 placement bias (geometry faked
+discrimination), and the displayed-red heading fraction (committed episodes end at real balls, so
+the metric could never report ghost-following even when it happened).
+
+**Q: What was the per-bearing symmetry check, and what did it rule out?**
+A: The test for whether the decoy discriminator sees color or just always crawls one way (a
+lateralization confound). With fair exchangeable placement (blind floor 50%), bin episodes by the
+red ball's spawn side and read accuracy per bin. decoy_v2_ext_s0 came back SYMMETRIC — ~93–100%
+within ±40° of center on both sides, ~50% at both far edges. Symmetric edge-drop rules out a
+one-sided motor bias; it looks like a field-of-view limit (can't resolve the balls at extreme
+angles). The "vision drives the choice" headline holds, but only inside the central cone.
+
+**Q: What is visual object-agnosticism, and why is it a stronger result than the proprio version?**
+A: The decoy policy (trained on red/blue spheres) discriminates color at full strength — 76–81% —
+when the objects are boxes or capsules instead, zero-shot, even when BOTH are boxes (neither the
+trained shape). So vision keys on COLOR, not geometry. Stronger than proprio's shape-invariance
+because proprio literally can't sense shape (invariance is by-construction), whereas vision CAN see
+shape (different 32×32 silhouettes; the ~52% blind floor confirms the difference is physically real)
+and still ignores it — a learned indifference. Controls: ablated floor ~52% for box AND sphere (no
+touch/physics asymmetry); the fixed red-sphere prism "ghost" hidden in all conditions.
+
+**Q: What was the ghost-distractor confound in the shape test?**
+A: At prism offset 0 the env doesn't hide its `ghost` mocap bodies, so a fixed red-SPHERE ghost is
+in view every episode. Harmless for prior offset-0 results (hiding it left the control at 77% vs
+76–79%), but it would have wrecked the shape test — supplying a red sphere reference even when the
+real red target was a box. Fixed by setting ghost alpha=0 in all conditions. Lesson: a distractor
+inert for one question can be fatal for the next; inspect scene contents per experiment.
+
+**Q: Is the decoy policy's color rule "approach red" or "avoid blue", and how do we know?**
+A: Approach red — a positive attraction to the red channel. Recolor test (reward fixed on one
+object regardless of color): color it blue with a red decoy → the policy chases the red decoy
+(18% success); no red present (green vs blue) → chance, which a blue-avoider would beat; green vs
+yellow → prefers yellow (shares red's high R channel). So it's a chromatic phototropism ("steer
+toward the reddest region"), which leans the salience-vs-spatial fork toward salience: a
+red-channel-keyed directional attractor, not an abstract target-bearing map.
+
+**Q: What is the "grounding program," and why is it a contribution to AI (not just the theory)?**
+A: The plan (GROUNDING_LLMS.md) to use AB's developmentally-grounded perception to ground an LLM.
+It's a contribution because today's VLMs bolt a static CLIP encoder onto an LLM — which is AB's
+own "all-at-once fusion," the architecture AB proved brittle (95%→30% under noise). AB embodies
+the developmental/interpenetrated alternative, giving a real control group: AB-grounded vs
+CLIP-grounded language.
+
+**Q: How can AB ground language when it only grounds a few invariants (bearing, distance, color)?**
+A: The image-schema bridge (Lakoff-Johnson). Abstract language is metaphorically extended from a
+small set of bodily-spatial schemas (source-path-goal, near-far, toward-away). So AB only needs
+to ground the sensorimotor CORE those metaphors are built on — not the whole lexicon. The claim
+is about mechanism/structure, not percept content.
+
+**Q: What is the concept-anchoring probe and what would a null result mean?**
+A: The cheapest first test of the grounding thesis: check whether AB's grounded latent space and
+an LLM's word-activation space share structure (RSA + linear decode vs permutation baselines),
+changing neither model. Positive → spatial words are anchored to sensorimotor structure AB has.
+Null → text-only words are ungrounded relative to AB's code, which motivates the bridge even more.
+Both outcomes are informative.
+
+**Q: Governor vs. foundation — what's the fork in the grounding program?**
+A: Governor = constrain a finished LLM post-hoc with AB as a consistency-critic (AB's
+vision-agrees-with-proprio loss scaled up to language-agrees-with-perception); easy, but leaves
+the ungrounded core. Foundation = make grounded perception the base and grow language ON it
+(distil-then-RL); theory-faithful but hard. Plan: prototype governor for signal, aim at foundation.
+
+**Q: What is the world-model predictor (forward model), and what does it add over the governor-as-critic?**
+A: A learned simulator predicting the sensory consequences of a proposed action (state + action →
+next state). As grounding architecture (e), the language layer must predict outcomes and is scored
+against the embodied forward model — so it is constrained by *causality* (what would actually
+happen), not just representational plausibility (what sounds consistent). First cheap step: test
+whether AB's grounded latent supports consequence-prediction from existing rollouts.
+
+**Q: In the walker's hierarchy, what is `cmd`?**
+A: The two-number command the high-level vision policy sends to the frozen low-level gait every step:
+`cmd = [forward_speed, turn_rate]` (gas pedal + steering wheel). The vision "driver" outputs it from
+what the eyes see; the gait "legs" turn it into eight joint motions. The split makes the learned
+steering body-agnostic — the same two-number command could drive a different body (e.g. a biped).

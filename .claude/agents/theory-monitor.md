@@ -1,7 +1,7 @@
 ---
 name: theory-monitor
 description: Checks whether training results confirm or challenge our theoretical predictions. Run after the results-analyst has updated FINDINGS.md. Keeps a running theory log.
-tools: Read, Write
+tools: Read, Write, Edit
 model: sonnet
 color: orange
 ---
